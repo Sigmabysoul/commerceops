@@ -1,0 +1,1 @@
+dont jumb to different phases automatically wait for me to tell you to start
