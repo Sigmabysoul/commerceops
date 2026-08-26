@@ -7,7 +7,10 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/commerceops/commerceops/services/api/internal/auth"
+	"github.com/commerceops/commerceops/services/api/internal/authorization"
 	"github.com/commerceops/commerceops/services/api/internal/config"
+	"github.com/commerceops/commerceops/services/api/internal/core"
 	"github.com/commerceops/commerceops/services/api/internal/health"
 	"github.com/commerceops/commerceops/services/api/internal/platform/database"
 	"github.com/commerceops/commerceops/services/api/internal/platform/httpserver"
@@ -22,6 +25,25 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 
 	mux := http.NewServeMux()
 	mux.Handle("/api/v1/health", health.NewHandler(db, cfg.DatabaseTimeout))
+	authService := auth.NewService(db, cfg.SessionLifetime)
+	authHTTP := auth.NewHTTPHandler(authService, cfg.SecureCookies, cfg.SessionLifetime)
+	authorizer := authorization.NewService(db)
+	coreHTTP := core.NewHTTPHandler(core.NewService(db, authorizer))
+	mux.HandleFunc("/api/v1/auth/login", authHTTP.Login)
+	mux.Handle("/api/v1/auth/logout", authHTTP.RequireSession(http.HandlerFunc(authHTTP.Logout)))
+	mux.Handle("/api/v1/auth/session", authHTTP.RequireSession(http.HandlerFunc(authHTTP.Session)))
+	mux.Handle("/api/v1/company", authHTTP.RequireSession(http.HandlerFunc(coreHTTP.Company)))
+	mux.Handle("/api/v1/employees", authHTTP.RequireSession(http.HandlerFunc(coreHTTP.Employees)))
+	mux.Handle("/api/v1/employees/{employee_id}", authHTTP.RequireSession(http.HandlerFunc(coreHTTP.Employee)))
+	mux.Handle("/api/v1/user-access", authHTTP.RequireSession(http.HandlerFunc(coreHTTP.UserAccesses)))
+	mux.Handle("/api/v1/user-access/{user_id}", authHTTP.RequireSession(http.HandlerFunc(coreHTTP.UserAccess)))
+	mux.Handle("/api/v1/user-access/{user_id}/roles", authHTTP.RequireSession(http.HandlerFunc(coreHTTP.UserRoles)))
+	mux.Handle("/api/v1/roles", authHTTP.RequireSession(http.HandlerFunc(coreHTTP.Roles)))
+	mux.Handle("/api/v1/roles/{role_id}/permissions", authHTTP.RequireSession(http.HandlerFunc(coreHTTP.RolePermissions)))
+	mux.Handle("/api/v1/permissions", authHTTP.RequireSession(http.HandlerFunc(coreHTTP.Permissions)))
+	mux.Handle("/api/v1/module-entitlements", authHTTP.RequireSession(http.HandlerFunc(coreHTTP.Entitlements)))
+	mux.Handle("/api/v1/module-entitlements/{module_key}", authHTTP.RequireSession(http.HandlerFunc(coreHTTP.Entitlement)))
+	mux.Handle("/api/v1/audit-logs", authHTTP.RequireSession(http.HandlerFunc(coreHTTP.AuditLogs)))
 	server := &http.Server{Addr: cfg.HTTPAddr, Handler: httpserver.Middleware(logger, cfg.AllowedOrigins, mux), ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 60 * time.Second}
 
 	errCh := make(chan error, 1)

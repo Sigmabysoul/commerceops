@@ -162,6 +162,10 @@ Provide a simple local PostgreSQL setup.
 
 Docker Compose is acceptable.
 
+Docker Compose is supported but optional.
+
+Native PostgreSQL is also a supported local development environment.
+
 Requirements:
 
 - persistent development volume where appropriate

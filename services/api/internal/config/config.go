@@ -14,6 +14,8 @@ type Config struct {
 	AllowedOrigins  []string
 	ShutdownTimeout time.Duration
 	DatabaseTimeout time.Duration
+	SessionLifetime time.Duration
+	SecureCookies   bool
 }
 
 func Load() (Config, error) {
@@ -29,6 +31,8 @@ func Load() (Config, error) {
 		AllowedOrigins:  splitCSV(valueOrDefault("CORS_ALLOWED_ORIGINS", "http://localhost:3000")),
 		ShutdownTimeout: 10 * time.Second,
 		DatabaseTimeout: 2 * time.Second,
+		SessionLifetime: 24 * time.Hour,
+		SecureCookies:   valueOrDefault("APP_ENV", "development") != "development",
 	}, nil
 }
 

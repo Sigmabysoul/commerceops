@@ -16,7 +16,14 @@ Copy-Item .env.example .env
 # Replace the local placeholder password in .env before continuing.
 docker compose config
 docker compose up -d postgres
+
+
 ```
+
+Local PostgreSQL can be run either:
+
+1. natively
+2. through Docker Compose
 
 Environment variables are documented in `.env.example`. `DATABASE_URL` is required by the API. Do not commit `.env`.
 

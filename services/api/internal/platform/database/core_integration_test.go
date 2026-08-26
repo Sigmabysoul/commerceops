@@ -49,6 +49,10 @@ func TestCoreSchemaRejectsCrossTenantAssociations(t *testing.T) {
 		"INSERT INTO company_user_roles (company_id, user_id, role_id) VALUES ($1, $2, $3)",
 		companyTwoID, userID, roleID,
 	)
+	expectForeignKeyViolation(t, ctx, tx,
+		"INSERT INTO audit_logs (company_id, actor_user_id, action, target_type, target_id) VALUES ($1, $2, 'test', 'test', 'test')",
+		companyTwoID, userID,
+	)
 }
 
 func expectForeignKeyViolation(t *testing.T, ctx context.Context, tx pgx.Tx, query string, args ...any) {

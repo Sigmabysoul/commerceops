@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: CommerceOps API
-  version: 0.1.0
+  version: 0.2.0
 paths:
   /api/v1/health:
     get:
@@ -20,7 +20,171 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Health"
+  /api/v1/auth/login:
+    post:
+      operationId: login
+      summary: Start a verified company-scoped session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [email, password, company_id]
+              properties:
+                email: {type: string, format: email}
+                password: {type: string, format: password}
+                company_id: {type: string, format: uuid}
+      responses:
+        "200": {description: Authenticated; the session cookie is set}
+        "401": {$ref: "#/components/responses/Error"}
+        "403": {$ref: "#/components/responses/Error"}
+  /api/v1/auth/logout:
+    post:
+      operationId: logout
+      security: [{sessionCookie: []}]
+      responses:
+        "204": {description: Session revoked}
+        "401": {$ref: "#/components/responses/Error"}
+  /api/v1/auth/session:
+    get:
+      operationId: getSession
+      security: [{sessionCookie: []}]
+      responses:
+        "200": {description: Current authenticated principal}
+        "401": {$ref: "#/components/responses/Error"}
+  /api/v1/company:
+    get:
+      operationId: getCompany
+      security: [{sessionCookie: []}]
+      responses:
+        "200": {description: Company established by the session}
+        "401": {$ref: "#/components/responses/Error"}
+  /api/v1/employees:
+    get:
+      operationId: listEmployees
+      security: [{sessionCookie: []}]
+      responses:
+        "200": {description: Tenant employee list}
+        "403": {$ref: "#/components/responses/Error"}
+    post:
+      operationId: createEmployee
+      security: [{sessionCookie: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/CreateEmployee"}
+      responses:
+        "201": {description: Employee created}
+        "403": {$ref: "#/components/responses/Error"}
+  /api/v1/employees/{employee_id}:
+    parameters:
+      - {$ref: "#/components/parameters/EmployeeID"}
+    patch:
+      operationId: setEmployeeStatus
+      security: [{sessionCookie: []}]
+      responses:
+        "200": {description: Employee status changed}
+        "403": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+  /api/v1/user-access:
+    post:
+      operationId: createUserAccess
+      security: [{sessionCookie: []}]
+      responses:
+        "201": {description: User and company access created}
+        "403": {$ref: "#/components/responses/Error"}
+  /api/v1/user-access/{user_id}:
+    parameters:
+      - {$ref: "#/components/parameters/UserID"}
+    patch:
+      operationId: setUserAccessStatus
+      security: [{sessionCookie: []}]
+      responses:
+        "204": {description: Company access status changed}
+        "403": {$ref: "#/components/responses/Error"}
+  /api/v1/user-access/{user_id}/roles:
+    parameters:
+      - {$ref: "#/components/parameters/UserID"}
+    put:
+      operationId: setUserRoles
+      security: [{sessionCookie: []}]
+      responses:
+        "204": {description: Role assignments replaced}
+        "403": {$ref: "#/components/responses/Error"}
+  /api/v1/roles:
+    get:
+      operationId: listRoles
+      security: [{sessionCookie: []}]
+      responses:
+        "200": {description: Tenant roles and permissions}
+        "403": {$ref: "#/components/responses/Error"}
+    post:
+      operationId: createRole
+      security: [{sessionCookie: []}]
+      responses:
+        "201": {description: Role created}
+        "403": {$ref: "#/components/responses/Error"}
+  /api/v1/roles/{role_id}/permissions:
+    parameters:
+      - {$ref: "#/components/parameters/RoleID"}
+    put:
+      operationId: setRolePermissions
+      security: [{sessionCookie: []}]
+      responses:
+        "204": {description: Permission assignments replaced}
+        "403": {$ref: "#/components/responses/Error"}
+  /api/v1/permissions:
+    get:
+      operationId: listPermissions
+      security: [{sessionCookie: []}]
+      responses:
+        "200": {description: Permission definitions}
+        "403": {$ref: "#/components/responses/Error"}
+  /api/v1/module-entitlements:
+    get:
+      operationId: listModuleEntitlements
+      security: [{sessionCookie: []}]
+      responses:
+        "200": {description: Tenant module entitlements}
+        "403": {$ref: "#/components/responses/Error"}
+  /api/v1/module-entitlements/{module_key}:
+    parameters:
+      - name: module_key
+        in: path
+        required: true
+        schema: {type: string, pattern: "^[a-z][a-z0-9_]*$"}
+    put:
+      operationId: setModuleEntitlement
+      security: [{sessionCookie: []}]
+      responses:
+        "204": {description: Entitlement changed}
+        "403": {$ref: "#/components/responses/Error"}
+  /api/v1/audit-logs:
+    get:
+      operationId: listAuditLogs
+      security: [{sessionCookie: []}]
+      responses:
+        "200": {description: Recent tenant audit entries}
+        "403": {$ref: "#/components/responses/Error"}
 components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: commerceops_session
+  parameters:
+    EmployeeID: {name: employee_id, in: path, required: true, schema: {type: string, format: uuid}}
+    UserID: {name: user_id, in: path, required: true, schema: {type: string, format: uuid}}
+    RoleID: {name: role_id, in: path, required: true, schema: {type: string, format: uuid}}
+  responses:
+    Error:
+      description: Request failed
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/ErrorEnvelope"}
   schemas:
     Health:
       type: object
@@ -33,3 +197,20 @@ components:
         database:
           type: string
           enum: [ok, unavailable]
+    CreateEmployee:
+      type: object
+      additionalProperties: false
+      required: [display_name]
+      properties:
+        display_name: {type: string}
+        user_id: {type: [string, "null"], format: uuid}
+    ErrorEnvelope:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: {type: string}
+            message: {type: string}
