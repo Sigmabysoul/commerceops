@@ -32,9 +32,7 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 
 	select {
 	case err := <-errCh:
-		if errors.Is(err, http.ErrServerClosed) {
-			return nil
-		}
+		if errors.Is(err, http.ErrServerClosed) { return nil }
 		return err
 	case <-ctx.Done():
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
