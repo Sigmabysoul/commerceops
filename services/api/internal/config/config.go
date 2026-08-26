@@ -8,10 +8,10 @@ import (
 )
 
 type Config struct {
-	Environment    string
-	HTTPAddr       string
-	DatabaseURL    string
-	AllowedOrigins []string
+	Environment     string
+	HTTPAddr        string
+	DatabaseURL     string
+	AllowedOrigins  []string
 	ShutdownTimeout time.Duration
 	DatabaseTimeout time.Duration
 }
