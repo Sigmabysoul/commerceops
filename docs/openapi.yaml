@@ -1,0 +1,35 @@
+openapi: 3.1.0
+info:
+  title: CommerceOps API
+  version: 0.1.0
+paths:
+  /api/v1/health:
+    get:
+      operationId: getHealth
+      summary: Check application and required dependency health
+      responses:
+        "200":
+          description: Application and PostgreSQL are healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Health"
+        "503":
+          description: PostgreSQL is unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Health"
+components:
+  schemas:
+    Health:
+      type: object
+      additionalProperties: false
+      required: [status, database]
+      properties:
+        status:
+          type: string
+          enum: [ok, unavailable]
+        database:
+          type: string
+          enum: [ok, unavailable]

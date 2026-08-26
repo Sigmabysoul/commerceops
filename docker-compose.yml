@@ -1,0 +1,27 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${COMMERCEOPS_POSTGRES_DB:-commerceops}
+      POSTGRES_USER: ${COMMERCEOPS_POSTGRES_USER:-commerceops}
+      POSTGRES_PASSWORD: ${COMMERCEOPS_POSTGRES_PASSWORD:?set COMMERCEOPS_POSTGRES_PASSWORD in .env}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  migrate:
+    image: migrate/migrate:v4.18.3
+    profiles: ["tools"]
+    volumes:
+      - ./services/api/migrations:/migrations:ro
+    entrypoint: ["migrate"]
+    command: ["-path=/migrations", "-database=${DATABASE_URL:?set DATABASE_URL in .env}", "up"]
+
+volumes:
+  postgres_data:
