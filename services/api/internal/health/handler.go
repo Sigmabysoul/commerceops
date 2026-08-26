@@ -8,15 +8,15 @@ import (
 	"github.com/commerceops/commerceops/services/api/internal/platform/httpserver"
 )
 
-type DatabasePinger interface { Ping(context.Context) error }
+type DatabasePinger interface{ Ping(context.Context) error }
 
 type Handler struct {
 	database DatabasePinger
-	timeout time.Duration
+	timeout  time.Duration
 }
 
 type response struct {
-	Status string `json:"status"`
+	Status   string `json:"status"`
 	Database string `json:"database"`
 }
 
