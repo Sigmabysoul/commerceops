@@ -9,3 +9,15 @@ Migration files use the sequential format `NNNNNN_description.up.sql` and `NNNNN
 ```sh
 docker compose --profile tools run --rm migrate
 ```
+
+Docker is optional. With native PostgreSQL and `golang-migrate` installed, use the same migration files directly:
+
+```sh
+migrate -path services/api/migrations -database "$DATABASE_URL" up
+```
+
+PostgreSQL-backed tests require an already migrated, disposable database:
+
+```sh
+TEST_DATABASE_URL="$DATABASE_URL" go test ./internal/platform/database -v
+```
