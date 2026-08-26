@@ -1,6 +1,7 @@
 name: Backend CI
 
 on:
+  workflow_dispatch:
   push:
     paths: ["services/api/**", ".github/workflows/backend-ci.yml"]
   pull_request:
