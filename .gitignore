@@ -5,6 +5,7 @@
 
 # Go
 services/api/bin/
+services/api/server
 services/api/coverage.out
 .cache/
 .pnpm-store/
@@ -14,6 +15,7 @@ apps/web/node_modules/
 apps/web/.next/
 apps/web/out/
 apps/web/coverage/
+apps/web/*.tsbuildinfo
 apps/web/.env*
 !apps/web/.env.example
 
