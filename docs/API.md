@@ -41,4 +41,19 @@ Authentication uses an opaque server-side session in an `HttpOnly`, `SameSite=La
 
 The `core` entitlement is always enabled. Entitlements represent technical module access only and contain no billing or pricing behavior.
 
+## Product Master
+
+Product Master endpoints use only the authenticated session company. No request accepts `company_id`.
+
+| Method | Path | Permission | Purpose |
+| --- | --- | --- | --- |
+| GET | `/api/v1/marketplaces` | `products.view` | List normalized marketplace reference keys |
+| GET, POST | `/api/v1/products` | `products.view`, `products.manage` | Search/list or create canonical products |
+| GET, PATCH | `/api/v1/products/{product_id}` | `products.view`, `products.manage` | Read or update a product and its lifecycle status |
+| GET, POST | `/api/v1/sku-mappings` | `products.view`, `products.manage` | List or manually train SKU mappings |
+| PATCH | `/api/v1/sku-mappings/{mapping_id}` | `products.manage` | Edit or deactivate a mapping |
+| POST | `/api/v1/sku-mappings/resolve` | `products.view` | Resolve one exact marketplace/SKU identifier |
+
+SKU resolution trims surrounding whitespace and then performs a case-sensitive exact match within the authenticated company and marketplace. It never performs fuzzy, substring, case-insensitive, or fallback matching. A successful lookup returns `status: "resolved"` with its mapping and product; every unknown, inactive, or differently-cased identifier returns `status: "unresolved"` without guessing.
+
 The OpenAPI source is `docs/openapi.yaml`. It must be updated whenever the public API contract changes.

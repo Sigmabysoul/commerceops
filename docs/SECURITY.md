@@ -13,3 +13,5 @@
 - Backend authorization evaluates current granular permission assignments on every request. Role names are never authorization rules.
 - Backend module entitlement checks are independent of billing or pricing.
 - Security and administrative mutations produce company-scoped audit records containing actor, action, target, metadata, and timestamp.
+- Product and SKU mapping APIs derive company scope exclusively from the validated session principal and enforce `products.view` or `products.manage` in the backend.
+- SKU resolution is exact and case-sensitive after trimming surrounding whitespace. Unknown, inactive, differently-cased, or marketplace-mismatched identifiers remain explicitly unresolved.

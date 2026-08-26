@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: CommerceOps API
-  version: 0.2.0
+  version: 0.3.0
 paths:
   /api/v1/health:
     get:
@@ -169,6 +169,117 @@ paths:
       responses:
         "200": {description: Recent tenant audit entries}
         "403": {$ref: "#/components/responses/Error"}
+  /api/v1/marketplaces:
+    get:
+      operationId: listMarketplaces
+      summary: List normalized marketplace reference keys
+      security: [{sessionCookie: []}]
+      responses:
+        "200": {description: Active marketplace references}
+        "403": {$ref: "#/components/responses/Error"}
+  /api/v1/products:
+    get:
+      operationId: listProducts
+      summary: Search tenant products
+      security: [{sessionCookie: []}]
+      parameters:
+        - {name: q, in: query, schema: {type: string}}
+        - {name: status, in: query, schema: {type: string, enum: [active, inactive]}}
+      responses:
+        "200": {description: Tenant-scoped product list}
+        "403": {$ref: "#/components/responses/Error"}
+    post:
+      operationId: createProduct
+      summary: Create a canonical tenant product
+      security: [{sessionCookie: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ProductInput"}
+      responses:
+        "201": {description: Product created}
+        "409": {$ref: "#/components/responses/Error"}
+  /api/v1/products/{product_id}:
+    parameters:
+      - {$ref: "#/components/parameters/ProductID"}
+    get:
+      operationId: getProduct
+      security: [{sessionCookie: []}]
+      responses:
+        "200": {description: Tenant product}
+        "404": {$ref: "#/components/responses/Error"}
+    patch:
+      operationId: updateProduct
+      security: [{sessionCookie: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ProductInput"}
+      responses:
+        "200": {description: Updated product}
+        "404": {$ref: "#/components/responses/Error"}
+        "409": {$ref: "#/components/responses/Error"}
+  /api/v1/sku-mappings:
+    get:
+      operationId: listSkuMappings
+      security: [{sessionCookie: []}]
+      parameters:
+        - {name: product_id, in: query, schema: {type: string, format: uuid}}
+        - {name: marketplace, in: query, schema: {type: string}}
+        - {name: status, in: query, schema: {type: string, enum: [active, inactive]}}
+      responses:
+        "200": {description: Tenant-scoped SKU mappings}
+    post:
+      operationId: createSkuMapping
+      summary: Manually train an exact SKU mapping
+      security: [{sessionCookie: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/SkuMappingInput"}
+      responses:
+        "201": {description: SKU mapping created}
+        "409": {$ref: "#/components/responses/Error"}
+  /api/v1/sku-mappings/{mapping_id}:
+    parameters:
+      - {$ref: "#/components/parameters/MappingID"}
+    patch:
+      operationId: updateSkuMapping
+      security: [{sessionCookie: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/SkuMappingInput"}
+      responses:
+        "200": {description: Updated SKU mapping}
+        "404": {$ref: "#/components/responses/Error"}
+        "409": {$ref: "#/components/responses/Error"}
+  /api/v1/sku-mappings/resolve:
+    post:
+      operationId: resolveSkuMapping
+      summary: Resolve a deterministic exact marketplace SKU
+      security: [{sessionCookie: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [marketplace_key, sku]
+              properties:
+                marketplace_key: {type: string}
+                sku: {type: string}
+      responses:
+        "200":
+          description: Resolved mapping/product or explicit unresolved result
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/SkuResolution"}
 components:
   securitySchemes:
     sessionCookie:
@@ -179,6 +290,8 @@ components:
     EmployeeID: {name: employee_id, in: path, required: true, schema: {type: string, format: uuid}}
     UserID: {name: user_id, in: path, required: true, schema: {type: string, format: uuid}}
     RoleID: {name: role_id, in: path, required: true, schema: {type: string, format: uuid}}
+    ProductID: {name: product_id, in: path, required: true, schema: {type: string, format: uuid}}
+    MappingID: {name: mapping_id, in: path, required: true, schema: {type: string, format: uuid}}
   responses:
     Error:
       description: Request failed
@@ -204,6 +317,37 @@ components:
       properties:
         display_name: {type: string}
         user_id: {type: [string, "null"], format: uuid}
+    ProductInput:
+      type: object
+      additionalProperties: false
+      required: [internal_code, name]
+      properties:
+        internal_code: {type: string}
+        name: {type: string}
+        brand: {type: [string, "null"]}
+        variant: {type: [string, "null"]}
+        size: {type: [string, "null"]}
+        pack_type: {type: [string, "null"]}
+        unit_count: {type: [integer, "null"], minimum: 1}
+        status: {type: string, enum: [active, inactive], default: active}
+    SkuMappingInput:
+      type: object
+      additionalProperties: false
+      required: [marketplace_key, product_id, sku]
+      properties:
+        marketplace_key: {type: string}
+        product_id: {type: string, format: uuid}
+        sku: {type: string}
+        quantity_multiplier: {type: integer, minimum: 1, default: 1}
+        interpretation_metadata: {type: object, default: {}}
+        status: {type: string, enum: [active, inactive], default: active}
+    SkuResolution:
+      type: object
+      required: [status]
+      properties:
+        status: {type: string, enum: [resolved, unresolved]}
+        product: {type: object}
+        mapping: {type: object}
     ErrorEnvelope:
       type: object
       required: [error]

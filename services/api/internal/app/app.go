@@ -14,6 +14,7 @@ import (
 	"github.com/commerceops/commerceops/services/api/internal/health"
 	"github.com/commerceops/commerceops/services/api/internal/platform/database"
 	"github.com/commerceops/commerceops/services/api/internal/platform/httpserver"
+	"github.com/commerceops/commerceops/services/api/internal/product"
 )
 
 func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
@@ -29,6 +30,7 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	authHTTP := auth.NewHTTPHandler(authService, cfg.SecureCookies, cfg.SessionLifetime)
 	authorizer := authorization.NewService(db)
 	coreHTTP := core.NewHTTPHandler(core.NewService(db, authorizer))
+	productHTTP := product.NewHTTPHandler(product.NewService(db, authorizer))
 	mux.HandleFunc("/api/v1/auth/login", authHTTP.Login)
 	mux.Handle("/api/v1/auth/logout", authHTTP.RequireSession(http.HandlerFunc(authHTTP.Logout)))
 	mux.Handle("/api/v1/auth/session", authHTTP.RequireSession(http.HandlerFunc(authHTTP.Session)))
@@ -44,6 +46,12 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	mux.Handle("/api/v1/module-entitlements", authHTTP.RequireSession(http.HandlerFunc(coreHTTP.Entitlements)))
 	mux.Handle("/api/v1/module-entitlements/{module_key}", authHTTP.RequireSession(http.HandlerFunc(coreHTTP.Entitlement)))
 	mux.Handle("/api/v1/audit-logs", authHTTP.RequireSession(http.HandlerFunc(coreHTTP.AuditLogs)))
+	mux.Handle("/api/v1/marketplaces", authHTTP.RequireSession(http.HandlerFunc(productHTTP.Marketplaces)))
+	mux.Handle("/api/v1/products", authHTTP.RequireSession(http.HandlerFunc(productHTTP.Products)))
+	mux.Handle("/api/v1/products/{product_id}", authHTTP.RequireSession(http.HandlerFunc(productHTTP.Product)))
+	mux.Handle("/api/v1/sku-mappings", authHTTP.RequireSession(http.HandlerFunc(productHTTP.Mappings)))
+	mux.Handle("/api/v1/sku-mappings/resolve", authHTTP.RequireSession(http.HandlerFunc(productHTTP.Resolve)))
+	mux.Handle("/api/v1/sku-mappings/{mapping_id}", authHTTP.RequireSession(http.HandlerFunc(productHTTP.Mapping)))
 	server := &http.Server{Addr: cfg.HTTPAddr, Handler: httpserver.Middleware(logger, cfg.AllowedOrigins, mux), ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 60 * time.Second}
 
 	errCh := make(chan error, 1)
