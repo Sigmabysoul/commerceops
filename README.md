@@ -1,96 +1,116 @@
 # CommerceOps
 
-CommerceOps is a modular ecommerce operations platform. Phase 0 provides the Go API, PostgreSQL development environment, explicit migration tooling, strict-TypeScript Next.js frontend, and CI foundation. Business modules have not been implemented.
+CommerceOps is a modular ecommerce operations platform built as a Go and
+PostgreSQL modular monolith with a strict-TypeScript Next.js frontend. See
+[`docs/CURRENT_STATE.md`](docs/CURRENT_STATE.md) for the active phase,
+implemented modules, review gates, and explicitly forbidden work.
 
 ## Prerequisites
 
-- Go 1.24+
-- Docker with Docker Compose
-- Node.js 22+
-- pnpm 11.19+
-- Poppler (`pdfinfo` and `pdftotext`) for Phase 3 PDF extraction
+- Go 1.24 or newer
+- Node.js 22
+- pnpm 11.19.0
+- Docker with the Compose plugin
+- GNU Make
+- Poppler (`pdfinfo` and `pdftotext`) for PDF extraction
 
-## Local setup
+### Arch Linux
+
+The following official Arch packages provide the required toolchain. Corepack
+is used so pnpm matches the version pinned by this repository.
+
+```bash
+sudo pacman -S --needed go nodejs-lts-jod corepack docker docker-compose make poppler
+sudo systemctl enable --now docker.service
+corepack install --global pnpm@11.19.0
+```
+
+The package names are documented by Arch for
+[`go`](https://archlinux.org/packages/extra/x86_64/go/),
+[`nodejs-lts-jod`](https://archlinux.org/packages/extra/x86_64/nodejs-lts-jod/),
+[`corepack`](https://archlinux.org/packages/extra/any/corepack/),
+[`docker`](https://archlinux.org/packages/extra/x86_64/docker/),
+[`docker-compose`](https://archlinux.org/packages/extra/x86_64/docker-compose/),
+[`make`](https://archlinux.org/packages/core/x86_64/make/), and
+[`poppler`](https://archlinux.org/packages/extra/x86_64/poppler/). Arch's
+Poppler package includes both required command-line tools.
+
+Docker commands require access to the Docker daemon. Use `sudo` or configure
+Docker group access according to your local security policy; membership in the
+Docker group is effectively root-level access.
+
+## Local setup on Linux
+
+From the repository root:
+
+```bash
+cp .env.example .env
+# Replace every occurrence of the example database password in .env.
+docker compose config
+pnpm --dir apps/web install --frozen-lockfile
+make dev-infra
+make migrate
+```
+
+Start the backend and frontend in separate terminals:
+
+```bash
+make dev-backend
+```
+
+```bash
+make dev-frontend
+```
+
+Open `http://localhost:3000`. The frontend uses the API at
+`http://localhost:8080` by default.
+
+The PostgreSQL schema is migration-owned. Application startup never applies
+migrations automatically. `make migrate` uses the existing Compose migration
+container and the local credentials in `.env`.
+
+## Developer commands
+
+```bash
+make dev          # compatibility alias for dev-infra
+make dev-infra    # start only PostgreSQL
+make dev-backend  # run the Go API in the foreground
+make dev-frontend # run Next.js in the foreground
+make migrate      # apply migrations to the Compose PostgreSQL service
+make test         # Go tests plus frontend type checking
+make verify       # full checks; explicitly reports if PostgreSQL tests skip
+make verify-full  # require and use TEST_DATABASE_URL; skipping is an error
+make down         # stop the Compose environment
+```
+
+`make verify` is convenient during normal development. PostgreSQL-backed tests
+run when `TEST_DATABASE_URL` is set and otherwise print an explicit skip
+message. Phase-completion and remediation-completion claims must use an already
+migrated disposable test database:
+
+```bash
+export TEST_DATABASE_URL='postgres://user:password@localhost:5432/commerceops_test?sslmode=disable'
+make verify-full
+```
+
+## Optional Windows / PowerShell notes
+
+Docker Desktop can provide Docker Compose on Windows. From PowerShell:
 
 ```powershell
 Copy-Item .env.example .env
-# Replace the local placeholder password in .env before continuing.
-docker compose config
-docker compose up -d postgres
-
-
+pnpm --dir apps/web install --frozen-lockfile
 ```
 
-Local PostgreSQL can be run either:
+Replace the example password in `.env`, then use the Linux workflow from a
+Make-capable environment such as WSL, Git Bash, or MSYS2. Native PowerShell can
+run the backend and frontend in separate terminals with `go run ./cmd/server`
+from `services/api` and `pnpm dev` from `apps/web`, but the Make targets remain
+the canonical project commands.
 
-1. natively
-2. through Docker Compose
+## Project guidance
 
-Environment variables are documented in `.env.example`. `DATABASE_URL` is required by the API. Do not commit `.env`.
-
-Start the backend:
-
-```powershell
-Set-Location services/api
-go run ./cmd/server
-```
-
-Start the frontend in another terminal:
-
-```powershell
-Set-Location apps/web
-pnpm install
-pnpm dev
-```
-
-Open `http://localhost:3000`. The development page calls `GET http://localhost:8080/api/v1/health`.
-
-## Migrations
-
-Migrations are explicit and never run during application startup. After adding a genuine schema migration under `services/api/migrations`, apply pending migrations with:
-
-```powershell
-docker compose --profile tools run --rm migrate
-```
-
-Phase 0 intentionally has no SQL migration because it has no schema requirement.
-
-## Checks
-
-The repository-level commands are the preferred developer interface:
-
-```powershell
-make dev       # start the existing PostgreSQL Compose service
-make migrate   # apply explicit migrations
-make test      # backend tests plus frontend type checking
-make verify    # all backend, frontend, and repository checks
-make down      # stop the Compose environment
-```
-
-`make verify` prints `PostgreSQL integration tests: SKIPPED` when
-`TEST_DATABASE_URL` is absent. To execute the PostgreSQL-backed tests locally,
-point it at an already migrated disposable database:
-
-```powershell
-$env:TEST_DATABASE_URL = $env:DATABASE_URL
-make verify
-```
-
-The equivalent individual commands are:
-
-```powershell
-Set-Location services/api
-gofmt -w .
-go vet ./...
-go test ./...
-go build ./cmd/server
-
-Set-Location ../../apps/web
-pnpm lint
-pnpm typecheck
-pnpm build
-```
-
-See `docs/ARCHITECTURE.md`, `docs/API.md`, `docs/DATABASE.md`, and `docs/SECURITY.md` for foundation conventions.
-AI-assisted contributors and reviewers must also follow `AGENTS.md` and
-`docs/AI_WORKFLOW.md`.
+Read [`AGENTS.md`](AGENTS.md) before making changes. AI-assisted contributors
+and reviewers must also follow
+[`docs/AI_WORKFLOW.md`](docs/AI_WORKFLOW.md). Architecture, APIs, database
+conventions, and security are documented under `docs/`.

@@ -1,21 +1,41 @@
 SHELL := /bin/sh
 
-.PHONY: dev migrate test verify down \
+.PHONY: dev dev-infra dev-backend dev-frontend migrate test verify verify-full down \
 	backend-format backend-vet backend-test backend-build \
 	frontend-typecheck frontend-lint frontend-build repository-check
 
-dev:
+dev: dev-infra
+
+dev-infra:
 	docker compose up -d postgres
 	@echo "PostgreSQL is running. In separate terminals run:"
-	@echo "  cd services/api && go run ./cmd/server"
-	@echo "  cd apps/web && pnpm dev"
+	@echo "  make dev-backend"
+	@echo "  make dev-frontend"
+
+dev-backend:
+	cd services/api && go run ./cmd/server
+
+dev-frontend:
+	cd apps/web && pnpm dev
 
 migrate:
-	docker compose --profile tools run --rm migrate
+	@test -f .env || { echo ".env is required; copy .env.example and set a local password"; exit 1; }
+	@set -a; . ./.env; set +a; \
+	docker compose --profile tools run --rm migrate \
+		-path=/migrations \
+		-database="postgres://$${COMMERCEOPS_POSTGRES_USER}:$${COMMERCEOPS_POSTGRES_PASSWORD}@postgres:5432/$${COMMERCEOPS_POSTGRES_DB}?sslmode=disable" \
+		up
 
 test: backend-test frontend-typecheck
 
 verify: backend-format backend-vet backend-test backend-build frontend-typecheck frontend-lint frontend-build repository-check
+
+verify-full:
+	@if [ -z "$${TEST_DATABASE_URL:-}" ]; then \
+		echo "TEST_DATABASE_URL is required for verify-full"; \
+		exit 1; \
+	fi
+	@$(MAKE) verify
 
 backend-format:
 	@files="$$(cd services/api && gofmt -l .)"; \

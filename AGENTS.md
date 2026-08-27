@@ -170,6 +170,12 @@ before declaring work complete.
 
 Never claim tests passed unless they were actually executed.
 
+Phase-completion and remediation-completion claims must use the full
+PostgreSQL-backed verification path when applicable. Run `make verify-full`
+with `TEST_DATABASE_URL` pointing to an already migrated disposable database.
+A `make verify` run that reports PostgreSQL tests as skipped does not satisfy
+that gate.
+
 ## Errors
 
 Do not silently ignore errors.
