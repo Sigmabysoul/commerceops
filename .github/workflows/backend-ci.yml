@@ -3,9 +3,9 @@ name: Backend CI
 on:
   workflow_dispatch:
   push:
-    paths: ["services/api/**", ".github/workflows/backend-ci.yml"]
+    paths: ["services/api/**", ".github/workflows/backend-ci.yml", "Makefile"]
   pull_request:
-    paths: ["services/api/**", ".github/workflows/backend-ci.yml"]
+    paths: ["services/api/**", ".github/workflows/backend-ci.yml", "Makefile"]
 
 permissions:
   contents: read
@@ -13,6 +13,22 @@ permissions:
 jobs:
   backend:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: commerceops_test
+          POSTGRES_USER: commerceops_test
+          POSTGRES_PASSWORD: commerceops_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U commerceops_test -d commerceops_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgresql://commerceops_test:commerceops_test@localhost:5432/commerceops_test?sslmode=disable
     defaults:
       run:
         working-directory: services/api
@@ -22,8 +38,17 @@ jobs:
         with:
           go-version-file: services/api/go.mod
           cache-dependency-path: services/api/go.sum
+      - name: Install test system dependencies
+        run: sudo apt-get update && sudo apt-get install -y poppler-utils postgresql-client
+        working-directory: .
+      - name: Apply migrations to test database
+        run: |
+          for migration in migrations/*.up.sql; do
+            psql "$TEST_DATABASE_URL" -v ON_ERROR_STOP=1 -f "$migration"
+          done
       - name: Verify formatting
         run: test -z "$(gofmt -l .)"
       - run: go vet ./...
-      - run: go test ./...
+      - name: Run unit and PostgreSQL integration tests
+        run: go test ./... -count=1
       - run: go build ./cmd/server

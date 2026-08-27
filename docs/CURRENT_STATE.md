@@ -1,106 +1,77 @@
 # CommerceOps Current State
 
-Version: 0.4.0-dev
+## Current Phase
 
-Current Phase:
 Phase 3 — Flipkart Processing
 
-Status:
-Phase 3 implementation in progress
+## Current Branch
 
-Implemented in current working tree:
-- Tenant-owned PDF upload with a 20 MiB limit and SHA-256 source deduplication
-- Local-development file storage configured by `FILE_STORAGE_DIR`, behind the marketplace service boundary
-- Persisted jobs with two bounded PostgreSQL-claiming workers and Flipkart-scoped restart recovery
-- Platform object-storage interface with a local-development implementation
-- Bounded Poppler PDF extraction returning actual page-delimited text
-- Isolated `flipkart-text-v2` business parser with real source-page traceability
+`phase/03-flipkart`
+
+## Approved Baseline
+
+Phase 2 baseline: `d469f1800e4e277672b1c742da70985219495054`
+
+## Phase Status
+
+`IMPLEMENTATION_IN_PROGRESS`
+
+Phase 3 implementation and automated remediation checks exist, but Phase 3 is
+not approved or complete. External architecture review remains outstanding.
+
+Implemented Phase 3 facts include:
+
+- tenant-owned PDF upload with a 20 MiB limit and per-company SHA-256 source
+  deduplication
+- PostgreSQL-backed, bounded Flipkart processing jobs and scoped recovery
+- platform object-storage abstraction with a local development implementation
+- bounded Poppler extraction and isolated `flipkart-text-v2` parsing with real
+  source-page traceability
 - AWB, order ID, SKU, and explicit quantity extraction
-- Exact Product Master resolution and unresolved review state
-- Tenant-scoped duplicate identifier protection
-- Page-level warnings/errors and normalized results API
-- Flipkart upload, progress, results, and review UI
-- Backend entitlement/permission checks and upload/completion audit events
+- exact Product Master resolution with unresolved/manual-review states
+- duplicate identifier protection, visible processing errors, retry support,
+  authorization, entitlements, audit events, and a functional processing UI
 
-Remaining review work:
-- Validate sanitized fixtures against representative production Flipkart documents (not yet performed)
-- Replace the documented single-instance recovery assumption with job leases before multi-instance deployment
-- Provide and validate a production S3-compatible object-storage implementation
-- External architecture review
+## Approved Phases
 
-Latest verification:
-- Phase 3 migration up/down test passed against disposable PostgreSQL 18
-- Full Go suite, including PostgreSQL tenant/duplicate/retry/recovery tests, passed
-- Go vet and Go build passed
-- Frontend type checking, lint, and production build passed
-
-Approved:
 - Phase 0 — Foundation
 - Phase 1 — Core Platform
 - Phase 2 — Product Master
 
-Phase 2:
-Completed and externally approved.
+## Blocking Issues
 
-Current Goal:
-Implement the first marketplace adapter for Flipkart.
+- [ ] Validate representative production Flipkart PDF formats; only sanitized
+  fixtures have been validated.
+- [ ] Provide and validate production S3-compatible object storage.
+- [ ] Replace the documented single-instance recovery limitation with worker
+  leases before multi-instance deployment.
+- [ ] Pass external architecture review.
 
-Phase 3 Scope:
-- Secure Flipkart PDF upload
-- Source file storage and tenant ownership
-- Background processing jobs
-- Flipkart document/page/label inspection
-- AWB and order identifier extraction
-- Raw marketplace SKU extraction
-- Reliable quantity extraction where available
-- Product Master resolution
-- Duplicate source-file detection
-- Duplicate AWB/order detection
-- Explicit processing states
-- Manual review for unresolved or invalid records
-- Traceable processing errors and warnings
-- Functional Flipkart upload/results UI
-- Permission and Flipkart module-entitlement enforcement
-- Audit events for important user/business actions
-- Sanitized Flipkart test fixtures
+## Explicitly Forbidden Work
 
-Important Invariants:
-- Flipkart-specific parsing logic remains isolated in the Flipkart adapter.
-- company_id comes from authenticated server context.
-- Product identity comes from Product Master, not marketplace SKU strings.
-- Unknown SKUs are never silently mapped.
-- Quantity extraction failures never silently become trusted quantity = 1.
-- Duplicate uploads/orders never create duplicate authoritative records silently.
-- No inventory movement occurs in Phase 3.
-- No final printing/batch orchestration occurs in Phase 3.
-- Processing must be safely retryable.
-- Every normalized result must remain traceable to its source file/page and parser version.
+- Phase 4 batch orchestration or printing
+- inventory mutations or inventory functionality
+- Amazon, Meesho, Myntra, Snapdeal, or other marketplace implementation
+- returns, cancellations, consignment, or printer-agent implementation
+- automatic progression to another phase
 
-Not Implemented:
-- Final batch orchestration
-- Printing workflow
-- Inventory deductions
-- Returns/cancellations
-- Consignment
-- Amazon
-- Meesho
-- Myntra
-- Snapdeal
-- Printer agent
+## Last Verification
 
-Review Gate:
-Phase 3 must pass:
-- PostgreSQL migration verification
-- backend tests
-- fixture-based Flipkart parser tests
-- tenant-isolation tests
-- duplicate/idempotency tests
-- background-job state tests
-- backend CI
-- frontend CI
-- external architecture review
+The latest recorded Phase 3 verification passed:
 
-Next Phase:
-Phase 4 — Batch + Printing
+- migration up/down against disposable PostgreSQL 18
+- full Go suite, including PostgreSQL tenant, duplicate, retry, and recovery
+  integration tests
+- Go vet and Go build
+- frontend type checking, lint, and production build
+- `git diff --check`
 
-Do not begin Phase 4 until Phase 3 has passed external review.
+Verification must be rerun after subsequent implementation changes. Historical
+results must not be presented as proof that a newer working tree passes.
+
+## Next Allowed Task
+
+Continue Phase 3 review, fixture validation, reliability remediation,
+documentation, or developer-experience work explicitly authorized by the
+owner. Do not begin Phase 4 until Phase 3 passes its review gate and the owner
+authorizes the transition.

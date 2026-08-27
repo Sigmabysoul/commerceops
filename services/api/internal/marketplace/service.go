@@ -351,7 +351,7 @@ func (s *Service) processNext() (bool, error) {
 	if err = s.execute(ctx, item); err != nil {
 		failureCtx, failureCancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer failureCancel()
-		code,message:=classifyWorkerError(err)
+		code, message := classifyWorkerError(err)
 		if failErr := s.failJob(failureCtx, item, code, message); failErr != nil {
 			return true, fmt.Errorf("process error: %v; persist failure: %w", err, failErr)
 		}
@@ -482,7 +482,9 @@ func (s *Service) execute(ctx context.Context, w work) error {
 	if err = s.audit.Record(ctx, tx, w.CompanyID, w.UserID, "flipkart.processing_completed", "processing_job", w.JobID, map[string]any{"status": finalStatus, "pages": len(pages), "labels": len(labels)}); err != nil {
 		return err
 	}
-	if err=tx.Commit(ctx);err!=nil{return fmt.Errorf("processing commit failed: %w",err)}
+	if err = tx.Commit(ctx); err != nil {
+		return fmt.Errorf("processing commit failed: %w", err)
+	}
 	return nil
 }
 func (s *Service) failJob(ctx context.Context, w work, code, message string) error {
@@ -516,7 +518,21 @@ func randomUUID() (string, error) {
 	}
 	value[6] = (value[6] & 0x0f) | 0x40
 	value[8] = (value[8] & 0x3f) | 0x80
-	raw:=hex.EncodeToString(value)
-	return raw[0:8]+"-"+raw[8:12]+"-"+raw[12:16]+"-"+raw[16:20]+"-"+raw[20:32],nil
+	raw := hex.EncodeToString(value)
+	return raw[0:8] + "-" + raw[8:12] + "-" + raw[12:16] + "-" + raw[16:20] + "-" + raw[20:32], nil
 }
-func classifyWorkerError(err error)(string,string){value:=err.Error();switch{case strings.Contains(value,"storage") :return "STORAGE_READ_FAILED","Stored source file could not be read";case strings.Contains(value,"PDF extraction"):return "PDF_EXTRACTION_FAILED","PDF text extraction failed or exceeded a resource limit";case strings.Contains(value,"Flipkart parse"):return "UNSUPPORTED_FLIPKART_DOCUMENT","No supported Flipkart label could be extracted";case strings.Contains(value,"commit"):return "PROCESSING_COMMIT_FAILED","Processing results could not be committed";default:return "PROCESSING_DATABASE_FAILED","Processing could not be completed"}}
+func classifyWorkerError(err error) (string, string) {
+	value := err.Error()
+	switch {
+	case strings.Contains(value, "storage"):
+		return "STORAGE_READ_FAILED", "Stored source file could not be read"
+	case strings.Contains(value, "PDF extraction"):
+		return "PDF_EXTRACTION_FAILED", "PDF text extraction failed or exceeded a resource limit"
+	case strings.Contains(value, "Flipkart parse"):
+		return "UNSUPPORTED_FLIPKART_DOCUMENT", "No supported Flipkart label could be extracted"
+	case strings.Contains(value, "commit"):
+		return "PROCESSING_COMMIT_FAILED", "Processing results could not be committed"
+	default:
+		return "PROCESSING_DATABASE_FAILED", "Processing could not be completed"
+	}
+}

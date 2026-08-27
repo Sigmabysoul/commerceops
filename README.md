@@ -57,6 +57,27 @@ Phase 0 intentionally has no SQL migration because it has no schema requirement.
 
 ## Checks
 
+The repository-level commands are the preferred developer interface:
+
+```powershell
+make dev       # start the existing PostgreSQL Compose service
+make migrate   # apply explicit migrations
+make test      # backend tests plus frontend type checking
+make verify    # all backend, frontend, and repository checks
+make down      # stop the Compose environment
+```
+
+`make verify` prints `PostgreSQL integration tests: SKIPPED` when
+`TEST_DATABASE_URL` is absent. To execute the PostgreSQL-backed tests locally,
+point it at an already migrated disposable database:
+
+```powershell
+$env:TEST_DATABASE_URL = $env:DATABASE_URL
+make verify
+```
+
+The equivalent individual commands are:
+
 ```powershell
 Set-Location services/api
 gofmt -w .
@@ -71,3 +92,5 @@ pnpm build
 ```
 
 See `docs/ARCHITECTURE.md`, `docs/API.md`, `docs/DATABASE.md`, and `docs/SECURITY.md` for foundation conventions.
+AI-assisted contributors and reviewers must also follow `AGENTS.md` and
+`docs/AI_WORKFLOW.md`.
