@@ -8,15 +8,18 @@ import (
 )
 
 type Config struct {
-	Environment     string
-	HTTPAddr        string
-	DatabaseURL     string
-	AllowedOrigins  []string
-	ShutdownTimeout time.Duration
-	DatabaseTimeout time.Duration
-	SessionLifetime time.Duration
-	SecureCookies   bool
-	FileStorageDir  string
+	Environment           string
+	HTTPAddr              string
+	DatabaseURL           string
+	AllowedOrigins        []string
+	ShutdownTimeout       time.Duration
+	DatabaseTimeout       time.Duration
+	SessionLifetime       time.Duration
+	SecureCookies         bool
+	FileStorageDir        string
+	ObjectStorageDriver   string
+	ObjectStorageEndpoint string
+	ObjectStorageBucket   string
 }
 
 func Load() (Config, error) {
@@ -26,15 +29,18 @@ func Load() (Config, error) {
 	}
 
 	return Config{
-		Environment:     valueOrDefault("APP_ENV", "development"),
-		HTTPAddr:        valueOrDefault("HTTP_ADDR", ":8080"),
-		DatabaseURL:     databaseURL,
-		AllowedOrigins:  splitCSV(valueOrDefault("CORS_ALLOWED_ORIGINS", "http://localhost:3000")),
-		ShutdownTimeout: 10 * time.Second,
-		DatabaseTimeout: 2 * time.Second,
-		SessionLifetime: 24 * time.Hour,
-		SecureCookies:   valueOrDefault("APP_ENV", "development") != "development",
-		FileStorageDir:  valueOrDefault("FILE_STORAGE_DIR", "./data/uploads"),
+		Environment:           valueOrDefault("APP_ENV", "development"),
+		HTTPAddr:              valueOrDefault("HTTP_ADDR", ":8080"),
+		DatabaseURL:           databaseURL,
+		AllowedOrigins:        splitCSV(valueOrDefault("CORS_ALLOWED_ORIGINS", "http://localhost:3000")),
+		ShutdownTimeout:       10 * time.Second,
+		DatabaseTimeout:       2 * time.Second,
+		SessionLifetime:       24 * time.Hour,
+		SecureCookies:         valueOrDefault("APP_ENV", "development") != "development",
+		FileStorageDir:        valueOrDefault("FILE_STORAGE_DIR", "./data/uploads"),
+		ObjectStorageDriver:   valueOrDefault("OBJECT_STORAGE_DRIVER", "local"),
+		ObjectStorageEndpoint: strings.TrimSpace(os.Getenv("OBJECT_STORAGE_ENDPOINT")),
+		ObjectStorageBucket:   strings.TrimSpace(os.Getenv("OBJECT_STORAGE_BUCKET")),
 	}, nil
 }
 

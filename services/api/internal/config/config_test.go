@@ -20,4 +20,7 @@ func TestLoadParsesAllowedOrigins(t *testing.T) {
 	if len(cfg.AllowedOrigins) != 2 {
 		t.Fatalf("AllowedOrigins length = %d, want 2", len(cfg.AllowedOrigins))
 	}
+	if cfg.ObjectStorageDriver != "local" || cfg.FileStorageDir == "" {
+		t.Fatalf("unexpected storage config: %#v", cfg)
+	}
 }

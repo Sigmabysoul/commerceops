@@ -15,6 +15,8 @@ import (
 	"github.com/commerceops/commerceops/services/api/internal/marketplace"
 	"github.com/commerceops/commerceops/services/api/internal/platform/database"
 	"github.com/commerceops/commerceops/services/api/internal/platform/httpserver"
+	"github.com/commerceops/commerceops/services/api/internal/platform/objectstorage"
+	"github.com/commerceops/commerceops/services/api/internal/platform/pdfextractor"
 	"github.com/commerceops/commerceops/services/api/internal/product"
 )
 
@@ -32,7 +34,14 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	authorizer := authorization.NewService(db)
 	coreHTTP := core.NewHTTPHandler(core.NewService(db, authorizer))
 	productHTTP := product.NewHTTPHandler(product.NewService(db, authorizer))
-	marketplaceHTTP := marketplace.NewHTTPHandler(marketplace.NewService(db, authorizer, cfg.FileStorageDir))
+	if cfg.ObjectStorageDriver != "local" {
+		return errors.New("configured object storage driver is not available in this build")
+	}
+	storage, err := objectstorage.NewLocal(cfg.FileStorageDir)
+	if err != nil {
+		return err
+	}
+	marketplaceHTTP := marketplace.NewHTTPHandler(marketplace.NewService(db, authorizer, storage, pdfextractor.NewPoppler()))
 	mux.HandleFunc("/api/v1/auth/login", authHTTP.Login)
 	mux.Handle("/api/v1/auth/logout", authHTTP.RequireSession(http.HandlerFunc(authHTTP.Logout)))
 	mux.Handle("/api/v1/auth/session", authHTTP.RequireSession(http.HandlerFunc(authHTTP.Session)))

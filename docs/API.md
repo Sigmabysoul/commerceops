@@ -67,4 +67,4 @@ All endpoints use the authenticated server-side company context. Errors use the 
 - `GET /api/v1/flipkart/jobs/{job_id}` — returns the tenant-scoped job, normalized orders/items, and page-level warnings/errors; requires the entitlement and `labels.process`.
 - `POST /api/v1/flipkart/jobs/{job_id}` — clears derived results and safely queues the source again, allowing newly trained SKUs to resolve.
 
-Uploads are limited to 20 MiB and must begin with a PDF signature. Processing is asynchronous; clients poll the job endpoint while its state is `queued` or `processing`.
+Uploads are limited to 20 MiB and must begin with a PDF signature. Processing is asynchronous and durably queued in PostgreSQL; clients poll the job endpoint while its state is `queued` or `processing`. Error records expose `source_page`, `severity`, `code`, and `message`.

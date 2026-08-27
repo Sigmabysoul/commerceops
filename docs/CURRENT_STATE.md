@@ -11,8 +11,10 @@ Phase 3 implementation in progress
 Implemented in current working tree:
 - Tenant-owned PDF upload with a 20 MiB limit and SHA-256 source deduplication
 - Local-development file storage configured by `FILE_STORAGE_DIR`, behind the marketplace service boundary
-- Persisted jobs with a bounded two-worker in-process queue and restart recovery
-- Isolated `flipkart-pdf-v1` text parser
+- Persisted jobs with two bounded PostgreSQL-claiming workers and Flipkart-scoped restart recovery
+- Platform object-storage interface with a local-development implementation
+- Bounded Poppler PDF extraction returning actual page-delimited text
+- Isolated `flipkart-text-v2` business parser with real source-page traceability
 - AWB, order ID, SKU, and explicit quantity extraction
 - Exact Product Master resolution and unresolved review state
 - Tenant-scoped duplicate identifier protection
@@ -21,9 +23,16 @@ Implemented in current working tree:
 - Backend entitlement/permission checks and upload/completion audit events
 
 Remaining review work:
-- PostgreSQL-backed Phase 3 integration and migration verification
-- Sanitized representative PDFs for every production Flipkart document shape
+- Validate sanitized fixtures against representative production Flipkart documents (not yet performed)
+- Replace the documented single-instance recovery assumption with job leases before multi-instance deployment
+- Provide and validate a production S3-compatible object-storage implementation
 - External architecture review
+
+Latest verification:
+- Phase 3 migration up/down test passed against disposable PostgreSQL 18
+- Full Go suite, including PostgreSQL tenant/duplicate/retry/recovery tests, passed
+- Go vet and Go build passed
+- Frontend type checking, lint, and production build passed
 
 Approved:
 - Phase 0 — Foundation

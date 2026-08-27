@@ -73,8 +73,8 @@ func writeError(w http.ResponseWriter, err error) bool {
 		httpserver.WriteError(w, 400, "INVALID_PDF", "File is not a valid PDF")
 	case errors.Is(err, ErrNotFound):
 		httpserver.WriteError(w, 404, "NOT_FOUND", "Processing job not found")
-	case errors.Is(err, ErrQueueFull):
-		httpserver.WriteError(w, 503, "QUEUE_FULL", "Processing queue is currently full")
+	case errors.Is(err, ErrJobActive):
+		httpserver.WriteError(w, 409, "JOB_ACTIVE", "Processing job is already queued or processing")
 	default:
 		httpserver.WriteError(w, 500, "INTERNAL_ERROR", "Something went wrong")
 	}

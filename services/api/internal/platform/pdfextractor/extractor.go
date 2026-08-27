@@ -1,0 +1,17 @@
+package pdfextractor
+
+import "context"
+
+const (
+	MaxPages             = 100
+	MaxPageTextBytes     = 1 << 20
+	MaxDocumentTextBytes = 10 << 20
+)
+
+type Page struct {
+	Number int
+	Text   string
+}
+type Extractor interface {
+	Extract(ctx context.Context, pdf []byte) ([]Page, error)
+}

@@ -8,6 +8,7 @@ CommerceOps is a modular ecommerce operations platform. Phase 0 provides the Go 
 - Docker with Docker Compose
 - Node.js 22+
 - pnpm 11.19+
+- Poppler (`pdfinfo` and `pdftotext`) for Phase 3 PDF extraction
 
 ## Local setup
 

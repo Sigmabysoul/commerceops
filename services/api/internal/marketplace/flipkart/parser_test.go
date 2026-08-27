@@ -1,42 +1,36 @@
 package flipkart
 
 import (
-	"os"
 	"testing"
+
+	"github.com/commerceops/commerceops/services/api/internal/platform/pdfextractor"
 )
 
-func TestParseLabelAndPreserveMissingQuantity(t *testing.T) {
-	pdf := []byte("%PDF-1.4\n1 0 obj\n<<>>\nstream\nBT (Flipkart) Tj (AWB: FKA1234567) Tj (Order ID: OD123456) Tj (SKU: BAG-3) Tj ET\nendstream\nendobj\n%%EOF")
-	labels, err := Parse(pdf)
+func TestParsePreservesActualPageAndMissingQuantity(t *testing.T) {
+	pages := []pdfextractor.Page{{Number: 4, Text: "packing list"}, {Number: 7, Text: "Flipkart AWB: FKA1234567 Order ID: OD123456 SKU: BAG-3"}}
+	labels, err := Parse(pages)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(labels) != 1 || labels[0].AWB != "FKA1234567" || labels[0].OrderID != "OD123456" || labels[0].SKU != "BAG-3" {
+	if len(labels) != 1 || labels[0].Page != 7 || labels[0].AWB != "FKA1234567" || labels[0].SKU != "BAG-3" {
 		t.Fatalf("unexpected: %#v", labels)
 	}
 	if labels[0].Quantity != nil {
 		t.Fatal("missing quantity must not default to one")
 	}
 }
-
-func TestSanitizedFixture(t *testing.T) {
-	pdf, err := os.ReadFile("testdata/label_text.pdf")
+func TestMultiPageUsesExtractorPageNumbers(t *testing.T) {
+	pages := []pdfextractor.Page{{Number: 1, Text: "Flipkart AWB: FKT000001 Order ID: OD000001 SKU: ONE Qty: 2"}, {Number: 2, Text: "invoice only"}, {Number: 3, Text: "Flipkart AWB: FKT000003 Order ID: OD000003 SKU: THREE Quantity: 5"}}
+	labels, err := Parse(pages)
 	if err != nil {
 		t.Fatal(err)
 	}
-	labels, err := Parse(pdf)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(labels) != 1 || labels[0].SKU != "TEST-SKU-3B" || labels[0].Quantity == nil || *labels[0].Quantity != 2 {
-		t.Fatalf("unexpected fixture result: %#v", labels)
+	if len(labels) != 2 || labels[0].Page != 1 || labels[1].Page != 3 || *labels[1].Quantity != 5 {
+		t.Fatalf("unexpected: %#v", labels)
 	}
 }
-
-func TestRejectsMalformedAndNonFlipkartPDF(t *testing.T) {
-	for _, data := range [][]byte{[]byte("not pdf"), []byte("%PDF-1.4\nstream\n(Amazon) Tj\nendstream\n%%EOF")} {
-		if _, err := Parse(data); err == nil {
-			t.Fatal("expected rejection")
-		}
+func TestRejectsNonFlipkartPages(t *testing.T) {
+	if _, err := Parse([]pdfextractor.Page{{Number: 1, Text: "Amazon label"}}); err == nil {
+		t.Fatal("expected rejection")
 	}
 }
