@@ -57,3 +57,14 @@ Product Master endpoints use only the authenticated session company. No request 
 SKU resolution trims surrounding whitespace and then performs a case-sensitive exact match within the authenticated company and marketplace. It never performs fuzzy, substring, case-insensitive, or fallback matching. A successful lookup returns `status: "resolved"` with its mapping and product; every unknown, inactive, or differently-cased identifier returns `status: "unresolved"` without guessing.
 
 The OpenAPI source is `docs/openapi.yaml`. It must be updated whenever the public API contract changes.
+# API
+
+All endpoints use the authenticated server-side company context. Errors use the existing `{ "error": { "code", "message" } }` envelope.
+
+## Flipkart processing
+
+- `POST /api/v1/flipkart/jobs` — multipart upload using field `file`; requires the `flipkart` entitlement and `labels.upload` plus `labels.process`. Returns HTTP 202 with `{job, duplicate_source}`.
+- `GET /api/v1/flipkart/jobs/{job_id}` — returns the tenant-scoped job, normalized orders/items, and page-level warnings/errors; requires the entitlement and `labels.process`.
+- `POST /api/v1/flipkart/jobs/{job_id}` — clears derived results and safely queues the source again, allowing newly trained SKUs to resolve.
+
+Uploads are limited to 20 MiB and must begin with a PDF signature. Processing is asynchronous; clients poll the job endpoint while its state is `queued` or `processing`.

@@ -6,7 +6,24 @@ Current Phase:
 Phase 3 — Flipkart Processing
 
 Status:
-Phase 3 planning / implementation in progress
+Phase 3 implementation in progress
+
+Implemented in current working tree:
+- Tenant-owned PDF upload with a 20 MiB limit and SHA-256 source deduplication
+- Local-development file storage configured by `FILE_STORAGE_DIR`, behind the marketplace service boundary
+- Persisted jobs with a bounded two-worker in-process queue and restart recovery
+- Isolated `flipkart-pdf-v1` text parser
+- AWB, order ID, SKU, and explicit quantity extraction
+- Exact Product Master resolution and unresolved review state
+- Tenant-scoped duplicate identifier protection
+- Page-level warnings/errors and normalized results API
+- Flipkart upload, progress, results, and review UI
+- Backend entitlement/permission checks and upload/completion audit events
+
+Remaining review work:
+- PostgreSQL-backed Phase 3 integration and migration verification
+- Sanitized representative PDFs for every production Flipkart document shape
+- External architecture review
 
 Approved:
 - Phase 0 — Foundation

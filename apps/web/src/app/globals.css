@@ -37,5 +37,16 @@ summary { cursor: pointer; font-weight: 700; }
 .result-ok, .result-unresolved { padding: .8rem; border-radius: .5rem; font-weight: 700; }
 .result-ok { background: #e5f5e9; color: #176b36; }
 .result-unresolved { background: #fff2d8; color: #795415; }
+.flipkart { margin-top: 2rem; }
+.upload-row { display: flex; align-items: end; gap: 1rem; }
+.upload-row label { flex: 1; }
+.notice { padding: .75rem; border-radius: .5rem; color: #604c0b; background: #fff3c4; }
+.status-line { display: flex; justify-content: space-between; align-items: center; gap: 1rem; }
+.status { border-radius: 999px; padding: .35rem .65rem; background: #e8ece9; font-size: .8rem; font-weight: 800; text-transform: uppercase; }
+.status-processed { color: #176b36; background: #e5f5e9; }
+.status-needs_review { color: #795415; background: #fff2d8; }
+.status-failed { color: #932828; background: #fdeaea; }
+.results article { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 1rem; margin-top: 1rem; padding: 1rem; border: 1px solid #edf0ed; border-radius: .6rem; }
+.review { margin-top: 1.5rem; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); }
-@media (max-width: 760px) { .grid { grid-template-columns: 1fr; } header, .product-heading { align-items: stretch; flex-direction: column; } .checks { grid-template-columns: 1fr; } .span-two { grid-column: auto; } }
+@media (max-width: 760px) { .grid { grid-template-columns: 1fr; } header, .product-heading, .upload-row { align-items: stretch; flex-direction: column; } .checks, .results article { grid-template-columns: 1fr; } .span-two { grid-column: auto; } }

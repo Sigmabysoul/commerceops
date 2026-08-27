@@ -1,0 +1,15 @@
+%PDF-1.4
+% Sanitized CommerceOps test fixture; all identifiers are fictional.
+1 0 obj
+<< /Length 159 >>
+stream
+BT
+(Flipkart Shipping Label) Tj
+(AWB: FKTTEST000001) Tj
+(Order ID: ODTEST000001) Tj
+(Seller SKU: TEST-SKU-3B) Tj
+(Quantity: 2) Tj
+ET
+endstream
+endobj
+%%EOF

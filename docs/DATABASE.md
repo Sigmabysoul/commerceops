@@ -11,3 +11,13 @@ Phase 2 adds `000003_product_master`. Products have company-unique internal code
 Future business tables must carry appropriate company ownership, and business-owned queries must enforce server-established tenant scope. Production schema changes must never be performed manually.
 
 Local PostgreSQL uses the persistent `postgres_data` Docker volume and environment-driven credentials. `.env.example` contains placeholders only.
+# Database
+
+PostgreSQL migrations are the schema source of truth. Phase 3 migration `000004_flipkart_processing` adds:
+
+- `source_files` for tenant-owned storage metadata and SHA-256 deduplication
+- `processing_jobs` for the persisted state machine and parser version
+- `marketplace_orders` and `marketplace_order_items` for normalized results
+- `processing_errors` for traceable page warnings and failures
+
+All business foreign keys include company ownership where applicable. Partial unique indexes protect authoritative Flipkart AWB and order identifiers without hiding duplicate review records. Phase 3 creates no inventory table or transaction.

@@ -16,6 +16,7 @@ type Config struct {
 	DatabaseTimeout time.Duration
 	SessionLifetime time.Duration
 	SecureCookies   bool
+	FileStorageDir  string
 }
 
 func Load() (Config, error) {
@@ -33,6 +34,7 @@ func Load() (Config, error) {
 		DatabaseTimeout: 2 * time.Second,
 		SessionLifetime: 24 * time.Hour,
 		SecureCookies:   valueOrDefault("APP_ENV", "development") != "development",
+		FileStorageDir:  valueOrDefault("FILE_STORAGE_DIR", "./data/uploads"),
 	}, nil
 }
 

@@ -12,6 +12,7 @@ import (
 	"github.com/commerceops/commerceops/services/api/internal/config"
 	"github.com/commerceops/commerceops/services/api/internal/core"
 	"github.com/commerceops/commerceops/services/api/internal/health"
+	"github.com/commerceops/commerceops/services/api/internal/marketplace"
 	"github.com/commerceops/commerceops/services/api/internal/platform/database"
 	"github.com/commerceops/commerceops/services/api/internal/platform/httpserver"
 	"github.com/commerceops/commerceops/services/api/internal/product"
@@ -31,6 +32,7 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	authorizer := authorization.NewService(db)
 	coreHTTP := core.NewHTTPHandler(core.NewService(db, authorizer))
 	productHTTP := product.NewHTTPHandler(product.NewService(db, authorizer))
+	marketplaceHTTP := marketplace.NewHTTPHandler(marketplace.NewService(db, authorizer, cfg.FileStorageDir))
 	mux.HandleFunc("/api/v1/auth/login", authHTTP.Login)
 	mux.Handle("/api/v1/auth/logout", authHTTP.RequireSession(http.HandlerFunc(authHTTP.Logout)))
 	mux.Handle("/api/v1/auth/session", authHTTP.RequireSession(http.HandlerFunc(authHTTP.Session)))
@@ -52,6 +54,8 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	mux.Handle("/api/v1/sku-mappings", authHTTP.RequireSession(http.HandlerFunc(productHTTP.Mappings)))
 	mux.Handle("/api/v1/sku-mappings/resolve", authHTTP.RequireSession(http.HandlerFunc(productHTTP.Resolve)))
 	mux.Handle("/api/v1/sku-mappings/{mapping_id}", authHTTP.RequireSession(http.HandlerFunc(productHTTP.Mapping)))
+	mux.Handle("/api/v1/flipkart/jobs", authHTTP.RequireSession(http.HandlerFunc(marketplaceHTTP.Jobs)))
+	mux.Handle("/api/v1/flipkart/jobs/{job_id}", authHTTP.RequireSession(http.HandlerFunc(marketplaceHTTP.Job)))
 	server := &http.Server{Addr: cfg.HTTPAddr, Handler: httpserver.Middleware(logger, cfg.AllowedOrigins, mux), ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 60 * time.Second}
 
 	errCh := make(chan error, 1)
