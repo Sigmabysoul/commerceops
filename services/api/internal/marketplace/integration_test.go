@@ -107,6 +107,45 @@ func (f *phaseThreeFixture) process(t *testing.T) {
 func TestPhaseThreePostgreSQLBehavior(t *testing.T) {
 	f := setupPhaseThree(t)
 	ctx := context.Background()
+	t.Run("entitlement and permissions are enforced before upload", func(t *testing.T) {
+		pdf := f.register("authorization-denied", pdfextractor.Page{Number: 1, Text: "Flipkart AWB: AWBDENIED1 Order ID: ODDENIED1 SKU: KNOWN-SKU Qty: 1"})
+		sourceFileCount := func() int {
+			t.Helper()
+			var count int
+			mustScanP3(t, f.db, `SELECT count(*) FROM source_files WHERE company_id=$1`, []any{f.companyA}, &count)
+			return count
+		}
+		assertDeniedWithoutPersistence := func(t *testing.T, expected error) {
+			t.Helper()
+			before := sourceFileCount()
+			if _, err := f.service.Upload(ctx, f.principalA, "denied.pdf", pdf); !errors.Is(err, expected) {
+				t.Fatalf("upload error = %v, want %v", err, expected)
+			}
+			if after := sourceFileCount(); after != before {
+				t.Fatalf("denied upload changed source-file count from %d to %d", before, after)
+			}
+		}
+
+		t.Run("disabled entitlement", func(t *testing.T) {
+			mustExecP3(t, f.db, `UPDATE module_entitlements SET enabled=false WHERE company_id=$1 AND module_key='flipkart'`, f.companyA)
+			t.Cleanup(func() {
+				mustExecP3(t, f.db, `UPDATE module_entitlements SET enabled=true WHERE company_id=$1 AND module_key='flipkart'`, f.companyA)
+			})
+			assertDeniedWithoutPersistence(t, authorization.ErrModuleUnavailable)
+		})
+
+		var roleID string
+		mustScanP3(t, f.db, `SELECT id FROM roles WHERE company_id=$1 AND name='Flipkart Operator'`, []any{f.companyA}, &roleID)
+		for _, permission := range []string{"labels.upload", "labels.process"} {
+			t.Run("missing "+permission, func(t *testing.T) {
+				mustExecP3(t, f.db, `DELETE FROM role_permissions WHERE company_id=$1 AND role_id=$2 AND permission_key=$3`, f.companyA, roleID, permission)
+				t.Cleanup(func() {
+					mustExecP3(t, f.db, `INSERT INTO role_permissions(company_id,role_id,permission_key) VALUES($1,$2,$3)`, f.companyA, roleID, permission)
+				})
+				assertDeniedWithoutPersistence(t, authorization.ErrPermissionDenied)
+			})
+		}
+	})
 	known := f.register("known", pdfextractor.Page{Number: 1, Text: "Flipkart AWB: AWBKNOWN1 Order ID: ODKNOWN1 SKU: KNOWN-SKU Qty: 2"})
 	uploaded, err := f.service.Upload(ctx, f.principalA, "known.pdf", known)
 	if err != nil {
