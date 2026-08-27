@@ -2,6 +2,9 @@
 
 - Secrets belong in local or deployment environment configuration and must never be committed.
 - `.env.example` contains placeholders; `.env` is ignored.
+- Object-storage credentials come only from deployment or local environment
+  configuration. They are never exposed to the frontend or stored in business
+  metadata.
 - `DATABASE_URL` is validated as required configuration.
 - Health and error responses do not disclose database errors, connection strings, credentials, hosts, or stack traces.
 - Development CORS allows only configured origins; wildcard origins are not used.
@@ -10,6 +13,9 @@
 - Session cookies are `HttpOnly` and `SameSite=Lax`; they are also `Secure` outside the development environment.
 - Login verifies active user, company membership, and company status. The verified membership establishes the server-side company context for the session.
 - Tenant APIs take company identity only from the authenticated principal. Tenant-owned database queries and composite foreign keys enforce company isolation.
+- Marketplace storage keys are generated server-side from the authenticated
+  company context; storage drivers do not accept frontend tenant identity as
+  authorization.
 - Backend authorization evaluates current granular permission assignments on every request. Role names are never authorization rules.
 - Backend module entitlement checks are independent of billing or pricing.
 - Security and administrative mutations produce company-scoped audit records containing actor, action, target, metadata, and timestamp.

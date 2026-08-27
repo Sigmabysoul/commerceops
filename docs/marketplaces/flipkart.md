@@ -1,6 +1,6 @@
 # Flipkart adapter
 
-The Phase 3 adapter accepts PDF uploads through `POST /api/v1/flipkart/jobs` and returns a persisted background job. Files are limited to 20 MiB, identified by server-generated UUIDs, stored through the platform object-storage interface, and deduplicated per company by SHA-256. Development uses the local implementation under `FILE_STORAGE_DIR`; configuration reserves the driver, endpoint, and bucket boundary for a future S3-compatible implementation.
+The Phase 3 adapter accepts PDF uploads through `POST /api/v1/flipkart/jobs` and returns a persisted background job. Files are limited to 20 MiB, identified by server-generated UUIDs, stored through the platform object-storage interface, and deduplicated per company by SHA-256. Development defaults to the local implementation under `FILE_STORAGE_DIR`; production can select the S3-compatible implementation without changing marketplace code. PostgreSQL metadata owns tenant association, and storage keys are generated server-side with the authenticated company ID as their prefix.
 
 ## Supported document form
 

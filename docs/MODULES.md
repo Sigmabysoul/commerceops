@@ -96,11 +96,12 @@ inside one application; it does not imply microservices.
 ## Object storage (`internal/platform/objectstorage`)
 
 - **Owns:** storage, retrieval, deletion, key containment, and implementation
-  details for binary objects. A local implementation exists for development.
+  details for binary objects. Local filesystem and S3-compatible
+  implementations exist behind the same interface.
 - **Does not own:** tenant authorization, source-file metadata, parsing,
   duplicate rules, or marketplace job states.
-- **Allowed dependencies:** platform configuration and storage-provider SDKs
-  only when an implementation is approved and justified.
+- **Allowed dependencies:** platform configuration and the approved AWS SDK v2
+  used for SigV4-compatible object storage.
 - **Forbidden leakage:** storage implementations must not make business or
   tenant-access decisions; business services must use the interface rather
   than direct filesystem calls.

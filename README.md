@@ -69,6 +69,32 @@ The PostgreSQL schema is migration-owned. Application startup never applies
 migrations automatically. `make migrate` uses the existing Compose migration
 container and the local credentials in `.env`.
 
+## Object storage
+
+Local development defaults to `OBJECT_STORAGE_DRIVER=local` and stores files
+under `FILE_STORAGE_DIR`. Production deployments can select the S3-compatible
+driver:
+
+```dotenv
+OBJECT_STORAGE_DRIVER=s3
+OBJECT_STORAGE_ENDPOINT=https://objects.example.com
+OBJECT_STORAGE_BUCKET=commerceops
+OBJECT_STORAGE_REGION=us-east-1
+OBJECT_STORAGE_ACCESS_KEY=replace-with-deployment-secret
+OBJECT_STORAGE_SECRET_KEY=replace-with-deployment-secret
+OBJECT_STORAGE_PATH_STYLE=false
+```
+
+Leave `OBJECT_STORAGE_ENDPOINT` empty to use the standard AWS S3 regional
+endpoint. Set the provider endpoint for Cloudflare R2, MinIO, or Backblaze B2,
+and enable path-style addressing when that provider or local service requires
+it. The bucket must already exist. Store credentials only in the deployment
+secret system or uncommitted local `.env`; never commit them.
+
+CommerceOps stores tenant ownership in PostgreSQL and generates tenant-scoped
+object keys server-side. Object storage credentials do not replace application
+authorization, and clients do not provide trusted tenant identifiers.
+
 ## Developer commands
 
 ```bash

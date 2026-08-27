@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"time"
@@ -34,10 +35,7 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	authorizer := authorization.NewService(db)
 	coreHTTP := core.NewHTTPHandler(core.NewService(db, authorizer))
 	productHTTP := product.NewHTTPHandler(product.NewService(db, authorizer))
-	if cfg.ObjectStorageDriver != "local" {
-		return errors.New("configured object storage driver is not available in this build")
-	}
-	storage, err := objectstorage.NewLocal(cfg.FileStorageDir)
+	storage, err := newObjectStorage(ctx, cfg)
 	if err != nil {
 		return err
 	}
@@ -84,5 +82,23 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 		defer cancel()
 		logger.Info("http server shutting down")
 		return server.Shutdown(shutdownCtx)
+	}
+}
+
+func newObjectStorage(ctx context.Context, cfg config.Config) (objectstorage.Storage, error) {
+	switch cfg.ObjectStorageDriver {
+	case "local":
+		return objectstorage.NewLocal(cfg.FileStorageDir)
+	case "s3":
+		return objectstorage.NewS3(ctx, objectstorage.S3Options{
+			Endpoint:  cfg.ObjectStorageEndpoint,
+			Bucket:    cfg.ObjectStorageBucket,
+			Region:    cfg.ObjectStorageRegion,
+			AccessKey: cfg.ObjectStorageAccessKey,
+			SecretKey: cfg.ObjectStorageSecretKey,
+			PathStyle: cfg.ObjectStoragePathStyle,
+		})
+	default:
+		return nil, fmt.Errorf("unsupported object storage driver %q", cfg.ObjectStorageDriver)
 	}
 }

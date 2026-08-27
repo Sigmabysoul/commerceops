@@ -19,4 +19,10 @@ The frontend uses a typed API access layer. It does not connect to PostgreSQL or
 
 REST endpoints are versioned under `/api/v1`. The OpenAPI document at `docs/openapi.yaml` is the contract source; generated clients may be introduced later when the API surface justifies them.
 
-File storage will be S3-compatible when a later phase requires it. Python remains limited to specialized workers.
+File storage is accessed only through the platform `objectstorage.Storage`
+boundary. Local filesystem storage remains available for development and
+tests; production can select the AWS SDK-backed S3-compatible implementation
+for AWS S3, Cloudflare R2, MinIO, Backblaze B2, and equivalent SigV4 providers.
+The application owns tenant authorization and server-generated tenant-scoped
+keys; storage drivers own only object persistence. Python remains limited to
+specialized workers.
