@@ -51,7 +51,8 @@ inside one application; it does not imply microservices.
 
 - **Owns:** marketplace upload orchestration, source/job metadata, normalized
   marketplace orders/items, duplicate detection, processing states, review
-  errors, and marketplace-specific adapters such as Flipkart.
+  errors, database-backed job leases, and marketplace-specific adapters such
+  as Flipkart.
 - **Does not own:** canonical product definitions, authentication,
   authorization policy, object persistence mechanics, inventory, batches, or
   printing.

@@ -10,9 +10,9 @@ Scanned/image-only PDFs, encrypted PDFs, OCR, and coordinate-based multi-label s
 
 ## Processing
 
-Two bounded in-process workers claim durable Flipkart jobs from PostgreSQL with `FOR UPDATE SKIP LOCKED`. An in-memory signal only reduces polling latency and is not the source of truth, so saturation cannot fail a persisted job. Jobs move through `queued`, `processing`, then `processed`, `needs_review`, or `failed`. Unexpected worker errors are recorded and transition claimed jobs to `failed`.
+Two bounded in-process workers claim durable Flipkart jobs from PostgreSQL with `FOR UPDATE SKIP LOCKED`. Each API process has a cryptographically random, non-secret worker ID. A claim atomically changes queued work to `processing`, or reclaims processing work only after its lease expires, and establishes a two-minute lease. A heartbeat renews the lease every 30 seconds while PDF work runs. Completion and failure verify current ownership and clear the lease in the same transaction as the final state.
 
-Startup recovery changes only `marketplace_key='flipkart'` processing jobs back to queued. Phase 3 assumes one active API instance because processing jobs do not yet have owner/lease columns; multiple instances can safely claim queued jobs, but one instance restarting could requeue a job actively owned by another instance. A lease is required before multi-instance deployment.
+Startup recovery is read-only: it signals local workers when queued or expired Flipkart work exists and never rewrites healthy `processing` jobs. PostgreSQL remains the job authority; the in-memory signal only reduces polling latency. A stale instance cannot commit authoritative orders or failure state after another worker has reclaimed its expired lease. Non-Flipkart jobs are excluded from recovery and claim queries.
 
 Exact active Flipkart SKU mappings in Product Master resolve products. Missing mappings remain unresolved. Missing quantities remain SQL `NULL` with `quantity_source=missing`; the adapter never assumes one.
 

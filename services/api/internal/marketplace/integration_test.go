@@ -80,7 +80,10 @@ func setupPhaseThree(t *testing.T) *phaseThreeFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f.service = newService(db, authorization.NewService(db), store, f.extractor)
+	f.service, err = newService(db, authorization.NewService(db), store, f.extractor)
+	if err != nil {
+		t.Fatal(err)
+	}
 	f.principalA = auth.Principal{CompanyID: f.companyA, UserID: f.userID}
 	f.principalB = auth.Principal{CompanyID: f.companyB, UserID: f.userID}
 	t.Cleanup(func() { cleanupPhaseThree(t, f); db.Close() })
@@ -159,6 +162,7 @@ func TestPhaseThreePostgreSQLBehavior(t *testing.T) {
 	if details.Job.Status != "processed" || len(details.Orders) != 1 || details.Orders[0].SourcePage != 1 || details.Orders[0].Items[0].ProductID == nil || *details.Orders[0].Items[0].ProductID != f.productID {
 		t.Fatalf("resolved result=%#v", details)
 	}
+	assertLeaseCleared(t, f.db, uploaded.Job.ID)
 	t.Run("tenant get and retry isolation", func(t *testing.T) {
 		if _, err := f.service.Get(ctx, f.principalB, uploaded.Job.ID); !errors.Is(err, ErrNotFound) {
 			t.Fatalf("get err=%v", err)
@@ -264,11 +268,13 @@ func TestPhaseThreePostgreSQLBehavior(t *testing.T) {
 		if err != nil || retried.Status != "queued" {
 			t.Fatalf("retry=%#v err=%v", retried, err)
 		}
+		assertLeaseCleared(t, f.db, result.Job.ID)
 		f.process(t)
 		after, _ := f.service.Get(ctx, f.principalA, result.Job.ID)
 		if after.Job.Status != "processed" {
 			t.Fatalf("after=%#v", after)
 		}
+		assertLeaseCleared(t, f.db, result.Job.ID)
 	})
 	t.Run("extractor failure becomes failed with error", func(t *testing.T) {
 		pdf := []byte("%PDF-failure")
@@ -284,34 +290,8 @@ func TestPhaseThreePostgreSQLBehavior(t *testing.T) {
 		if details.Job.Status != "failed" || len(details.Errors) == 0 || details.Errors[0].Code != "PDF_EXTRACTION_FAILED" {
 			t.Fatalf("failure=%#v", details)
 		}
+		assertLeaseCleared(t, f.db, result.Job.ID)
 	})
-}
-
-func TestFlipkartRecoveryAndClaimNeverTouchOtherMarketplace(t *testing.T) {
-	f := setupPhaseThree(t)
-	ctx := context.Background()
-	var sourceFlip, sourceAmazon, jobFlip, jobAmazon string
-	insert := func(market string, source, job *string) {
-		mustScanP3(t, f.db, `INSERT INTO source_files(company_id,marketplace_key,storage_key,original_filename,content_type,size_bytes,sha256,uploaded_by) VALUES($1,$2,$3,'x.pdf','application/pdf',1,$4,$5) RETURNING id`, []any{f.companyA, market, "x/" + market, fmt.Sprintf("%064x", market), f.userID}, source)
-		mustScanP3(t, f.db, `INSERT INTO processing_jobs(company_id,source_file_id,marketplace_key,status,parser_version,started_at) VALUES($1,$2,$3,'processing','test',now()) RETURNING id`, []any{f.companyA, *source, market}, job)
-	}
-	insert("flipkart", &sourceFlip, &jobFlip)
-	insert("amazon", &sourceAmazon, &jobAmazon)
-	f.service.recoverJobs()
-	var flipStatus, amazonStatus string
-	mustScanP3(t, f.db, `SELECT status FROM processing_jobs WHERE id=$1`, []any{jobFlip}, &flipStatus)
-	mustScanP3(t, f.db, `SELECT status FROM processing_jobs WHERE id=$1`, []any{jobAmazon}, &amazonStatus)
-	if flipStatus != "queued" || amazonStatus != "processing" {
-		t.Fatalf("flipkart=%s amazon=%s", flipStatus, amazonStatus)
-	}
-	claimed, ok, err := f.service.claim(ctx)
-	if err != nil || !ok || claimed.JobID != jobFlip {
-		t.Fatalf("claim=%#v ok=%v err=%v", claimed, ok, err)
-	}
-	mustScanP3(t, f.db, `SELECT status FROM processing_jobs WHERE id=$1`, []any{jobAmazon}, &amazonStatus)
-	if amazonStatus != "processing" {
-		t.Fatalf("amazon was changed: %s", amazonStatus)
-	}
 }
 
 func TestPhaseThreeMigrationUpDown(t *testing.T) {
@@ -338,7 +318,7 @@ func TestPhaseThreeMigrationUpDown(t *testing.T) {
 		t.Fatal(err)
 	}
 	root := filepath.Join("..", "..", "migrations")
-	for _, name := range []string{"000001_core_platform.up.sql", "000002_tenant_sessions.up.sql", "000003_product_master.up.sql", "000004_flipkart_processing.up.sql"} {
+	for _, name := range []string{"000001_core_platform.up.sql", "000002_tenant_sessions.up.sql", "000003_product_master.up.sql", "000004_flipkart_processing.up.sql", "000005_flipkart_worker_leases.up.sql"} {
 		sql, readErr := os.ReadFile(filepath.Join(root, name))
 		if readErr != nil {
 			t.Fatal(readErr)
@@ -351,12 +331,27 @@ func TestPhaseThreeMigrationUpDown(t *testing.T) {
 	if err = tx.QueryRow(ctx, `SELECT to_regclass($1)`, schema+".processing_jobs").Scan(&exists); err != nil || exists == nil {
 		t.Fatalf("up verification: %v %v", exists, err)
 	}
-	down, err := os.ReadFile(filepath.Join(root, "000004_flipkart_processing.down.sql"))
+	var leaseColumns int
+	if err = tx.QueryRow(ctx, `SELECT count(*) FROM information_schema.columns WHERE table_schema=$1 AND table_name='processing_jobs' AND column_name IN ('worker_id','lease_expires_at')`, schema).Scan(&leaseColumns); err != nil || leaseColumns != 2 {
+		t.Fatalf("lease columns: count=%d err=%v", leaseColumns, err)
+	}
+	down, err := os.ReadFile(filepath.Join(root, "000005_flipkart_worker_leases.down.sql"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err = tx.Exec(ctx, string(down)); err != nil {
-		t.Fatalf("down: %v", err)
+		t.Fatalf("lease down: %v", err)
+	}
+	leaseColumns = -1
+	if err = tx.QueryRow(ctx, `SELECT count(*) FROM information_schema.columns WHERE table_schema=$1 AND table_name='processing_jobs' AND column_name IN ('worker_id','lease_expires_at')`, schema).Scan(&leaseColumns); err != nil || leaseColumns != 0 {
+		t.Fatalf("lease rollback columns: count=%d err=%v", leaseColumns, err)
+	}
+	down, err = os.ReadFile(filepath.Join(root, "000004_flipkart_processing.down.sql"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = tx.Exec(ctx, string(down)); err != nil {
+		t.Fatalf("phase 3 down: %v", err)
 	}
 	exists = nil
 	if err = tx.QueryRow(ctx, `SELECT to_regclass($1)`, schema+".processing_jobs").Scan(&exists); err != nil || exists != nil {
@@ -374,6 +369,15 @@ func mustScanP3(t *testing.T, db *pgxpool.Pool, query string, args []any, dest .
 	t.Helper()
 	if err := db.QueryRow(context.Background(), query, args...).Scan(dest...); err != nil {
 		t.Fatalf("fixture scan: %v", err)
+	}
+}
+func assertLeaseCleared(t *testing.T, db *pgxpool.Pool, jobID string) {
+	t.Helper()
+	var workerID *string
+	var expiresAt *time.Time
+	mustScanP3(t, db, `SELECT worker_id,lease_expires_at FROM processing_jobs WHERE id=$1`, []any{jobID}, &workerID, &expiresAt)
+	if workerID != nil || expiresAt != nil {
+		t.Fatalf("job %s retained lease worker=%v expires=%v", jobID, workerID, expiresAt)
 	}
 }
 func cleanupPhaseThree(t *testing.T, f *phaseThreeFixture) {

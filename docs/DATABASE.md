@@ -8,6 +8,12 @@ Phase 1 begins with `000001_core_platform`. It separates global login identities
 
 Phase 2 adds `000003_product_master`. Products have company-unique internal codes. SKU mappings use a composite `(company_id, product_id)` foreign key and a partial unique index on active `(company_id, marketplace_key, sku)` mappings. This prevents cross-company product references and makes ambiguous active resolution impossible at the database layer.
 
+Phase 3 migration `000005_flipkart_worker_leases` adds paired `worker_id` and
+`lease_expires_at` fields to `processing_jobs`. Flipkart workers may claim only
+queued jobs or processing jobs whose lease has expired. The partial claim index
+is marketplace- and status-scoped; tenant foreign keys and normalized order
+constraints remain unchanged.
+
 Future business tables must carry appropriate company ownership, and business-owned queries must enforce server-established tenant scope. Production schema changes must never be performed manually.
 
 Local PostgreSQL uses the persistent `postgres_data` Docker volume and environment-driven credentials. `.env.example` contains placeholders only.

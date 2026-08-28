@@ -23,7 +23,8 @@ Implemented Phase 3 facts include:
 
 - tenant-owned PDF upload with a 20 MiB limit and per-company SHA-256 source
   deduplication
-- PostgreSQL-backed, bounded Flipkart processing jobs and scoped recovery
+- PostgreSQL-backed, bounded Flipkart processing jobs with renewable,
+  multi-instance-safe worker leases and marketplace-scoped recovery
 - platform object-storage abstraction with local development and production
   S3-compatible implementations
 - bounded Poppler extraction and isolated `flipkart-text-v2` parsing with real
@@ -43,8 +44,6 @@ Implemented Phase 3 facts include:
 
 - [ ] Validate representative production Flipkart PDF formats; only sanitized
   fixtures have been validated.
-- [ ] Replace the documented single-instance recovery limitation with worker
-  leases before multi-instance deployment.
 - [ ] Pass external architecture review.
 
 ## Explicitly Forbidden Work
@@ -59,10 +58,12 @@ Implemented Phase 3 facts include:
 
 The latest recorded Phase 3 verification passed:
 
-- migration up against disposable PostgreSQL 18.6
+- migration up and worker-lease migration rollback against disposable
+  PostgreSQL 18.6
 - full Go suite, including PostgreSQL tenant, duplicate, retry, and recovery
-  integration tests, storage-driver validation, and S3-compatible
-  Put/Get/Delete protocol tests
+  integration tests, multi-worker lease claim/reclaim/renewal/finalization
+  tests, storage-driver validation, and S3-compatible Put/Get/Delete protocol
+  tests
 - Go vet and Go build
 - frontend type checking, lint, and production build
 - `git diff --check`

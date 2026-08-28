@@ -26,3 +26,16 @@ for AWS S3, Cloudflare R2, MinIO, Backblaze B2, and equivalent SigV4 providers.
 The application owns tenant authorization and server-generated tenant-scoped
 keys; storage drivers own only object persistence. Python remains limited to
 specialized workers.
+
+## Background processing
+
+PostgreSQL is the durable authority for Flipkart processing jobs. Each API
+process generates a random, non-secret worker identity and claims queued or
+expired Flipkart work transactionally with `FOR UPDATE SKIP LOCKED`. A bounded
+lease is renewed while extraction runs. Completion and failure transactions
+must still own the live lease before they may persist results or final state,
+so a stale process cannot commit after another instance reclaims its job.
+
+The in-process wake channel is only a latency optimization. It is not a queue,
+and no Redis, broker, or external workflow system participates in job
+authority.

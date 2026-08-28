@@ -39,7 +39,11 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	if err != nil {
 		return err
 	}
-	marketplaceHTTP := marketplace.NewHTTPHandler(marketplace.NewService(db, authorizer, storage, pdfextractor.NewPoppler()))
+	marketplaceService, err := marketplace.NewService(db, authorizer, storage, pdfextractor.NewPoppler())
+	if err != nil {
+		return err
+	}
+	marketplaceHTTP := marketplace.NewHTTPHandler(marketplaceService)
 	mux.HandleFunc("/api/v1/auth/login", authHTTP.Login)
 	mux.Handle("/api/v1/auth/logout", authHTTP.RequireSession(http.HandlerFunc(authHTTP.Logout)))
 	mux.Handle("/api/v1/auth/session", authHTTP.RequireSession(http.HandlerFunc(authHTTP.Session)))

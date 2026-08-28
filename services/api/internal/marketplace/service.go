@@ -25,23 +25,31 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-const MaxUploadBytes = 20 << 20
+const (
+	MaxUploadBytes          = 20 << 20
+	workerLeaseDuration     = 2 * time.Minute
+	workerHeartbeatInterval = 30 * time.Second
+)
 
 var (
 	ErrInvalidFile = errors.New("invalid PDF file")
 	ErrNotFound    = errors.New("processing job not found")
 	ErrJobActive   = errors.New("processing job is already active")
+	ErrLeaseLost   = errors.New("processing job lease is no longer owned")
 )
 
 type Service struct {
-	db         *pgxpool.Pool
-	authorizer *authorization.Service
-	audit      audit.Recorder
-	storage    objectstorage.Storage
-	extractor  pdfextractor.Extractor
-	wake       chan struct{}
+	db                *pgxpool.Pool
+	authorizer        *authorization.Service
+	audit             audit.Recorder
+	storage           objectstorage.Storage
+	extractor         pdfextractor.Extractor
+	wake              chan struct{}
+	workerID          string
+	leaseDuration     time.Duration
+	heartbeatInterval time.Duration
 }
-type work struct{ CompanyID, UserID, JobID, StorageKey string }
+type work struct{ CompanyID, UserID, JobID, StorageKey, WorkerID string }
 type UploadResult struct {
 	Job             Job  `json:"job"`
 	DuplicateSource bool `json:"duplicate_source"`
@@ -83,16 +91,30 @@ type JobDetails struct {
 	Errors []ErrorItem `json:"errors"`
 }
 
-func NewService(db *pgxpool.Pool, authorizer *authorization.Service, storage objectstorage.Storage, extractor pdfextractor.Extractor) *Service {
-	s := newService(db, authorizer, storage, extractor)
+func NewService(db *pgxpool.Pool, authorizer *authorization.Service, storage objectstorage.Storage, extractor pdfextractor.Extractor) (*Service, error) {
+	s, err := newService(db, authorizer, storage, extractor)
+	if err != nil {
+		return nil, err
+	}
 	go s.recoverJobs()
 	for range 2 {
 		go s.worker()
 	}
-	return s
+	return s, nil
 }
-func newService(db *pgxpool.Pool, authorizer *authorization.Service, storage objectstorage.Storage, extractor pdfextractor.Extractor) *Service {
-	return &Service{db: db, authorizer: authorizer, storage: storage, extractor: extractor, wake: make(chan struct{}, 1)}
+func newService(db *pgxpool.Pool, authorizer *authorization.Service, storage objectstorage.Storage, extractor pdfextractor.Extractor) (*Service, error) {
+	workerID, err := randomUUID()
+	if err != nil {
+		return nil, fmt.Errorf("create worker identity: %w", err)
+	}
+	return newServiceWithWorkerID(db, authorizer, storage, extractor, workerID), nil
+}
+func newServiceWithWorkerID(db *pgxpool.Pool, authorizer *authorization.Service, storage objectstorage.Storage, extractor pdfextractor.Extractor, workerID string) *Service {
+	return &Service{
+		db: db, authorizer: authorizer, storage: storage, extractor: extractor,
+		wake: make(chan struct{}, 1), workerID: workerID,
+		leaseDuration: workerLeaseDuration, heartbeatInterval: workerHeartbeatInterval,
+	}
 }
 func (s *Service) signal() {
 	select {
@@ -277,7 +299,7 @@ func (s *Service) Retry(ctx context.Context, p auth.Principal, id string) (Job, 
 		return Job{}, err
 	}
 	var job Job
-	err = tx.QueryRow(ctx, `UPDATE processing_jobs SET status='queued',total_pages=0,processed_pages=0,started_at=NULL,completed_at=NULL,updated_at=now(),parser_version=$1 WHERE company_id=$2 AND id=$3 AND marketplace_key='flipkart' RETURNING id,status,parser_version,total_pages,processed_pages,created_at,updated_at`, flipkart.ParserVersion, p.CompanyID, id).Scan(&job.ID, &job.Status, &job.ParserVersion, &job.TotalPages, &job.ProcessedPages, &job.CreatedAt, &job.UpdatedAt)
+	err = tx.QueryRow(ctx, `UPDATE processing_jobs SET status='queued',total_pages=0,processed_pages=0,started_at=NULL,completed_at=NULL,worker_id=NULL,lease_expires_at=NULL,updated_at=now(),parser_version=$1 WHERE company_id=$2 AND id=$3 AND marketplace_key='flipkart' RETURNING id,status,parser_version,total_pages,processed_pages,created_at,updated_at`, flipkart.ParserVersion, p.CompanyID, id).Scan(&job.ID, &job.Status, &job.ParserVersion, &job.TotalPages, &job.ProcessedPages, &job.CreatedAt, &job.UpdatedAt)
 	if err != nil {
 		return Job{}, err
 	}
@@ -310,8 +332,9 @@ func (s *Service) worker() {
 func (s *Service) recoverJobs() {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	_, err := s.db.Exec(ctx, `UPDATE processing_jobs SET status='queued',started_at=NULL,updated_at=now() WHERE marketplace_key='flipkart' AND status='processing'`)
-	if err == nil {
+	var eligible bool
+	err := s.db.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM processing_jobs WHERE marketplace_key='flipkart' AND (status='queued' OR (status='processing' AND (lease_expires_at IS NULL OR lease_expires_at<=now()))))`).Scan(&eligible)
+	if err == nil && eligible {
 		s.signal()
 	}
 }
@@ -322,14 +345,14 @@ func (s *Service) claim(ctx context.Context) (work, bool, error) {
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
 	var item work
-	err = tx.QueryRow(ctx, `SELECT j.company_id,f.uploaded_by,j.id,f.storage_key FROM processing_jobs j JOIN source_files f ON f.company_id=j.company_id AND f.id=j.source_file_id AND f.marketplace_key='flipkart' WHERE j.marketplace_key='flipkart' AND j.status='queued' ORDER BY j.created_at FOR UPDATE OF j SKIP LOCKED LIMIT 1`).Scan(&item.CompanyID, &item.UserID, &item.JobID, &item.StorageKey)
+	err = tx.QueryRow(ctx, `SELECT j.company_id,f.uploaded_by,j.id,f.storage_key FROM processing_jobs j JOIN source_files f ON f.company_id=j.company_id AND f.id=j.source_file_id AND f.marketplace_key='flipkart' WHERE j.marketplace_key='flipkart' AND (j.status='queued' OR (j.status='processing' AND (j.lease_expires_at IS NULL OR j.lease_expires_at<=now()))) ORDER BY j.created_at,j.id FOR UPDATE OF j SKIP LOCKED LIMIT 1`).Scan(&item.CompanyID, &item.UserID, &item.JobID, &item.StorageKey)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return work{}, false, nil
 	}
 	if err != nil {
 		return work{}, false, err
 	}
-	result, err := tx.Exec(ctx, `UPDATE processing_jobs SET status='processing',started_at=now(),updated_at=now() WHERE company_id=$1 AND id=$2 AND marketplace_key='flipkart' AND status='queued'`, item.CompanyID, item.JobID)
+	result, err := tx.Exec(ctx, `UPDATE processing_jobs SET status='processing',worker_id=$3,lease_expires_at=now()+($4*interval '1 second'),started_at=COALESCE(started_at,now()),completed_at=NULL,updated_at=now() WHERE company_id=$1 AND id=$2 AND marketplace_key='flipkart' AND (status='queued' OR (status='processing' AND (lease_expires_at IS NULL OR lease_expires_at<=now())))`, item.CompanyID, item.JobID, s.workerID, int64(s.leaseDuration/time.Second))
 	if err != nil {
 		return work{}, false, err
 	}
@@ -339,6 +362,7 @@ func (s *Service) claim(ctx context.Context) (work, bool, error) {
 	if err = tx.Commit(ctx); err != nil {
 		return work{}, false, err
 	}
+	item.WorkerID = s.workerID
 	return item, true, nil
 }
 func (s *Service) processNext() (bool, error) {
@@ -348,15 +372,63 @@ func (s *Service) processNext() (bool, error) {
 	if err != nil || !claimed {
 		return claimed, err
 	}
-	if err = s.execute(ctx, item); err != nil {
+	if err = s.executeWithHeartbeat(ctx, item); err != nil {
+		if errors.Is(err, ErrLeaseLost) {
+			return true, nil
+		}
 		failureCtx, failureCancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer failureCancel()
 		code, message := classifyWorkerError(err)
 		if failErr := s.failJob(failureCtx, item, code, message); failErr != nil {
+			if errors.Is(failErr, ErrLeaseLost) {
+				return true, nil
+			}
 			return true, fmt.Errorf("process error: %v; persist failure: %w", err, failErr)
 		}
 	}
 	return true, nil
+}
+func (s *Service) executeWithHeartbeat(parent context.Context, item work) error {
+	ctx, cancel := context.WithCancel(parent)
+	heartbeatDone := make(chan error, 1)
+	go func() {
+		heartbeatDone <- s.heartbeat(ctx, cancel, item)
+	}()
+	executeErr := s.execute(ctx, item)
+	cancel()
+	heartbeatErr := <-heartbeatDone
+	if executeErr == nil {
+		return nil
+	}
+	if heartbeatErr != nil {
+		return heartbeatErr
+	}
+	return executeErr
+}
+func (s *Service) heartbeat(ctx context.Context, cancel context.CancelFunc, item work) error {
+	ticker := time.NewTicker(s.heartbeatInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-ticker.C:
+			if err := s.renewLease(ctx, item); err != nil {
+				cancel()
+				return err
+			}
+		}
+	}
+}
+func (s *Service) renewLease(ctx context.Context, item work) error {
+	result, err := s.db.Exec(ctx, `UPDATE processing_jobs SET lease_expires_at=now()+($4*interval '1 second'),updated_at=now() WHERE company_id=$1 AND id=$2 AND marketplace_key='flipkart' AND status='processing' AND worker_id=$3 AND lease_expires_at>now()`, item.CompanyID, item.JobID, item.WorkerID, int64(s.leaseDuration/time.Second))
+	if err != nil {
+		return fmt.Errorf("renew processing lease: %w", err)
+	}
+	if result.RowsAffected() != 1 {
+		return ErrLeaseLost
+	}
+	return nil
 }
 func (s *Service) execute(ctx context.Context, w work) error {
 	object, err := s.storage.Get(ctx, w.StorageKey)
@@ -388,7 +460,9 @@ func (s *Service) execute(ctx context.Context, w work) error {
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
 	var sourceID string
-	if err = tx.QueryRow(ctx, `SELECT source_file_id FROM processing_jobs WHERE company_id=$1 AND id=$2 AND marketplace_key='flipkart' AND status='processing' FOR UPDATE`, w.CompanyID, w.JobID).Scan(&sourceID); err != nil {
+	if err = tx.QueryRow(ctx, `SELECT source_file_id FROM processing_jobs WHERE company_id=$1 AND id=$2 AND marketplace_key='flipkart' AND status='processing' AND worker_id=$3 AND lease_expires_at>now() FOR UPDATE`, w.CompanyID, w.JobID, w.WorkerID).Scan(&sourceID); errors.Is(err, pgx.ErrNoRows) {
+		return ErrLeaseLost
+	} else if err != nil {
 		return err
 	}
 	if err = s.audit.Record(ctx, tx, w.CompanyID, w.UserID, "flipkart.processing_started", "processing_job", w.JobID, map[string]any{"parser_version": flipkart.ParserVersion}); err != nil {
@@ -476,8 +550,12 @@ func (s *Service) execute(ctx context.Context, w work) error {
 	if needsReview {
 		finalStatus = "needs_review"
 	}
-	if _, err = tx.Exec(ctx, `UPDATE processing_jobs SET status=$1,total_pages=$2,processed_pages=$2,completed_at=now(),updated_at=now() WHERE company_id=$3 AND id=$4 AND marketplace_key='flipkart' AND status='processing'`, finalStatus, len(pages), w.CompanyID, w.JobID); err != nil {
+	result, err := tx.Exec(ctx, `UPDATE processing_jobs SET status=$1,total_pages=$2,processed_pages=$2,completed_at=now(),worker_id=NULL,lease_expires_at=NULL,updated_at=now() WHERE company_id=$3 AND id=$4 AND marketplace_key='flipkart' AND status='processing' AND worker_id=$5`, finalStatus, len(pages), w.CompanyID, w.JobID, w.WorkerID)
+	if err != nil {
 		return err
+	}
+	if result.RowsAffected() != 1 {
+		return ErrLeaseLost
 	}
 	if err = s.audit.Record(ctx, tx, w.CompanyID, w.UserID, "flipkart.processing_completed", "processing_job", w.JobID, map[string]any{"status": finalStatus, "pages": len(pages), "labels": len(labels)}); err != nil {
 		return err
@@ -493,11 +571,21 @@ func (s *Service) failJob(ctx context.Context, w work, code, message string) err
 		return err
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
-	if _, err = tx.Exec(ctx, `INSERT INTO processing_errors(company_id,processing_job_id,severity,code,message) SELECT $1,$2,'error',$3,$4 WHERE EXISTS(SELECT 1 FROM processing_jobs WHERE company_id=$1 AND id=$2 AND marketplace_key='flipkart')`, w.CompanyID, w.JobID, code, message); err != nil {
+	var owned bool
+	if err = tx.QueryRow(ctx, `SELECT true FROM processing_jobs WHERE company_id=$1 AND id=$2 AND marketplace_key='flipkart' AND status='processing' AND worker_id=$3 AND lease_expires_at>now() FOR UPDATE`, w.CompanyID, w.JobID, w.WorkerID).Scan(&owned); errors.Is(err, pgx.ErrNoRows) {
+		return ErrLeaseLost
+	} else if err != nil {
 		return err
 	}
-	if _, err = tx.Exec(ctx, `UPDATE processing_jobs SET status='failed',completed_at=now(),updated_at=now() WHERE company_id=$1 AND id=$2 AND marketplace_key='flipkart' AND status='processing'`, w.CompanyID, w.JobID); err != nil {
+	if _, err = tx.Exec(ctx, `INSERT INTO processing_errors(company_id,processing_job_id,severity,code,message) VALUES($1,$2,'error',$3,$4)`, w.CompanyID, w.JobID, code, message); err != nil {
 		return err
+	}
+	result, err := tx.Exec(ctx, `UPDATE processing_jobs SET status='failed',completed_at=now(),worker_id=NULL,lease_expires_at=NULL,updated_at=now() WHERE company_id=$1 AND id=$2 AND marketplace_key='flipkart' AND status='processing' AND worker_id=$3`, w.CompanyID, w.JobID, w.WorkerID)
+	if err != nil {
+		return err
+	}
+	if result.RowsAffected() != 1 {
+		return ErrLeaseLost
 	}
 	return tx.Commit(ctx)
 }
