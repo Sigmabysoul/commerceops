@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: CommerceOps API
-  version: 0.3.0
+  version: 0.4.0
 paths:
   /api/v1/health:
     get:
@@ -280,6 +280,66 @@ paths:
           content:
             application/json:
               schema: {$ref: "#/components/schemas/SkuResolution"}
+  /api/v1/batches:
+    get:
+      operationId: listBatches
+      summary: List tenant operational batches
+      security: [{sessionCookie: []}]
+      responses:
+        "200": {description: Tenant-scoped batch summaries}
+        "403": {$ref: "#/components/responses/Error"}
+    post:
+      operationId: createBatch
+      summary: Create an idempotent draft batch from normalized marketplace orders
+      security: [{sessionCookie: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/CreateBatch"}
+      responses:
+        "201": {description: Batch created}
+        "200": {description: Existing batch returned for an idempotent replay}
+        "409": {$ref: "#/components/responses/Error"}
+  /api/v1/batches/{batch_id}:
+    parameters:
+      - {$ref: "#/components/parameters/BatchID"}
+    get:
+      operationId: getBatch
+      security: [{sessionCookie: []}]
+      responses:
+        "200": {description: Batch detail, ordered members, and derived product totals}
+        "404": {$ref: "#/components/responses/Error"}
+  /api/v1/batches/{batch_id}/ready:
+    parameters:
+      - {$ref: "#/components/parameters/BatchID"}
+    post:
+      operationId: readyBatch
+      summary: Move a fully resolved draft batch to ready
+      security: [{sessionCookie: []}]
+      responses:
+        "200": {description: Batch is ready}
+        "409": {$ref: "#/components/responses/Error"}
+  /api/v1/batches/{batch_id}/cancel:
+    parameters:
+      - {$ref: "#/components/parameters/BatchID"}
+    post:
+      operationId: cancelBatch
+      summary: Cancel a draft batch
+      security: [{sessionCookie: []}]
+      responses:
+        "200": {description: Batch is cancelled}
+        "409": {$ref: "#/components/responses/Error"}
+  /api/v1/batch-eligible-orders:
+    get:
+      operationId: listBatchEligibleOrders
+      summary: List processed marketplace orders not already assigned to a batch
+      security: [{sessionCookie: []}]
+      parameters:
+        - {name: marketplace, in: query, required: true, schema: {type: string, enum: [flipkart]}}
+      responses:
+        "200": {description: Tenant-scoped eligible normalized orders}
+        "403": {$ref: "#/components/responses/Error"}
 components:
   securitySchemes:
     sessionCookie:
@@ -292,6 +352,7 @@ components:
     RoleID: {name: role_id, in: path, required: true, schema: {type: string, format: uuid}}
     ProductID: {name: product_id, in: path, required: true, schema: {type: string, format: uuid}}
     MappingID: {name: mapping_id, in: path, required: true, schema: {type: string, format: uuid}}
+    BatchID: {name: batch_id, in: path, required: true, schema: {type: string, format: uuid}}
   responses:
     Error:
       description: Request failed
@@ -348,6 +409,19 @@ components:
         status: {type: string, enum: [resolved, unresolved]}
         product: {type: object}
         mapping: {type: object}
+    CreateBatch:
+      type: object
+      additionalProperties: false
+      required: [marketplace_key, order_ids, idempotency_key]
+      properties:
+        marketplace_key: {type: string, enum: [flipkart]}
+        order_ids:
+          type: array
+          minItems: 1
+          maxItems: 500
+          uniqueItems: true
+          items: {type: string, format: uuid}
+        idempotency_key: {type: string, minLength: 1, maxLength: 128}
     ErrorEnvelope:
       type: object
       required: [error]

@@ -4,7 +4,7 @@ Schema changes are applied explicitly with `golang-migrate`; application startup
 
 Migration files use the sequential format `NNNNNN_description.up.sql` and `NNNNNN_description.down.sql`.
 
-`000001_core_platform` establishes the Phase 1 company, identity, employee, authorization, entitlement, session and audit tables. `000002_tenant_sessions` binds each session to a verified company membership with a composite foreign key. `000003_product_master` adds tenant products, normalized marketplace references and deterministic SKU mappings. `000004_flipkart_processing` adds Phase 3 source, job, order, item, and error records. `000005_flipkart_worker_leases` adds multi-instance-safe processing ownership and lease expiry. Apply pending migrations through the repository command after PostgreSQL is healthy:
+`000001_core_platform` establishes the Phase 1 company, identity, employee, authorization, entitlement, session and audit tables. `000002_tenant_sessions` binds each session to a verified company membership with a composite foreign key. `000003_product_master` adds tenant products, normalized marketplace references and deterministic SKU mappings. `000004_flipkart_processing` adds Phase 3 source, job, order, item, and error records. `000005_flipkart_worker_leases` adds multi-instance-safe processing ownership and lease expiry. `000006_batch_foundation` adds Phase 4 tenant batches, ordered membership, idempotency, and batch/printing permission definitions. Apply pending migrations through the repository command after PostgreSQL is healthy:
 
 ```sh
 make migrate

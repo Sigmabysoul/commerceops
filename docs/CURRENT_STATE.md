@@ -22,6 +22,10 @@ Phase 3 — Flipkart Processing is approved.
 
 Phase 4 work may now begin, but only within the approved Phase 4 scope.
 
+Phase 4 Batch A implementation is complete in the working branch and awaits
+review. It adds the batch persistence/domain foundation only; Batch B and Batch
+C have not started.
+
 ## Approved Phases
 
 - Phase 0 — Foundation
@@ -164,11 +168,11 @@ Implement Phase 4 in medium-sized coherent batches rather than many tiny tasks.
 Recommended sequence:
 
 ### Batch A — Batch domain and persistence
-- batch schema/state model
-- tenant-scoped batch APIs
-- selection of eligible processed Flipkart records
-- permissions/audit/idempotency foundations
-- tests
+- [x] batch schema/state model
+- [x] tenant-scoped batch APIs
+- [x] selection of eligible processed Flipkart records
+- [x] permissions/audit/idempotency foundations
+- [x] PostgreSQL integration tests
 
 ### Batch B — PDF output generation
 - shipping-label region extraction/cropping
@@ -201,7 +205,9 @@ Do not automatically begin the next batch after completing one if the task expli
 
 ## Blocking Issues
 
-Phase 4 implementation has not yet been completed.
+Batch A awaits review before Batch B begins. PDF output generation, print jobs,
+sorting/assignment behavior, reprinting, and the frontend workflow remain Phase
+4 work.
 
 No Phase 5 work is authorized.
 
@@ -224,26 +230,25 @@ Phase 3 passed:
 - backend CI
 - frontend verification
 
-These Phase 3 results are historical baseline evidence and must not be presented as verification of future Phase 4 changes.
+These Phase 3 results are historical baseline evidence and must not be presented as verification of future Phase 4 changes. Batch A verification is recorded after the implementation has passed the required PostgreSQL-backed gate.
+
+Phase 4 Batch A passed the full verification gate against a migrated disposable
+PostgreSQL 18.6 database, including:
+
+- Batch A migration up/down coverage
+- tenant isolation, Flipkart entitlement, and `labels.process` enforcement
+- eligible-order selection and duplicate membership protection
+- idempotent batch creation and conflicting-key rejection
+- ordered source traceability and derived Product Master totals
+- unresolved-item readiness blocking and state-transition validation
+- batch creation/readiness/cancellation audit records
+- the full existing Go, worker-lease, object-storage, and private Flipkart PDF
+  regression suites
+- Go vet/build and frontend typecheck, lint, and production build
+- `git diff --check`
 
 ## Next Allowed Task
 
-Implement Phase 4 Batch A:
-
-**Batch domain and persistence foundation only.**
-
-Before editing, read:
-
-- `AGENTS.md`
-- `docs/AI_WORKFLOW.md`
-- `docs/MASTER_SPEC.md`
-- `docs/ARCHITECTURE.md`
-- `docs/DOMAIN_RULES.md`
-- `docs/PHASES/PHASE-04-BATCH-PRINTING.md`
-- this file
-
-Plan first.
-
-Do not implement PDF output generation, sorting UI, invoice export UI, inventory, other marketplaces, or Phase 5 in the same task unless the active Phase 4 specification explicitly requires them for the Batch A foundation.
-
-Implement the smallest coherent Batch A change, test it, commit it, provide the required completion report, and STOP.
+Review Phase 4 Batch A. Do not begin Batch B until the owner explicitly
+authorizes it after reviewing the batch domain, migration, API contract, tenant
+isolation, idempotency, and state-machine behavior.

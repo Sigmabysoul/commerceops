@@ -57,6 +57,25 @@ Product Master endpoints use only the authenticated session company. No request 
 SKU resolution trims surrounding whitespace and then performs a case-sensitive exact match within the authenticated company and marketplace. It never performs fuzzy, substring, case-insensitive, or fallback matching. A successful lookup returns `status: "resolved"` with its mapping and product; every unknown, inactive, or differently-cased identifier returns `status: "unresolved"` without guessing.
 
 The OpenAPI source is `docs/openapi.yaml`. It must be updated whenever the public API contract changes.
+
+## Batch foundation
+
+Batch endpoints require the Flipkart entitlement and existing `labels.process`
+permission. `labels.print` and `labels.reprint` are reserved for the later output
+and reprint APIs.
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| GET | `/api/v1/batch-eligible-orders?marketplace=flipkart` | List completed, non-duplicate normalized orders not already in a batch |
+| GET, POST | `/api/v1/batches` | List batches or idempotently create a draft from one to 500 orders |
+| GET | `/api/v1/batches/{batch_id}` | Read ordered source traceability and Product Master totals |
+| POST | `/api/v1/batches/{batch_id}/ready` | Ready a fully resolved draft |
+| POST | `/api/v1/batches/{batch_id}/cancel` | Cancel a draft |
+
+Company identity is never accepted from the request. Batch membership preserves
+the selected sequence. An order can belong to only one operational batch in the
+Batch A model. Replaying the same idempotency key and exact request returns the
+original batch; using that key for different input is a conflict.
 # API
 
 All endpoints use the authenticated server-side company context. Errors use the existing `{ "error": { "code", "message" } }` envelope.

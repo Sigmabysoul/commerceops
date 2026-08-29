@@ -27,3 +27,11 @@ PostgreSQL migrations are the schema source of truth. Phase 3 migration `000004_
 - `processing_errors` for traceable page warnings and failures
 
 All business foreign keys include company ownership where applicable. Partial unique indexes protect authoritative Flipkart AWB and order identifiers without hiding duplicate review records. Phase 3 creates no inventory table or transaction.
+
+Phase 4 Batch A migration `000006_batch_foundation` adds tenant-owned `batches`
+and ordered `batch_members`. Composite foreign keys keep creators, batches, and
+normalized marketplace orders in the same company. Company/order uniqueness
+prevents silent inclusion in multiple operational batches, while a
+company/idempotency-key constraint makes creation safely replayable. Counts and
+Product Master totals are derived; no inventory or print-artifact tables are
+introduced in Batch A.
