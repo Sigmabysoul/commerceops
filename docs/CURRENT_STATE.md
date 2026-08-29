@@ -2,85 +2,248 @@
 
 ## Current Phase
 
-Phase 3 — Flipkart Processing
+Phase 4 — Batch + Printing
 
 ## Current Branch
 
-`phase/03-flipkart`
+`phase/04-batch-printing`
 
 ## Approved Baseline
 
-Phase 2 baseline: `d469f1800e4e277672b1c742da70985219495054`
+Phase 3 approved baseline:
+
+`a023a6d5087227dfe719414248d2a36e548742f7`
 
 ## Phase Status
 
-`IMPLEMENTATION_COMPLETE_AWAITING_OWNER_APPROVAL`
+`IMPLEMENTATION_IN_PROGRESS`
 
-Phase 3 implementation, production-document validation, automated remediation
-checks, and external architecture review are complete. Phase 3 is not yet an
-approved baseline; owner approval remains required before any Phase 4 work.
+Phase 3 — Flipkart Processing is approved.
 
-Implemented Phase 3 facts include:
-
-- tenant-owned PDF upload with a 20 MiB limit and per-company SHA-256 source
-  deduplication
-- PostgreSQL-backed, bounded Flipkart processing jobs with renewable,
-  multi-instance-safe worker leases and marketplace-scoped recovery
-- platform object-storage abstraction with local development and production
-  S3-compatible implementations
-- bounded Poppler extraction and isolated `flipkart-text-v3` parsing with real
-  source-page traceability
-- production-validated modern label/invoice separation, multi-signal label
-  recognition, and authoritative AWB, OD order ID, SKU-row, and explicit
-  quantity extraction
-- exact Product Master resolution with unresolved/manual-review states
-- duplicate identifier protection, visible processing errors, retry support,
-  authorization, entitlements, audit events, and a functional processing UI
+Phase 4 work may now begin, but only within the approved Phase 4 scope.
 
 ## Approved Phases
 
 - Phase 0 — Foundation
 - Phase 1 — Core Platform
 - Phase 2 — Product Master
+- Phase 3 — Flipkart Processing
 
-## Blocking Issues
+## Phase 4 Goal
 
-No known Phase 3 implementation or architecture-review blockers remain. Owner
-approval is still required; this status does not start or authorize Phase 4.
+Build the batch and printable-output workflow on top of the normalized Flipkart processing results from Phase 3.
 
-[x] Public/sample Flipkart PDF compatibility validation completed.
-[x] Representative production workflow validation completed against nine
-original PDFs (84 pages) and nine CropBox counterparts (84 pages).
-[x] External architecture review passed.
+Phase 4 owns:
+
+- batch creation and lifecycle
+- selecting processed Flipkart jobs/orders for a batch
+- printable shipping-label output
+- label cropping/output normalization
+- sorting of printable labels
+- optional invoice separation/export
+- print preparation and downloadable PDF artifacts
+- traceability between generated output and source orders
+- idempotent generation/re-generation where required
+- user-facing batch/print UI
+
+Phase 4 must consume normalized Phase 3 data and must not reimplement marketplace parsing.
+
+## Required Flipkart Output Behavior
+
+For modern Flipkart PDFs containing a shipping label and tax invoice on the same source page:
+
+### Shipping-label output
+
+Generate a clean printable PDF containing only the shipping-label region.
+
+Do not include the invoice portion in the normal label output.
+
+Generated pages should be normalized printable pages rather than relying only on the source PDF CropBox where practical.
+
+The output must preserve barcode/QR readability and must not cover or distort required shipping information.
+
+### Sort Labels
+
+Provide a user-facing toggle:
+
+`Sort Labels`
+
+When OFF:
+- preserve original source/order sequence
+
+When ON:
+- sort using the Phase 4 configured/default sorting strategy
+- sorting must operate on normalized order/product metadata, not raw visual PDF text alone
+
+Initial sorting may use Product Master / resolved SKU ordering according to the Phase 4 design.
+
+Do not hardcode employee ownership rules into sorting.
+
+### Export Invoices
+
+Provide a user-facing toggle:
+
+`Export Invoices`
+
+When OFF:
+- invoice regions are excluded/discarded from generated output
+- only the shipping-label PDF is produced
+
+When ON:
+- generate two separate downloadable PDFs:
+  1. shipping labels PDF
+  2. invoices PDF
+
+Invoice output should follow the same corresponding order as the generated shipping-label output where practical, so labels and invoices remain easy to associate.
+
+The source relationship between label and invoice must not be lost.
+
+## Output Traceability
+
+Every generated printable item must remain traceable to:
+
+- company
+- source file
+- processing job
+- source page
+- marketplace order
+- AWB/order ID where available
+- batch
+- output artifact
+- generation version/configuration
+
+Generated artifacts must never create new inventory movement.
+
+Re-generating/reprinting an existing batch must not create duplicate business effects.
+
+## Architecture Rules
+
+Phase 4 must preserve:
+
+- modular monolith architecture
+- strict tenant isolation
+- Product Master as canonical product identity
+- S3-compatible object-storage abstraction
+- PostgreSQL as authoritative persistent state
+- Phase 3 parser isolation
+- server-side company context
+- explicit permissions and module entitlement checks
+- auditability
+- idempotency
+- bounded PDF processing
+
+Do not place authoritative batch/printing logic in frontend components.
+
+Do not bypass object storage by writing marketplace-specific files directly to the local filesystem.
+
+Do not reparse Flipkart raw PDFs in printing code when normalized Phase 3 results are already available.
 
 ## Explicitly Forbidden Work
 
-- Phase 4 batch orchestration or printing
-- inventory mutations or inventory functionality
-- Amazon, Meesho, Myntra, Snapdeal, or other marketplace implementation
-- returns, cancellations, consignment, or printer-agent implementation
+Do not implement:
+
+- inventory deductions or inventory ledger functionality
+- returns or cancellations
+- Meesho processing
+- Amazon processing
+- Myntra processing
+- Snapdeal processing
+- consignment workflows
+- supplier manifest workflows
+- printer-agent/native printer integration
+- hardcoded employee/product assignments
+- Phase 5 functionality
 - automatic progression to another phase
+
+The Meesho labels, manifests, supplier manifests, and other sample files currently available are future reference only.
+
+## Initial Phase 4 Implementation Strategy
+
+Implement Phase 4 in medium-sized coherent batches rather than many tiny tasks.
+
+Recommended sequence:
+
+### Batch A — Batch domain and persistence
+- batch schema/state model
+- tenant-scoped batch APIs
+- selection of eligible processed Flipkart records
+- permissions/audit/idempotency foundations
+- tests
+
+### Batch B — PDF output generation
+- shipping-label region extraction/cropping
+- normalized printable label pages
+- Sort Labels behavior
+- Export Invoices behavior
+- separate labels/invoices artifacts
+- object-storage persistence
+- regression tests using sanitized Flipkart fixtures
+
+### Batch C — Frontend and end-to-end workflow
+- batch creation UI
+- sorting toggle
+- invoice-export toggle
+- processing/progress state
+- preview/result summary
+- download labels PDF
+- download invoices PDF when enabled
+- end-to-end tests
+
+### Final Phase 4 Review
+- full verification
+- tenant isolation
+- idempotency/reprint safety
+- artifact traceability
+- PDF quality/barcode preservation
+- external architecture review
+
+Do not automatically begin the next batch after completing one if the task explicitly requires review.
+
+## Blocking Issues
+
+Phase 4 implementation has not yet been completed.
+
+No Phase 5 work is authorized.
 
 ## Last Verification
 
-The latest recorded Phase 3 verification passed:
+Approved Phase 3 baseline:
 
-- migration up and worker-lease migration rollback against disposable
-  PostgreSQL 18.6
-- full Go suite, including PostgreSQL tenant, duplicate, retry, and recovery
-  integration tests, multi-worker lease claim/reclaim/renewal/finalization
-  tests, storage-driver validation, and S3-compatible Put/Get/Delete protocol
-  tests
-- Go vet and Go build
-- frontend type checking, lint, and production build
-- `git diff --check`
+`a023a6d5087227dfe719414248d2a36e548742f7`
 
-Verification must be rerun after subsequent implementation changes. Historical
-results must not be presented as proof that a newer working tree passes.
+Phase 3 passed:
+
+- architecture review
+- production Flipkart PDF validation
+- sanitized fixture regression tests
+- tenant-isolation tests
+- duplicate/idempotency tests
+- worker-lease tests
+- object-storage tests
+- PostgreSQL integration tests
+- backend CI
+- frontend verification
+
+These Phase 3 results are historical baseline evidence and must not be presented as verification of future Phase 4 changes.
 
 ## Next Allowed Task
 
-Continue Phase 3 review, fixture validation, reliability remediation,
-documentation, or developer-experience work explicitly authorized by the
-owner. Do not begin Phase 4 until Phase 3 passes its review gate and the owner
-authorizes the transition.
+Implement Phase 4 Batch A:
+
+**Batch domain and persistence foundation only.**
+
+Before editing, read:
+
+- `AGENTS.md`
+- `docs/AI_WORKFLOW.md`
+- `docs/MASTER_SPEC.md`
+- `docs/ARCHITECTURE.md`
+- `docs/DOMAIN_RULES.md`
+- `docs/PHASES/PHASE-04-BATCH-PRINTING.md`
+- this file
+
+Plan first.
+
+Do not implement PDF output generation, sorting UI, invoice export UI, inventory, other marketplaces, or Phase 5 in the same task unless the active Phase 4 specification explicitly requires them for the Batch A foundation.
+
+Implement the smallest coherent Batch A change, test it, commit it, provide the required completion report, and STOP.
