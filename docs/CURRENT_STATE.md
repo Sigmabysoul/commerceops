@@ -14,10 +14,11 @@ Phase 2 baseline: `d469f1800e4e277672b1c742da70985219495054`
 
 ## Phase Status
 
-`IMPLEMENTATION_IN_PROGRESS`
+`IMPLEMENTATION_COMPLETE_AWAITING_OWNER_APPROVAL`
 
-Phase 3 implementation and automated remediation checks exist, but Phase 3 is
-not approved or complete. External architecture review remains outstanding.
+Phase 3 implementation, production-document validation, automated remediation
+checks, and external architecture review are complete. Phase 3 is not yet an
+approved baseline; owner approval remains required before any Phase 4 work.
 
 Implemented Phase 3 facts include:
 
@@ -27,9 +28,11 @@ Implemented Phase 3 facts include:
   multi-instance-safe worker leases and marketplace-scoped recovery
 - platform object-storage abstraction with local development and production
   S3-compatible implementations
-- bounded Poppler extraction and isolated `flipkart-text-v2` parsing with real
+- bounded Poppler extraction and isolated `flipkart-text-v3` parsing with real
   source-page traceability
-- AWB, order ID, SKU, and explicit quantity extraction
+- production-validated modern label/invoice separation, multi-signal label
+  recognition, and authoritative AWB, OD order ID, SKU-row, and explicit
+  quantity extraction
 - exact Product Master resolution with unresolved/manual-review states
 - duplicate identifier protection, visible processing errors, retry support,
   authorization, entitlements, audit events, and a functional processing UI
@@ -42,9 +45,13 @@ Implemented Phase 3 facts include:
 
 ## Blocking Issues
 
-- [ ] Validate representative production Flipkart PDF formats; only sanitized
-  fixtures have been validated.
-- [ ] Pass external architecture review.
+No known Phase 3 implementation or architecture-review blockers remain. Owner
+approval is still required; this status does not start or authorize Phase 4.
+
+[x] Public/sample Flipkart PDF compatibility validation completed.
+[x] Representative production workflow validation completed against nine
+original PDFs (84 pages) and nine CropBox counterparts (84 pages).
+[x] External architecture review passed.
 
 ## Explicitly Forbidden Work
 
