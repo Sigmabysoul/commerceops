@@ -113,6 +113,20 @@ configuration changes do not rewrite historical workload.
 
 All endpoints use the authenticated server-side company context. Errors use the existing `{ "error": { "code", "message" } }` envelope.
 
+## Dashboard and reporting
+
+`GET /api/v1/reports/dashboard` requires `reports.view`. It accepts required
+RFC3339 `from` and `to` instants using inclusive-start/exclusive-end semantics,
+plus optional `marketplace`, `product_id`, `limit`, and `offset` filters. Ranges
+are limited to 366 days. Explicit offsets preserve Today/Yesterday boundaries
+in the operator's timezone while PostgreSQL compares authoritative
+`timestamptz` values.
+
+Marketplace, processing, batch, and print metrics derive from their owning
+records. Inventory snapshots and ledger movement are returned only when the
+principal also has the `inventory` entitlement and `inventory.view`; otherwise
+`inventory_access` is false and restricted fields are omitted.
+
 ## Inventory ledger
 
 Inventory endpoints require the `inventory` entitlement. Commands accept a

@@ -22,6 +22,7 @@ import (
 	"github.com/commerceops/commerceops/services/api/internal/platform/pdfextractor"
 	"github.com/commerceops/commerceops/services/api/internal/platform/pdfgenerator"
 	"github.com/commerceops/commerceops/services/api/internal/product"
+	"github.com/commerceops/commerceops/services/api/internal/reporting"
 )
 
 func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
@@ -39,6 +40,7 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	coreHTTP := core.NewHTTPHandler(core.NewService(db, authorizer))
 	productHTTP := product.NewHTTPHandler(product.NewService(db, authorizer))
 	inventoryHTTP := inventory.NewHTTPHandler(inventory.NewService(db, authorizer))
+	reportingHTTP := reporting.NewHTTPHandler(reporting.NewService(db, authorizer))
 	storage, err := newObjectStorage(ctx, cfg)
 	if err != nil {
 		return err
@@ -90,6 +92,7 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	mux.Handle("/api/v1/inventory/batches/{batch_id}/confirm-outbound", authHTTP.RequireSession(http.HandlerFunc(inventoryHTTP.EcommerceOutbound)))
 	mux.Handle("/api/v1/inventory/reservations", authHTTP.RequireSession(http.HandlerFunc(inventoryHTTP.Reservations)))
 	mux.Handle("/api/v1/inventory/reservations/{reservation_id}/release", authHTTP.RequireSession(http.HandlerFunc(inventoryHTTP.ReleaseReservation)))
+	mux.Handle("/api/v1/reports/dashboard", authHTTP.RequireSession(http.HandlerFunc(reportingHTTP.Dashboard)))
 	server := &http.Server{Addr: cfg.HTTPAddr, Handler: httpserver.Middleware(logger, cfg.AllowedOrigins, mux), ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 60 * time.Second}
 
 	errCh := make(chan error, 1)

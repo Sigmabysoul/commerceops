@@ -74,6 +74,18 @@ inside one application; it does not imply microservices.
 - **Forbidden leakage:** no other module may update stock directly. Every
   mutation must create an inventory transaction through this domain.
 
+## Reporting (`internal/reporting`)
+
+- **Owns:** tenant-scoped operational read queries, range/filter validation,
+  dashboard response composition, and reporting pagination.
+- **Does not own:** marketplace/order state, batch or print state, product
+  identity, inventory balances, or movement rules.
+- **Allowed dependencies:** authenticated principals, centralized
+  authorization, and read-only queries over approved authoritative domains.
+- **Forbidden leakage:** reporting must not maintain independent counters,
+  mutate source records, infer stock from PDFs, or disclose inventory without
+  inventory entitlement and permission.
+
 ## Printing (future, locked)
 
 - **Owns:** when approved, print-ready output, print jobs, printer state, and

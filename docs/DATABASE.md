@@ -54,3 +54,8 @@ allowed per company/batch/product. Reservation source uniqueness prevents
 duplicate holds; company/status/product indexes support bounded operational
 reads. Reservation create/release updates cached `reserved` atomically without
 changing on-hand stock.
+
+Phase 6 migration `000011_dashboard_reporting` adds `reports.view` and
+company/date/status indexes supporting reporting filters. It introduces no
+report counters or aggregate tables: marketplace, batch, print, and inventory
+tables remain authoritative and reporting queries are rebuild-free by design.

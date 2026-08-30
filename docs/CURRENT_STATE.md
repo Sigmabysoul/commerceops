@@ -2,24 +2,24 @@
 
 ## Current Phase
 
-Phase 5 — Inventory
+Phase 6 — Dashboard and Reporting
 
 ## Current Branch
 
-`phase/05-inventory`
+`phase/06-dashboard-reporting`
 
 ## Approved Baseline
 
-Phase 4 approved baseline:
+Phase 5 approved baseline:
 
-`534b6d1dd850d9688208c95e429d7446036d3bf8`
+`c573c6714d608cf2e41ba62dabfe5429479d9042`
 
 ## Phase Status
 
-`IMPLEMENTATION_IN_PROGRESS`
+`IMPLEMENTATION_COMPLETE_AWAITING_EXTERNAL_REVIEW`
 
-Phases 0–4 are approved. The owner authorized Phase 5 after the Phase 4
-acceptance check. Phase 6 is not authorized.
+Phases 0–5 are approved. The owner approved the Phase 5 baseline and explicitly
+authorized Phase 6 on 2026-08-30.
 
 ## Approved Phases
 
@@ -28,8 +28,36 @@ acceptance check. Phase 6 is not authorized.
 - Phase 2 — Product Master
 - Phase 3 — Flipkart Processing
 - Phase 4 — Batch + Printing
+- Phase 5 — Inventory
 
-## Phase 5 Goal
+## Phase 6 Goal
+
+Build a tenant-scoped operational dashboard from authoritative Product Master,
+marketplace, batch/printing, and inventory records without introducing a second
+source of business truth.
+
+## Phase 6 Implementation Strategy
+
+### Batch A — Reporting API and read queries
+
+- [x] tenant-scoped dashboard summary query
+- [x] explicit RFC3339 range and timezone-boundary semantics
+- [x] marketplace breakdown and review/failure summary
+- [x] inventory snapshot and ledger-derived movement
+- [x] Product Master movement pagination
+- [x] `reports.view` and conditional inventory authorization
+- [x] reporting filter indexes without aggregate counters
+
+### Batch B — Operational dashboard frontend
+
+- [x] Today, Yesterday, and custom date filters
+- [x] marketplace filter
+- [x] large summary metrics
+- [x] marketplace and queue tables
+- [x] inventory snapshot and product movement table
+- [x] PostgreSQL-backed end-to-end verification
+
+## Approved Phase 5 Record
 
 Implement one centralized, tenant-scoped inventory domain using canonical
 Product Master IDs and an immutable transaction ledger. Every stock mutation
@@ -39,30 +67,30 @@ must be transactional, idempotent, authorized, auditable, and concurrency-safe.
 
 ### Batch A — Ledger foundation and manual operations
 
-- [ ] immutable tenant/product inventory ledger
-- [ ] transactionally locked cached balances
-- [ ] stock-in command
-- [ ] manual adjustment and correction commands
-- [ ] negative-stock prevention
-- [ ] idempotency and canonical-product enforcement
-- [ ] inventory read APIs and transaction filters
-- [ ] permissions, entitlement, and audit integration
-- [ ] PostgreSQL concurrency, rollback, isolation, and load tests
-- [ ] API/OpenAPI/database documentation
+- [x] immutable tenant/product inventory ledger
+- [x] transactionally locked cached balances
+- [x] stock-in command
+- [x] manual adjustment and correction commands
+- [x] negative-stock prevention
+- [x] idempotency and canonical-product enforcement
+- [x] inventory read APIs and transaction filters
+- [x] permissions, entitlement, and audit integration
+- [x] PostgreSQL concurrency, rollback, isolation, and load tests
+- [x] API/OpenAPI/database documentation
 
 ### Batch B — Ecommerce outbound integration
 
-- [ ] explicit authorized outbound-confirmation trigger
-- [ ] atomic and idempotent `ECOMMERCE_OUT` from batch Product Master totals
-- [ ] entire-batch rollback on insufficient stock
-- [ ] explicit reprint inventory-neutral regression coverage
+- [x] explicit authorized outbound-confirmation trigger
+- [x] atomic and idempotent `ECOMMERCE_OUT` from batch Product Master totals
+- [x] entire-batch rollback on insufficient stock
+- [x] explicit reprint inventory-neutral regression coverage
 
 ### Batch C — Reservation foundation and frontend
 
-- [ ] source-linked reservation lifecycle
-- [ ] on-hand, reserved, and available views
-- [ ] inventory dashboard, history, stock-in, and adjustment UI
-- [ ] end-to-end verification
+- [x] source-linked reservation lifecycle
+- [x] on-hand, reserved, and available views
+- [x] inventory dashboard, history, stock-in, and adjustment UI
+- [x] end-to-end verification
 
 ## Approved Phase 4 Record
 
@@ -244,9 +272,8 @@ Do not automatically begin the next batch after completing one if the task expli
 
 ## Blocking Issues
 
-None for Phase 5 Batch A. Browser/native printing still cannot report physical
-printer completion, so Phase 4 intentionally records system-side PDF readiness.
-Phase 6 is not authorized.
+None. Phase 6 intentionally reports system-side PDF readiness because
+browser/native printing cannot authoritatively report physical printer completion.
 
 ## Last Verification
 
@@ -319,5 +346,20 @@ including:
 
 ## Next Allowed Task
 
-Implement and verify Phase 5 Batch A. Stop for review before ecommerce outbound
-or reservation work.
+Perform external architecture and owner review of the complete Phase 6 working
+tree. Do not begin Phase 7/Amazon without explicit authorization.
+
+## Phase 6 Verification
+
+Phase 6 passed the full verification gate against a freshly initialized,
+migrated disposable PostgreSQL 18.6 database through migration `000011`,
+including:
+
+- tenant isolation and `reports.view` enforcement
+- inventory entitlement and `inventory.view` field-level disclosure controls
+- explicit timezone-offset and inclusive-start/exclusive-end date boundaries
+- authoritative marketplace order, Product Master quantity, and inventory totals
+- empty/restricted inventory response behavior and reporting pagination validation
+- migration `000011` up/down coverage
+- the complete PostgreSQL-backed Go suite, Go vet/build, frontend typecheck,
+  lint, production build, and `git diff --check`

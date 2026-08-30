@@ -13,6 +13,9 @@ balance cache, and granular inventory permissions.
 the `ecommerce_out` ledger type, source-linked reservation lifecycle, supporting
 indexes, and `inventory.dispatch` permission.
 
+`000011_dashboard_reporting` adds the basic reporting permission and
+company/date/status indexes. It adds no reporting tables or duplicated counters.
+
 ```sh
 make migrate
 ```
