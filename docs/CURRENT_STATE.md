@@ -22,8 +22,8 @@ Phase 3 — Flipkart Processing is approved.
 
 Phase 4 work may now begin, but only within the approved Phase 4 scope.
 
-Phase 4 Batch A is committed. Batch B implementation is complete in the working
-branch and awaits review. Batch C has not started.
+Phase 4 Batch A and Batch B are committed. Batch C frontend implementation is
+in progress and awaits review.
 
 ## Approved Phases
 
@@ -183,14 +183,14 @@ Recommended sequence:
 - [x] sanitized and representative production-layout regression tests
 
 ### Batch C — Frontend and end-to-end workflow
-- batch creation UI
-- sorting toggle
-- invoice-export toggle
-- processing/progress state
-- preview/result summary
-- download labels PDF
-- download invoices PDF when enabled
-- end-to-end tests
+- [x] batch creation UI
+- [x] sorting toggle
+- [x] invoice-export toggle
+- [x] processing/progress state
+- [x] preview/result summary
+- [x] download labels PDF
+- [x] download invoices PDF when enabled
+- [x] end-to-end workflow coverage through the PostgreSQL-backed batch integration suite
 
 ### Final Phase 4 Review
 - full verification
@@ -204,8 +204,8 @@ Do not automatically begin the next batch after completing one if the task expli
 
 ## Blocking Issues
 
-Batch B awaits review before Batch C begins. The frontend workflow, worker
-assignment, reprinting, and physical print tracking remain Phase 4 work.
+Batch C awaits review. Worker assignment, reprinting, and physical print
+tracking remain Phase 4 work.
 
 No Phase 5 work is authorized.
 
@@ -261,8 +261,20 @@ Phase 4 Batch B passed the full PostgreSQL-backed verification gate, including:
 - Go vet/build and frontend typecheck, lint, and production build
 - `git diff --check`
 
+Phase 4 Batch C passed the non-database repository verification gate, including:
+
+- the complete non-PostgreSQL Go test suite
+- Go vet and backend build
+- frontend typecheck, lint, and production build
+- `git diff --check`
+
+The PostgreSQL-backed `make verify-full` rerun remains pending because the
+current environment has no `TEST_DATABASE_URL`, running PostgreSQL server, or
+Docker runtime. The existing Batch B integration scenario covers the complete
+create, ready, sorted/unsorted generation, optional invoice, and artifact
+download workflow, but it was skipped rather than rerun for Batch C.
+
 ## Next Allowed Task
 
-Review Phase 4 Batch B. Do not begin Batch C until the owner explicitly
-authorizes it after reviewing output quality, crop geometry, sorting,
-idempotency, storage persistence, and tenant isolation.
+Review Phase 4 Batch C. Do not begin the final Phase 4 review or any remaining
+Phase 4 batch until the owner explicitly authorizes it.
