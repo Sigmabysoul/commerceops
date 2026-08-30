@@ -6,6 +6,13 @@ Migration files use the sequential format `NNNNNN_description.up.sql` and `NNNNN
 
 `000001_core_platform` establishes the Phase 1 company, identity, employee, authorization, entitlement, session and audit tables. `000002_tenant_sessions` binds each session to a verified company membership with a composite foreign key. `000003_product_master` adds tenant products, normalized marketplace references and deterministic SKU mappings. `000004_flipkart_processing` adds Phase 3 source, job, order, item, and error records. `000005_flipkart_worker_leases` adds multi-instance-safe processing ownership and lease expiry. `000006_batch_foundation` adds Phase 4 tenant batches, ordered membership, idempotency, and batch/printing permission definitions. `000007_print_generation` adds traceable print jobs, ordered source items, and storage-backed artifact metadata. `000008_worker_assignments_reprints` adds configurable exact-product/fallback worker rules, ready-batch assignment snapshots, and source-linked reprint metadata. Apply pending migrations through the repository command after PostgreSQL is healthy:
 
+`000009_inventory_ledger` adds the immutable Phase 5 inventory ledger, locked
+balance cache, and granular inventory permissions.
+
+`000010_inventory_outbound_reservations` adds unique ready-batch outbound events,
+the `ecommerce_out` ledger type, source-linked reservation lifecycle, supporting
+indexes, and `inventory.dispatch` permission.
+
 ```sh
 make migrate
 ```

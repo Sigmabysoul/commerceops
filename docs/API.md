@@ -113,6 +113,37 @@ configuration changes do not rewrite historical workload.
 
 All endpoints use the authenticated server-side company context. Errors use the existing `{ "error": { "code", "message" } }` envelope.
 
+## Inventory ledger
+
+Inventory endpoints require the `inventory` entitlement. Commands accept a
+canonical tenant Product Master ID, reason, and idempotency key; they never
+accept a company ID or raw marketplace SKU.
+
+| Method | Path | Permission | Purpose |
+| --- | --- | --- | --- |
+| GET | `/api/v1/inventory` | `inventory.view` | List product on-hand, reserved, and available balances |
+| GET | `/api/v1/inventory/transactions` | `inventory.view` | List ledger entries filtered by `product_id` and/or `type` |
+| POST | `/api/v1/inventory/stock-in` | `inventory.stock_in` | Record positive stock-in |
+| POST | `/api/v1/inventory/adjustments` | `inventory.adjust` | Record a nonzero reasoned manual delta |
+| POST | `/api/v1/inventory/corrections` | `inventory.adjust` | Record a compensating correction |
+| POST | `/api/v1/inventory/batches/{batch_id}/confirm-outbound` | `inventory.dispatch` | Atomically deduct a ready batch's Product Master totals once |
+| GET, POST | `/api/v1/inventory/reservations` | `inventory.view` / `inventory.adjust` | List reservations or reserve available stock for a source |
+| POST | `/api/v1/inventory/reservations/{reservation_id}/release` | `inventory.adjust` | Idempotently release an active reservation with a reason |
+
+Balance locking, ledger insertion, shared audit recording, and balance update
+occur in one PostgreSQL transaction. Negative on-hand and reductions below
+reserved stock are rejected. Ledger update/delete endpoints do not exist.
+
+The explicit ecommerce trigger is outbound confirmation of a `ready` batch.
+Upload, parsing, readiness, printing, and reprinting are inventory-neutral. A
+company/batch unique outbound event and company/source/product ledger index make
+duplicate deductions impossible. All product balances are locked in canonical
+product-ID order; any shortage rolls back the event and every product movement.
+
+Reservations are source-linked and unique per company/source/product. Creating
+one increases `reserved` without changing `on_hand`; releasing it restores
+availability. Reservation consumption is deferred to the future owning workflow.
+
 ## Flipkart processing
 
 - `POST /api/v1/flipkart/jobs` — multipart upload using field `file`; requires the `flipkart` entitlement and `labels.upload` plus `labels.process`. Returns HTTP 202 with `{job, duplicate_source}`.

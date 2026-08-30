@@ -14,6 +14,7 @@ import (
 	"github.com/commerceops/commerceops/services/api/internal/config"
 	"github.com/commerceops/commerceops/services/api/internal/core"
 	"github.com/commerceops/commerceops/services/api/internal/health"
+	"github.com/commerceops/commerceops/services/api/internal/inventory"
 	"github.com/commerceops/commerceops/services/api/internal/marketplace"
 	"github.com/commerceops/commerceops/services/api/internal/platform/database"
 	"github.com/commerceops/commerceops/services/api/internal/platform/httpserver"
@@ -37,6 +38,7 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	authorizer := authorization.NewService(db)
 	coreHTTP := core.NewHTTPHandler(core.NewService(db, authorizer))
 	productHTTP := product.NewHTTPHandler(product.NewService(db, authorizer))
+	inventoryHTTP := inventory.NewHTTPHandler(inventory.NewService(db, authorizer))
 	storage, err := newObjectStorage(ctx, cfg)
 	if err != nil {
 		return err
@@ -80,6 +82,14 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	mux.Handle("/api/v1/print-jobs/{print_job_id}", authHTTP.RequireSession(http.HandlerFunc(batchHTTP.PrintJob)))
 	mux.Handle("/api/v1/print-jobs/{print_job_id}/reprints", authHTTP.RequireSession(http.HandlerFunc(batchHTTP.Reprints)))
 	mux.Handle("/api/v1/print-artifacts/{artifact_id}", authHTTP.RequireSession(http.HandlerFunc(batchHTTP.Artifact)))
+	mux.Handle("/api/v1/inventory", authHTTP.RequireSession(http.HandlerFunc(inventoryHTTP.Balances)))
+	mux.Handle("/api/v1/inventory/transactions", authHTTP.RequireSession(http.HandlerFunc(inventoryHTTP.Transactions)))
+	mux.Handle("/api/v1/inventory/stock-in", authHTTP.RequireSession(http.HandlerFunc(inventoryHTTP.StockIn)))
+	mux.Handle("/api/v1/inventory/adjustments", authHTTP.RequireSession(http.HandlerFunc(inventoryHTTP.Adjust)))
+	mux.Handle("/api/v1/inventory/corrections", authHTTP.RequireSession(http.HandlerFunc(inventoryHTTP.Correct)))
+	mux.Handle("/api/v1/inventory/batches/{batch_id}/confirm-outbound", authHTTP.RequireSession(http.HandlerFunc(inventoryHTTP.EcommerceOutbound)))
+	mux.Handle("/api/v1/inventory/reservations", authHTTP.RequireSession(http.HandlerFunc(inventoryHTTP.Reservations)))
+	mux.Handle("/api/v1/inventory/reservations/{reservation_id}/release", authHTTP.RequireSession(http.HandlerFunc(inventoryHTTP.ReleaseReservation)))
 	server := &http.Server{Addr: cfg.HTTPAddr, Handler: httpserver.Middleware(logger, cfg.AllowedOrigins, mux), ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 60 * time.Second}
 
 	errCh := make(chan error, 1)

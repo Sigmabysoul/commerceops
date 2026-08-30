@@ -62,16 +62,17 @@ inside one application; it does not imply microservices.
   adapter; marketplace processing must not mutate inventory or implement future
   marketplace adapters outside the active phase.
 
-## Inventory (future, locked)
+## Inventory (`internal/inventory`)
 
-- **Owns:** when its phase is approved, stock ledger transactions, balances,
-  reservations, adjustments, and inventory idempotency.
+- **Owns:** stock ledger transactions, balances, source-linked reservations,
+  ready-batch ecommerce outbound confirmation, adjustments, corrections, and
+  inventory idempotency.
 - **Does not own:** marketplace parsing, returns disposition, printing, or
   product identity.
 - **Allowed dependencies:** Product Master identities, authenticated actors,
   authorization, audit, and approved domain references.
-- **Forbidden leakage:** no current module may update stock directly. Inventory
-  functionality does not yet exist and must not be inferred from future plans.
+- **Forbidden leakage:** no other module may update stock directly. Every
+  mutation must create an inventory transaction through this domain.
 
 ## Printing (future, locked)
 

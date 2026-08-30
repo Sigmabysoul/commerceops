@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: CommerceOps API
-  version: 0.4.0
+  version: 0.5.0
 paths:
   /api/v1/health:
     get:
@@ -422,6 +422,94 @@ paths:
       responses:
         "200": {description: Generated PDF artifact}
         "404": {$ref: "#/components/responses/Error"}
+  /api/v1/inventory:
+    get:
+      operationId: listInventoryBalances
+      summary: List tenant Product Master inventory balances
+      security: [{sessionCookie: []}]
+      responses:
+        "200": {description: On-hand, reserved, and available balances}
+        "403": {$ref: "#/components/responses/Error"}
+  /api/v1/inventory/transactions:
+    get:
+      operationId: listInventoryTransactions
+      summary: List immutable tenant inventory ledger entries
+      security: [{sessionCookie: []}]
+      parameters:
+        - {name: product_id, in: query, schema: {type: string, format: uuid}}
+        - {name: type, in: query, schema: {type: string, enum: [stock_in, manual_adjustment, correction, ecommerce_out]}}
+      responses:
+        "200": {description: Filtered inventory transactions}
+        "403": {$ref: "#/components/responses/Error"}
+  /api/v1/inventory/stock-in:
+    post:
+      operationId: inventoryStockIn
+      summary: Record positive stock-in through the ledger
+      security: [{sessionCookie: []}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/InventoryCommand"}}}}
+      responses:
+        "201": {description: Stock-in recorded}
+        "200": {description: Existing transaction returned for exact replay}
+        "409": {$ref: "#/components/responses/Error"}
+  /api/v1/inventory/adjustments:
+    post:
+      operationId: inventoryAdjustment
+      summary: Record a reasoned nonzero manual inventory delta
+      security: [{sessionCookie: []}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/InventoryCommand"}}}}
+      responses:
+        "201": {description: Adjustment recorded}
+        "200": {description: Existing transaction returned for exact replay}
+        "409": {$ref: "#/components/responses/Error"}
+  /api/v1/inventory/corrections:
+    post:
+      operationId: inventoryCorrection
+      summary: Record a compensating correction without rewriting history
+      security: [{sessionCookie: []}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/InventoryCommand"}}}}
+      responses:
+        "201": {description: Correction recorded}
+        "200": {description: Existing transaction returned for exact replay}
+        "409": {$ref: "#/components/responses/Error"}
+  /api/v1/inventory/batches/{batch_id}/confirm-outbound:
+    parameters:
+      - {$ref: "#/components/parameters/BatchID"}
+    post:
+      operationId: confirmInventoryEcommerceOutbound
+      summary: Atomically deduct a ready batch's Product Master totals once
+      security: [{sessionCookie: []}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/IdempotentCommand"}}}}
+      responses:
+        "201": {description: Ecommerce outbound transactions recorded}
+        "200": {description: Existing transactions returned for exact replay}
+        "409": {$ref: "#/components/responses/Error"}
+  /api/v1/inventory/reservations:
+    get:
+      operationId: listInventoryReservations
+      security: [{sessionCookie: []}]
+      parameters:
+        - {name: status, in: query, schema: {type: string, enum: [active, released]}}
+      responses:
+        "200": {description: Tenant reservations}
+    post:
+      operationId: createInventoryReservation
+      security: [{sessionCookie: []}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/ReservationCommand"}}}}
+      responses:
+        "201": {description: Stock reserved}
+        "200": {description: Existing reservation returned for exact replay}
+        "409": {$ref: "#/components/responses/Error"}
+  /api/v1/inventory/reservations/{reservation_id}/release:
+    parameters:
+      - {name: reservation_id, in: path, required: true, schema: {type: string, format: uuid}}
+    post:
+      operationId: releaseInventoryReservation
+      security: [{sessionCookie: []}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/ReasonedIdempotentCommand"}}}}
+      responses:
+        "201": {description: Reservation released}
+        "200": {description: Existing release returned for exact replay}
+        "409": {$ref: "#/components/responses/Error"}
 components:
   securitySchemes:
     sessionCookie:
@@ -538,6 +626,41 @@ components:
       required: [reason, idempotency_key]
       properties:
         reason: {type: string, minLength: 1, maxLength: 500}
+        idempotency_key: {type: string, minLength: 1, maxLength: 128}
+    InventoryCommand:
+      type: object
+      additionalProperties: false
+      required: [product_id, quantity, reason, idempotency_key]
+      properties:
+        product_id: {type: string, format: uuid}
+        quantity: {type: integer, format: int64}
+        reason: {type: string, minLength: 1, maxLength: 500}
+        reference_type: {type: [string, "null"]}
+        reference_id: {type: [string, "null"]}
+        idempotency_key: {type: string, minLength: 1, maxLength: 128}
+    IdempotentCommand:
+      type: object
+      additionalProperties: false
+      required: [idempotency_key]
+      properties:
+        idempotency_key: {type: string, minLength: 1, maxLength: 128}
+    ReasonedIdempotentCommand:
+      type: object
+      additionalProperties: false
+      required: [reason, idempotency_key]
+      properties:
+        reason: {type: string, minLength: 1, maxLength: 500}
+        idempotency_key: {type: string, minLength: 1, maxLength: 128}
+    ReservationCommand:
+      type: object
+      additionalProperties: false
+      required: [product_id, quantity, reason, source_type, source_id, idempotency_key]
+      properties:
+        product_id: {type: string, format: uuid}
+        quantity: {type: integer, format: int64, minimum: 1}
+        reason: {type: string, minLength: 1, maxLength: 500}
+        source_type: {type: string, minLength: 1, maxLength: 100}
+        source_id: {type: string, minLength: 1, maxLength: 200}
         idempotency_key: {type: string, minLength: 1, maxLength: 128}
     ErrorEnvelope:
       type: object

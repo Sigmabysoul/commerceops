@@ -296,6 +296,8 @@ func TestBatchFoundationPostgreSQLBehavior(t *testing.T) {
 			t.Fatalf("reprint permission error=%v", err)
 		}
 		execBatchTest(t, f.db, `INSERT INTO role_permissions(company_id,role_id,permission_key) VALUES($1,$2,'labels.reprint')`, f.companyA, f.roleA)
+		var inventoryBefore int
+		scanBatchTest(t, f.db, `SELECT count(*) FROM inventory_transactions WHERE company_id=$1`, []any{f.companyA}, &inventoryBefore)
 		reprinted, wasReplay, err := f.service.Reprint(ctx, f.principalA, job.ID, ReprintInput{Reason: "Damaged paper", IdempotencyKey: "reprint-one"})
 		if err != nil || wasReplay || reprinted.SourcePrintJobID == nil || *reprinted.SourcePrintJobID != job.ID || reprinted.ReprintReason == nil || *reprinted.ReprintReason != "Damaged paper" || len(reprinted.Artifacts) != 2 {
 			t.Fatalf("reprint=%#v replay=%v err=%v", reprinted, wasReplay, err)
@@ -303,6 +305,11 @@ func TestBatchFoundationPostgreSQLBehavior(t *testing.T) {
 		replayedReprint, wasReplay, err := f.service.Reprint(ctx, f.principalA, job.ID, ReprintInput{Reason: "Damaged paper", IdempotencyKey: "reprint-one"})
 		if err != nil || !wasReplay || replayedReprint.ID != reprinted.ID {
 			t.Fatalf("reprint replay=%#v replay=%v err=%v", replayedReprint, wasReplay, err)
+		}
+		var inventoryAfter int
+		scanBatchTest(t, f.db, `SELECT count(*) FROM inventory_transactions WHERE company_id=$1`, []any{f.companyA}, &inventoryAfter)
+		if inventoryAfter != inventoryBefore {
+			t.Fatalf("reprint changed inventory transactions: before=%d after=%d", inventoryBefore, inventoryAfter)
 		}
 		var reprintAudits int
 		scanBatchTest(t, f.db, `SELECT count(*) FROM audit_logs WHERE company_id=$1 AND action='print.reprinted' AND target_id=$2`, []any{f.companyA, reprinted.ID}, &reprintAudits)

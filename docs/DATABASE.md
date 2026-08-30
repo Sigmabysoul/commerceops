@@ -41,3 +41,16 @@ Phase 4 Batch B migration `000007_print_generation` adds `print_jobs`, ordered
 preserve the batch, normalized order, source file, processing job, and source
 page relationship. Artifacts record storage keys, hashes, sizes, page counts,
 and generation configuration. These records have no inventory side effects.
+
+Phase 5 migration `000009_inventory_ledger` adds tenant/Product Master scoped
+`inventory_balances` and immutable `inventory_transactions`. Balance rows are a
+transactionally locked cache; ledger entries preserve previous/resulting
+balances, actor, reason, reference, request hash, and idempotency key. A
+database trigger rejects ledger updates and deletes.
+
+Migration `000010_inventory_outbound_reservations` adds unique ready-batch
+outbound events and source-linked reservations. One ecommerce ledger entry is
+allowed per company/batch/product. Reservation source uniqueness prevents
+duplicate holds; company/status/product indexes support bounded operational
+reads. Reservation create/release updates cached `reserved` atomically without
+changing on-hand stock.
