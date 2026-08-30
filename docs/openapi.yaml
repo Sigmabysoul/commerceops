@@ -340,6 +340,29 @@ paths:
       responses:
         "200": {description: Tenant-scoped eligible normalized orders}
         "403": {$ref: "#/components/responses/Error"}
+  /api/v1/worker-assignment-rules:
+    get:
+      operationId: listWorkerAssignmentRules
+      summary: List tenant worker assignment rules
+      security: [{sessionCookie: []}]
+      parameters:
+        - {name: marketplace, in: query, required: true, schema: {type: string, enum: [flipkart]}}
+      responses:
+        "200": {description: Exact-product rules and required marketplace fallback}
+        "403": {$ref: "#/components/responses/Error"}
+    put:
+      operationId: replaceWorkerAssignmentRules
+      summary: Atomically replace tenant worker assignment rules
+      security: [{sessionCookie: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ReplaceWorkerAssignmentRules"}
+      responses:
+        "200": {description: Replaced assignment rules}
+        "400": {$ref: "#/components/responses/Error"}
+        "403": {$ref: "#/components/responses/Error"}
   /api/v1/batches/{batch_id}/print-jobs:
     parameters:
       - {$ref: "#/components/parameters/BatchID"}
@@ -357,6 +380,13 @@ paths:
         "200": {description: Existing print job returned for an idempotent replay}
         "409": {$ref: "#/components/responses/Error"}
         "422": {$ref: "#/components/responses/Error"}
+    get:
+      operationId: listBatchPrintJobs
+      summary: List print and reprint history for a batch
+      security: [{sessionCookie: []}]
+      responses:
+        "200": {description: Tenant-scoped print history with artifacts}
+        "403": {$ref: "#/components/responses/Error"}
   /api/v1/print-jobs/{print_job_id}:
     parameters:
       - {$ref: "#/components/parameters/PrintJobID"}
@@ -365,6 +395,23 @@ paths:
       security: [{sessionCookie: []}]
       responses:
         "200": {description: Tenant print job and artifact metadata}
+        "404": {$ref: "#/components/responses/Error"}
+  /api/v1/print-jobs/{print_job_id}/reprints:
+    parameters:
+      - {$ref: "#/components/parameters/PrintJobID"}
+    post:
+      operationId: reprintPrintJob
+      summary: Create an idempotent source-linked reprint with a reason
+      security: [{sessionCookie: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ReprintJob"}
+      responses:
+        "201": {description: Reprint generated}
+        "200": {description: Existing reprint returned for an idempotent replay}
+        "403": {$ref: "#/components/responses/Error"}
         "404": {$ref: "#/components/responses/Error"}
   /api/v1/print-artifacts/{artifact_id}:
     parameters:
@@ -466,6 +513,31 @@ components:
       properties:
         sort_labels: {type: boolean, default: false}
         export_invoices: {type: boolean, default: false}
+        idempotency_key: {type: string, minLength: 1, maxLength: 128}
+    ReplaceWorkerAssignmentRules:
+      type: object
+      additionalProperties: false
+      required: [marketplace_key, rules]
+      properties:
+        marketplace_key: {type: string, enum: [flipkart]}
+        rules:
+          type: array
+          minItems: 1
+          maxItems: 1000
+          items:
+            type: object
+            additionalProperties: false
+            required: [employee_id, priority]
+            properties:
+              product_id: {type: [string, "null"], format: uuid}
+              employee_id: {type: string, format: uuid}
+              priority: {type: integer, minimum: 0, maximum: 10000}
+    ReprintJob:
+      type: object
+      additionalProperties: false
+      required: [reason, idempotency_key]
+      properties:
+        reason: {type: string, minLength: 1, maxLength: 500}
         idempotency_key: {type: string, minLength: 1, maxLength: 128}
     ErrorEnvelope:
       type: object

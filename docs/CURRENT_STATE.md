@@ -16,14 +16,12 @@ Phase 3 approved baseline:
 
 ## Phase Status
 
-`IMPLEMENTATION_IN_PROGRESS`
+`IMPLEMENTATION_COMPLETE_READY_FOR_EXTERNAL_REVIEW`
 
 Phase 3 — Flipkart Processing is approved.
 
-Phase 4 work may now begin, but only within the approved Phase 4 scope.
-
-Phase 4 Batch A and Batch B are committed. Batch C frontend implementation is
-in progress and awaits review.
+Phase 4 implementation is complete and awaits owner/external architecture
+review. Phase 5 is not authorized.
 
 ## Approved Phases
 
@@ -193,19 +191,28 @@ Recommended sequence:
 - [x] end-to-end workflow coverage through the PostgreSQL-backed batch integration suite
 
 ### Final Phase 4 Review
-- full verification
-- tenant isolation
-- idempotency/reprint safety
-- artifact traceability
-- PDF quality/barcode preservation
-- external architecture review
+- [x] full PostgreSQL-backed verification
+- [x] tenant isolation
+- [x] idempotency/reprint safety
+- [x] artifact traceability
+- [x] PDF quality/barcode preservation regression coverage
+- [ ] external architecture review
+
+### Batch D — Worker assignments and reprints
+- [x] configurable exact-product rules and required marketplace fallback
+- [x] immutable ready-batch assignment snapshots and worker totals
+- [x] assignment management authorization and audit record
+- [x] source-linked reprint jobs with required reason
+- [x] `labels.reprint` enforcement, idempotency, history, and audit record
+- [x] frontend assignment, worker-total, print-history, and reprint workflow
 
 Do not automatically begin the next batch after completing one if the task explicitly requires review.
 
 ## Blocking Issues
 
-Batch C awaits review. Worker assignment, reprinting, and physical print
-tracking remain Phase 4 work.
+External architecture review and owner approval remain. Browser/native printing
+cannot report physical printer completion, so Phase 4 intentionally records
+system-side PDF readiness rather than claiming physical print success.
 
 No Phase 5 work is authorized.
 
@@ -261,20 +268,25 @@ Phase 4 Batch B passed the full PostgreSQL-backed verification gate, including:
 - Go vet/build and frontend typecheck, lint, and production build
 - `git diff --check`
 
-Phase 4 Batch C passed the non-database repository verification gate, including:
+Phase 4 Batch C and final Batch D passed the full PostgreSQL-backed repository
+verification gate against a migrated disposable PostgreSQL 18.6 database,
+including:
 
-- the complete non-PostgreSQL Go test suite
+- migration `000008` up/down coverage
+- tenant-scoped exact-product and fallback assignment resolution
+- immutable ready-batch assignment snapshots and derived worker totals
+- assignment management permission enforcement and auditability
+- source-linked reasoned reprints, `labels.reprint`, exact idempotent replay,
+  print history, artifact generation, and audit coverage
+- client-side retry key reuse for exact batch and print requests
+- the complete PostgreSQL, private Flipkart PDF, worker-lease, object-storage,
+  PDF geometry, and barcode-preservation regression suites
 - Go vet and backend build
 - frontend typecheck, lint, and production build
 - `git diff --check`
 
-The PostgreSQL-backed `make verify-full` rerun remains pending because the
-current environment has no `TEST_DATABASE_URL`, running PostgreSQL server, or
-Docker runtime. The existing Batch B integration scenario covers the complete
-create, ready, sorted/unsorted generation, optional invoice, and artifact
-download workflow, but it was skipped rather than rerun for Batch C.
-
 ## Next Allowed Task
 
-Review Phase 4 Batch C. Do not begin the final Phase 4 review or any remaining
-Phase 4 batch until the owner explicitly authorizes it.
+Perform external architecture review and owner acceptance of Phase 4. Do not
+begin Phase 5 until that review is approved and the owner explicitly authorizes
+the next phase.

@@ -61,8 +61,8 @@ The OpenAPI source is `docs/openapi.yaml`. It must be updated whenever the publi
 ## Batch foundation
 
 Batch endpoints require the Flipkart entitlement and existing `labels.process`
-permission. `labels.print` and `labels.reprint` are reserved for the later output
-and reprint APIs.
+permission. `labels.print` covers generation and downloads, while
+`labels.reprint` separately authorizes source-linked reprints.
 
 | Method | Path | Purpose |
 | --- | --- | --- |
@@ -84,8 +84,10 @@ Print generation requires the Flipkart entitlement and `labels.print`.
 | Method | Path | Purpose |
 | --- | --- | --- |
 | POST | `/api/v1/batches/{batch_id}/print-jobs` | Generate idempotent label and optional invoice artifacts for a ready batch |
+| GET | `/api/v1/batches/{batch_id}/print-jobs` | List print and reprint history for a batch |
 | GET | `/api/v1/print-jobs/{print_job_id}` | Read tenant-scoped generation status and artifact metadata |
 | GET | `/api/v1/print-artifacts/{artifact_id}` | Download a tenant-scoped generated PDF |
+| POST | `/api/v1/print-jobs/{print_job_id}/reprints` | Regenerate source configuration with a required reason and idempotency key |
 
 The generation request accepts `sort_labels`, `export_invoices`, and a required
 idempotency key. Sorting uses normalized Product Master code, normalized raw SKU,
@@ -93,6 +95,20 @@ marketplace order ID, and original batch position as deterministic tie-breakers.
 When sorting is disabled, original batch position is preserved. Generation is
 bounded and synchronous in Batch B; persisted status remains visible as `ready`
 or `failed`.
+
+Reprints create a separate print job with `source_print_job_id` and
+`reprint_reason`; they do not mutate the source job or any inventory domain.
+
+## Worker assignments
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| GET | `/api/v1/worker-assignment-rules?marketplace=flipkart` | List exact-product rules and the marketplace fallback worker (`labels.process`) |
+| PUT | `/api/v1/worker-assignment-rules` | Atomically replace rules (`employees.manage`) |
+
+Each configuration contains exactly one fallback. Exact Product Master rules
+override it. Readying a batch snapshots assignments and worker totals so later
+configuration changes do not rewrite historical workload.
 # API
 
 All endpoints use the authenticated server-side company context. Errors use the existing `{ "error": { "code", "message" } }` envelope.

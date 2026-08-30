@@ -23,13 +23,14 @@ import (
 const maxBatchMembers = 500
 
 var (
-	ErrNotFound     = errors.New("batch not found")
-	ErrInvalidInput = errors.New("invalid batch input")
-	ErrConflict     = errors.New("batch conflicts with existing data")
-	ErrIneligible   = errors.New("one or more orders are not eligible")
-	ErrInvalidState = errors.New("invalid batch state transition")
-	ErrUnresolved   = errors.New("batch contains unresolved items")
-	uuidRE          = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$`)
+	ErrNotFound          = errors.New("batch not found")
+	ErrInvalidInput      = errors.New("invalid batch input")
+	ErrConflict          = errors.New("batch conflicts with existing data")
+	ErrIneligible        = errors.New("one or more orders are not eligible")
+	ErrInvalidState      = errors.New("invalid batch state transition")
+	ErrUnresolved        = errors.New("batch contains unresolved items")
+	ErrAssignmentMissing = errors.New("batch contains products without worker assignments")
+	uuidRE               = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$`)
 )
 
 type Service struct {
@@ -53,6 +54,7 @@ type Batch struct {
 	UpdatedAt       time.Time      `json:"updated_at"`
 	Members         []Member       `json:"members,omitempty"`
 	ProductTotals   []ProductTotal `json:"product_totals,omitempty"`
+	WorkerTotals    []WorkerTotal  `json:"worker_totals,omitempty"`
 }
 
 type Member struct {
@@ -243,6 +245,10 @@ func (s *Service) get(ctx context.Context, companyID, id string) (Batch, error) 
 		return Batch{}, err
 	}
 	item.ProductTotals, err = s.productTotals(ctx, companyID, id)
+	if err != nil {
+		return Batch{}, err
+	}
+	item.WorkerTotals, err = s.workerTotals(ctx, companyID, id)
 	return item, err
 }
 
@@ -263,8 +269,8 @@ func (s *Service) transition(ctx context.Context, principal auth.Principal, id, 
 		return Batch{}, err
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
-	var status string
-	if err = tx.QueryRow(ctx, `SELECT status FROM batches WHERE company_id=$1 AND id=$2 FOR UPDATE`, principal.CompanyID, id).Scan(&status); err != nil {
+	var status, marketplace string
+	if err = tx.QueryRow(ctx, `SELECT status,marketplace_key FROM batches WHERE company_id=$1 AND id=$2 FOR UPDATE`, principal.CompanyID, id).Scan(&status, &marketplace); err != nil {
 		return Batch{}, mapDBError(err)
 	}
 	if status == target {
@@ -283,6 +289,9 @@ func (s *Service) transition(ctx context.Context, principal auth.Principal, id, 
 		}
 		if unresolved > 0 {
 			return Batch{}, ErrUnresolved
+		}
+		if err = snapshotAssignments(ctx, tx, principal.CompanyID, id, marketplace); err != nil {
+			return Batch{}, err
 		}
 	}
 	timestampColumn, action := "ready_at", "batch.ready"

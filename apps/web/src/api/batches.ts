@@ -30,6 +30,25 @@ export type ProductTotal = {
   order_line_count: number;
 };
 
+export type WorkerTotal = {
+  employee_id: string;
+  employee_name: string;
+  total_quantity: number;
+  order_line_count: number;
+  product_count: number;
+};
+
+export type AssignmentRule = {
+  id: string;
+  marketplace_key: "flipkart";
+  product_id: string | null;
+  product_code: string | null;
+  product_name: string | null;
+  employee_id: string;
+  employee_name: string;
+  priority: number;
+};
+
 export type Batch = {
   id: string;
   marketplace_key: "flipkart";
@@ -43,6 +62,7 @@ export type Batch = {
   updated_at: string;
   members?: BatchMember[];
   product_totals?: ProductTotal[];
+  worker_totals?: WorkerTotal[];
 };
 
 export type PrintArtifact = {
@@ -60,6 +80,8 @@ export type PrintJob = {
   sort_labels: boolean;
   export_invoices: boolean;
   generation_version: string;
+  source_print_job_id: string | null;
+  reprint_reason: string | null;
   error_code: string | null;
   error_message: string | null;
   completed_at: string | null;
@@ -95,6 +117,16 @@ export const batchAPI = {
     body: JSON.stringify({ sort_labels: sortLabels, export_invoices: exportInvoices, idempotency_key: idempotencyKey }),
   }),
   printJob: (id: string) => request<{ print_job: PrintJob }>(`/print-jobs/${id}`),
+  printJobs: (batchID: string) => request<{ print_jobs: PrintJob[] }>(`/batches/${batchID}/print-jobs`),
+  reprint: (printJobID: string, reason: string, idempotencyKey: string) => request<{ print_job: PrintJob; idempotent_replay: boolean }>(`/print-jobs/${printJobID}/reprints`, {
+    method: "POST",
+    body: JSON.stringify({ reason, idempotency_key: idempotencyKey }),
+  }),
+  assignmentRules: () => request<{ worker_assignment_rules: AssignmentRule[] }>("/worker-assignment-rules?marketplace=flipkart"),
+  replaceAssignmentRules: (rules: Array<{ product_id: string | null; employee_id: string; priority: number }>) => request<{ worker_assignment_rules: AssignmentRule[] }>("/worker-assignment-rules", {
+    method: "PUT",
+    body: JSON.stringify({ marketplace_key: "flipkart", rules }),
+  }),
   downloadArtifact: async (artifact: PrintArtifact) => {
     const response = await fetch(`${API_BASE_URL}/api/v1/print-artifacts/${artifact.id}`, { credentials: "include" });
     if (!response.ok) {

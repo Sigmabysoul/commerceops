@@ -20,13 +20,14 @@ import (
 )
 
 type batchFixture struct {
-	db                         *pgxpool.Pool
-	service                    *Service
-	companyA, companyB, userID string
-	roleA, productID           string
-	principalA, principalB     auth.Principal
-	storage                    *objectstorage.Local
-	generator                  *recordingGenerator
+	db                               *pgxpool.Pool
+	service                          *Service
+	companyA, companyB, userID       string
+	roleA, productID                 string
+	defaultWorkerID, productWorkerID string
+	principalA, principalB           auth.Principal
+	storage                          *objectstorage.Local
+	generator                        *recordingGenerator
 }
 
 type recordingGenerator struct {
@@ -66,7 +67,7 @@ func setupBatch(t *testing.T) *batchFixture {
 	for _, company := range []string{f.companyA, f.companyB} {
 		var role string
 		scanBatchTest(t, db, `INSERT INTO roles(company_id,name) VALUES($1,'Batch Operator') RETURNING id`, []any{company}, &role)
-		execBatchTest(t, db, `INSERT INTO role_permissions(company_id,role_id,permission_key) VALUES($1,$2,'labels.process'),($1,$2,'labels.print')`, company, role)
+		execBatchTest(t, db, `INSERT INTO role_permissions(company_id,role_id,permission_key) VALUES($1,$2,'labels.process'),($1,$2,'labels.print'),($1,$2,'labels.reprint'),($1,$2,'employees.manage')`, company, role)
 		execBatchTest(t, db, `INSERT INTO company_user_roles(company_id,user_id,role_id) VALUES($1,$2,$3)`, company, f.userID, role)
 		execBatchTest(t, db, `INSERT INTO module_entitlements(company_id,module_key,enabled) VALUES($1,'flipkart',true)`, company)
 		if company == f.companyA {
@@ -74,6 +75,9 @@ func setupBatch(t *testing.T) *batchFixture {
 		}
 	}
 	scanBatchTest(t, db, `INSERT INTO products(company_id,internal_code,name) VALUES($1,'P4-PRODUCT','Phase 4 Product') RETURNING id`, []any{f.companyA}, &f.productID)
+	scanBatchTest(t, db, `INSERT INTO employees(company_id,display_name) VALUES($1,'Default Worker') RETURNING id`, []any{f.companyA}, &f.defaultWorkerID)
+	scanBatchTest(t, db, `INSERT INTO employees(company_id,display_name) VALUES($1,'Product Worker') RETURNING id`, []any{f.companyA}, &f.productWorkerID)
+	execBatchTest(t, db, `INSERT INTO worker_assignment_rules(company_id,marketplace_key,product_id,employee_id,priority) VALUES($1,'flipkart',NULL,$2,100),($1,'flipkart',$3,$4,10)`, f.companyA, f.defaultWorkerID, f.productID, f.productWorkerID)
 	f.storage, err = objectstorage.NewLocal(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -162,6 +166,25 @@ func TestBatchFoundationPostgreSQLBehavior(t *testing.T) {
 		t.Fatalf("totals=%#v", created.ProductTotals)
 	}
 
+	t.Run("assignment rules require management permission and remain tenant scoped", func(t *testing.T) {
+		rules, err := f.service.ListAssignmentRules(ctx, f.principalA, "flipkart")
+		if err != nil || len(rules) != 2 {
+			t.Fatalf("rules=%#v err=%v", rules, err)
+		}
+		execBatchTest(t, f.db, `DELETE FROM role_permissions WHERE company_id=$1 AND role_id=$2 AND permission_key='employees.manage'`, f.companyA, f.roleA)
+		_, err = f.service.ReplaceAssignmentRules(ctx, f.principalA, ReplaceAssignmentRulesInput{MarketplaceKey: "flipkart", Rules: []AssignmentRuleInput{{EmployeeID: f.defaultWorkerID, Priority: 100}}})
+		if !errors.Is(err, authorization.ErrPermissionDenied) {
+			t.Fatalf("assignment permission error=%v", err)
+		}
+		execBatchTest(t, f.db, `INSERT INTO role_permissions(company_id,role_id,permission_key) VALUES($1,$2,'employees.manage')`, f.companyA, f.roleA)
+		var otherEmployee string
+		scanBatchTest(t, f.db, `INSERT INTO employees(company_id,display_name) VALUES($1,'Other Tenant Worker') RETURNING id`, []any{f.companyB}, &otherEmployee)
+		_, err = f.service.ReplaceAssignmentRules(ctx, f.principalA, ReplaceAssignmentRulesInput{MarketplaceKey: "flipkart", Rules: []AssignmentRuleInput{{EmployeeID: otherEmployee, Priority: 100}}})
+		if !errors.Is(err, ErrInvalidInput) {
+			t.Fatalf("cross-tenant assignment error=%v", err)
+		}
+	})
+
 	t.Run("idempotent replay and key conflict", func(t *testing.T) {
 		replay, wasReplay, err := f.service.Create(ctx, f.principalA, CreateInput{MarketplaceKey: "flipkart", OrderIDs: []string{second, first}, IdempotencyKey: "resolved-batch"})
 		if err != nil || !wasReplay || replay.ID != created.ID {
@@ -203,11 +226,34 @@ func TestBatchFoundationPostgreSQLBehavior(t *testing.T) {
 			t.Fatalf("cancelled to ready error=%v", err)
 		}
 		ready, err := f.service.Ready(ctx, f.principalA, created.ID)
-		if err != nil || ready.Status != "ready" || ready.ReadyAt == nil {
+		if err != nil || ready.Status != "ready" || ready.ReadyAt == nil || len(ready.WorkerTotals) != 1 || ready.WorkerTotals[0].EmployeeID != f.productWorkerID || ready.WorkerTotals[0].TotalQuantity != 5 {
 			t.Fatalf("ready=%#v err=%v", ready, err)
 		}
 		if _, err = f.service.Cancel(ctx, f.principalA, created.ID); !errors.Is(err, ErrInvalidState) {
 			t.Fatalf("ready to cancelled error=%v", err)
+		}
+	})
+
+	t.Run("fallback assignment is snapshotted", func(t *testing.T) {
+		var fallbackProduct string
+		scanBatchTest(t, f.db, `INSERT INTO products(company_id,internal_code,name) VALUES($1,'P4-FALLBACK','Fallback Product') RETURNING id`, []any{f.companyA}, &fallbackProduct)
+		quantity := 4
+		orderID := f.order(t, f.companyA, "resolved", &fallbackProduct, &quantity)
+		item, _, err := f.service.Create(ctx, f.principalA, CreateInput{MarketplaceKey: "flipkart", OrderIDs: []string{orderID}, IdempotencyKey: "fallback-batch"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		ready, err := f.service.Ready(ctx, f.principalA, item.ID)
+		if err != nil || len(ready.WorkerTotals) != 1 || ready.WorkerTotals[0].EmployeeID != f.defaultWorkerID || ready.WorkerTotals[0].TotalQuantity != quantity {
+			t.Fatalf("fallback ready=%#v err=%v", ready, err)
+		}
+		_, err = f.service.ReplaceAssignmentRules(ctx, f.principalA, ReplaceAssignmentRulesInput{MarketplaceKey: "flipkart", Rules: []AssignmentRuleInput{{EmployeeID: f.productWorkerID, Priority: 100}, {ProductID: &f.productID, EmployeeID: f.productWorkerID, Priority: 10}}})
+		if err != nil {
+			t.Fatalf("replace assignments: %v", err)
+		}
+		historical, err := f.service.Get(ctx, f.principalA, item.ID)
+		if err != nil || historical.WorkerTotals[0].EmployeeID != f.defaultWorkerID {
+			t.Fatalf("historical assignment changed=%#v err=%v", historical.WorkerTotals, err)
 		}
 	})
 
@@ -245,6 +291,24 @@ func TestBatchFoundationPostgreSQLBehavior(t *testing.T) {
 		if _, _, err = f.service.DownloadArtifact(ctx, f.principalB, job.Artifacts[0].ID); !errors.Is(err, ErrNotFound) {
 			t.Fatalf("cross-tenant artifact error=%v", err)
 		}
+		execBatchTest(t, f.db, `DELETE FROM role_permissions WHERE company_id=$1 AND role_id=$2 AND permission_key='labels.reprint'`, f.companyA, f.roleA)
+		if _, _, err = f.service.Reprint(ctx, f.principalA, job.ID, ReprintInput{Reason: "Damaged paper", IdempotencyKey: "reprint-denied"}); !errors.Is(err, authorization.ErrPermissionDenied) {
+			t.Fatalf("reprint permission error=%v", err)
+		}
+		execBatchTest(t, f.db, `INSERT INTO role_permissions(company_id,role_id,permission_key) VALUES($1,$2,'labels.reprint')`, f.companyA, f.roleA)
+		reprinted, wasReplay, err := f.service.Reprint(ctx, f.principalA, job.ID, ReprintInput{Reason: "Damaged paper", IdempotencyKey: "reprint-one"})
+		if err != nil || wasReplay || reprinted.SourcePrintJobID == nil || *reprinted.SourcePrintJobID != job.ID || reprinted.ReprintReason == nil || *reprinted.ReprintReason != "Damaged paper" || len(reprinted.Artifacts) != 2 {
+			t.Fatalf("reprint=%#v replay=%v err=%v", reprinted, wasReplay, err)
+		}
+		replayedReprint, wasReplay, err := f.service.Reprint(ctx, f.principalA, job.ID, ReprintInput{Reason: "Damaged paper", IdempotencyKey: "reprint-one"})
+		if err != nil || !wasReplay || replayedReprint.ID != reprinted.ID {
+			t.Fatalf("reprint replay=%#v replay=%v err=%v", replayedReprint, wasReplay, err)
+		}
+		var reprintAudits int
+		scanBatchTest(t, f.db, `SELECT count(*) FROM audit_logs WHERE company_id=$1 AND action='print.reprinted' AND target_id=$2`, []any{f.companyA, reprinted.ID}, &reprintAudits)
+		if reprintAudits != 1 {
+			t.Fatalf("reprint audits=%d", reprintAudits)
+		}
 		f.generator.err = errors.New("fixture generation failure")
 		if _, _, err = f.service.Generate(ctx, f.principalA, created.ID, GenerateInput{IdempotencyKey: "print-failed"}); !errors.Is(err, ErrGenerationFailed) {
 			t.Fatalf("generation failure error=%v", err)
@@ -264,7 +328,7 @@ func TestBatchFoundationPostgreSQLBehavior(t *testing.T) {
 
 	var auditCount int
 	scanBatchTest(t, f.db, `SELECT count(*) FROM audit_logs WHERE company_id=$1 AND target_type='batch' AND action IN ('batch.created','batch.ready','batch.cancelled')`, []any{f.companyA}, &auditCount)
-	if auditCount != 4 {
+	if auditCount != 6 {
 		t.Fatalf("audit count=%d", auditCount)
 	}
 }
@@ -293,7 +357,7 @@ func TestBatchMigrationUpDown(t *testing.T) {
 		t.Fatal(err)
 	}
 	root := filepath.Join("..", "..", "migrations")
-	for _, name := range []string{"000001_core_platform.up.sql", "000002_tenant_sessions.up.sql", "000003_product_master.up.sql", "000004_flipkart_processing.up.sql", "000005_flipkart_worker_leases.up.sql", "000006_batch_foundation.up.sql", "000007_print_generation.up.sql"} {
+	for _, name := range []string{"000001_core_platform.up.sql", "000002_tenant_sessions.up.sql", "000003_product_master.up.sql", "000004_flipkart_processing.up.sql", "000005_flipkart_worker_leases.up.sql", "000006_batch_foundation.up.sql", "000007_print_generation.up.sql", "000008_worker_assignments_reprints.up.sql"} {
 		sql, readErr := os.ReadFile(filepath.Join(root, name))
 		if readErr != nil {
 			t.Fatal(readErr)
@@ -303,10 +367,10 @@ func TestBatchMigrationUpDown(t *testing.T) {
 		}
 	}
 	var exists *string
-	if err = tx.QueryRow(ctx, `SELECT to_regclass($1)`, schema+".print_jobs").Scan(&exists); err != nil || exists == nil {
+	if err = tx.QueryRow(ctx, `SELECT to_regclass($1)`, schema+".batch_worker_assignments").Scan(&exists); err != nil || exists == nil {
 		t.Fatalf("up verification=%v err=%v", exists, err)
 	}
-	down, err := os.ReadFile(filepath.Join(root, "000007_print_generation.down.sql"))
+	down, err := os.ReadFile(filepath.Join(root, "000008_worker_assignments_reprints.down.sql"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -314,8 +378,15 @@ func TestBatchMigrationUpDown(t *testing.T) {
 		t.Fatalf("down: %v", err)
 	}
 	exists = nil
-	if err = tx.QueryRow(ctx, `SELECT to_regclass($1)`, schema+".print_jobs").Scan(&exists); err != nil || exists != nil {
+	if err = tx.QueryRow(ctx, `SELECT to_regclass($1)`, schema+".batch_worker_assignments").Scan(&exists); err != nil || exists != nil {
 		t.Fatalf("down verification=%v err=%v", exists, err)
+	}
+	down, err = os.ReadFile(filepath.Join(root, "000007_print_generation.down.sql"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = tx.Exec(ctx, string(down)); err != nil {
+		t.Fatalf("print down: %v", err)
 	}
 	down, err = os.ReadFile(filepath.Join(root, "000006_batch_foundation.down.sql"))
 	if err != nil {
@@ -365,7 +436,7 @@ func printPositions(t *testing.T, db *pgxpool.Pool, companyID, jobID string) []s
 func cleanupBatch(t *testing.T, f *batchFixture) {
 	t.Helper()
 	companies := []string{f.companyA, f.companyB}
-	for _, table := range []string{"print_artifacts", "print_job_items", "print_jobs", "batch_members", "batches", "marketplace_order_items", "marketplace_orders", "processing_jobs", "source_files", "products", "audit_logs", "module_entitlements", "company_user_roles", "role_permissions", "employees", "roles", "company_users"} {
+	for _, table := range []string{"print_artifacts", "print_job_items", "print_jobs", "batch_worker_assignments", "worker_assignment_rules", "batch_members", "batches", "marketplace_order_items", "marketplace_orders", "processing_jobs", "source_files", "products", "audit_logs", "module_entitlements", "company_user_roles", "role_permissions", "employees", "roles", "company_users"} {
 		query := "DELETE FROM " + table + " WHERE company_id=ANY($1::uuid[])"
 		execBatchTest(t, f.db, query, companies)
 	}

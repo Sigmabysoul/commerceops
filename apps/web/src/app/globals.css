@@ -69,10 +69,13 @@ summary { cursor: pointer; font-weight: 700; }
 .print-options { display: grid; gap: 1rem; }
 .print-options label { padding: .8rem; border: 1px solid #edf0ed; border-radius: .6rem; }
 .print-result { margin-top: 1rem; }
+.assignment-config, .print-history { margin-top: 1rem; }
+.assignment-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .8rem; margin-top: 1rem; }
+.reprint-reason { max-width: 30rem; margin: 1rem 0; }
 .artifact-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .8rem; }
 .artifact-list article { display: flex; justify-content: space-between; align-items: center; gap: 1rem; padding: 1rem; border: 1px solid #edf0ed; border-radius: .6rem; }
 .progress { height: .5rem; margin: 1rem 0; overflow: hidden; border-radius: 999px; background: #e8ece9; }
 .progress span { display: block; width: 40%; height: 100%; border-radius: inherit; background: #32734a; animation: progress 1.2s ease-in-out infinite alternate; }
 @keyframes progress { to { transform: translateX(150%); } }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); }
-@media (max-width: 760px) { .grid, .batch-layout, .artifact-list { grid-template-columns: 1fr; } header, .product-heading, .upload-row, .panel-actions { align-items: stretch; flex-direction: column; } .checks, .results article { grid-template-columns: 1fr; } .span-two { grid-column: auto; } }
+@media (max-width: 760px) { .grid, .batch-layout, .artifact-list, .assignment-grid { grid-template-columns: 1fr; } header, .product-heading, .upload-row, .panel-actions { align-items: stretch; flex-direction: column; } .checks, .results article { grid-template-columns: 1fr; } .span-two { grid-column: auto; } }

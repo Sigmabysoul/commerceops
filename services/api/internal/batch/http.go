@@ -65,6 +65,29 @@ func (h *HTTPHandler) EligibleOrders(w http.ResponseWriter, r *http.Request) {
 	httpserver.WriteJSON(w, http.StatusOK, map[string]any{"orders": items})
 }
 
+func (h *HTTPHandler) AssignmentRules(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		items, err := h.service.ListAssignmentRules(r.Context(), principal(r), r.URL.Query().Get("marketplace"))
+		if writeError(w, err) {
+			return
+		}
+		httpserver.WriteJSON(w, http.StatusOK, map[string]any{"worker_assignment_rules": items})
+	case http.MethodPut:
+		var input ReplaceAssignmentRulesInput
+		if !httpserver.DecodeJSON(w, r, &input) {
+			return
+		}
+		items, err := h.service.ReplaceAssignmentRules(r.Context(), principal(r), input)
+		if writeError(w, err) {
+			return
+		}
+		httpserver.WriteJSON(w, http.StatusOK, map[string]any{"worker_assignment_rules": items})
+	default:
+		methodNotAllowed(w)
+	}
+}
+
 func (h *HTTPHandler) Ready(w http.ResponseWriter, r *http.Request) {
 	h.transition(w, r, h.service.Ready)
 }
@@ -74,6 +97,14 @@ func (h *HTTPHandler) Cancel(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *HTTPHandler) PrintJobs(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodGet {
+		jobs, err := h.service.ListPrintJobs(r.Context(), principal(r), r.PathValue("batch_id"))
+		if writeError(w, err) {
+			return
+		}
+		httpserver.WriteJSON(w, http.StatusOK, map[string]any{"print_jobs": jobs})
+		return
+	}
 	if r.Method != http.MethodPost {
 		methodNotAllowed(w)
 		return
@@ -83,6 +114,26 @@ func (h *HTTPHandler) PrintJobs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	job, replayed, err := h.service.Generate(r.Context(), principal(r), r.PathValue("batch_id"), input)
+	if writeError(w, err) {
+		return
+	}
+	status := http.StatusCreated
+	if replayed {
+		status = http.StatusOK
+	}
+	httpserver.WriteJSON(w, status, map[string]any{"print_job": job, "idempotent_replay": replayed})
+}
+
+func (h *HTTPHandler) Reprints(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		methodNotAllowed(w)
+		return
+	}
+	var input ReprintInput
+	if !httpserver.DecodeJSON(w, r, &input) {
+		return
+	}
+	job, replayed, err := h.service.Reprint(r.Context(), principal(r), r.PathValue("print_job_id"), input)
 	if writeError(w, err) {
 		return
 	}
@@ -158,6 +209,8 @@ func writeError(w http.ResponseWriter, err error) bool {
 		httpserver.WriteError(w, http.StatusConflict, "BATCH_CONFLICT", "Batch request conflicts with existing data")
 	case errors.Is(err, ErrInvalidState):
 		httpserver.WriteError(w, http.StatusConflict, "INVALID_BATCH_STATE", "Batch state transition is not allowed")
+	case errors.Is(err, ErrAssignmentMissing):
+		httpserver.WriteError(w, http.StatusConflict, "WORKER_ASSIGNMENT_REQUIRED", "Configure worker assignments for every batch product before readiness")
 	case errors.Is(err, ErrUnresolved):
 		httpserver.WriteError(w, http.StatusConflict, "UNRESOLVED_BATCH", "Batch contains unresolved products or quantities")
 	case errors.Is(err, ErrGenerationFailed):

@@ -1,9 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { Batch, EligibleOrder, PrintArtifact, PrintJob, batchAPI } from "@/api/batches";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AssignmentRule, Batch, EligibleOrder, PrintArtifact, PrintJob, batchAPI } from "@/api/batches";
+import { Employee, coreAPI } from "@/api/core";
+import { Product, productAPI } from "@/api/products";
 
-type Operation = "creating" | "readying" | "generating" | "downloading" | null;
+type Operation = "creating" | "readying" | "generating" | "downloading" | "assigning" | "reprinting" | null;
 
 export function BatchPrinting() {
   const [orders, setOrders] = useState<EligibleOrder[]>([]);
@@ -15,6 +17,16 @@ export function BatchPrinting() {
   const [operation, setOperation] = useState<Operation>(null);
   const [available, setAvailable] = useState(true);
   const [error, setError] = useState("");
+  const [printJobs, setPrintJobs] = useState<PrintJob[]>([]);
+  const [reprintReason, setReprintReason] = useState("");
+  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [assignmentRules, setAssignmentRules] = useState<AssignmentRule[]>([]);
+  const [defaultWorker, setDefaultWorker] = useState("");
+  const [productWorkers, setProductWorkers] = useState<Record<string, string>>({});
+  const createRequest = useRef<IdempotentRequest | null>(null);
+  const printRequest = useRef<IdempotentRequest | null>(null);
+  const reprintRequest = useRef<IdempotentRequest | null>(null);
 
   const loadEligible = useCallback(async () => {
     const result = await batchAPI.eligibleOrders();
@@ -25,6 +37,28 @@ export function BatchPrinting() {
   useEffect(() => {
     loadEligible().catch(() => setAvailable(false));
   }, [loadEligible]);
+
+  const loadAssignments = useCallback(async () => {
+    const [ruleResult, employeeResult, productResult] = await Promise.allSettled([batchAPI.assignmentRules(), coreAPI.employees(), productAPI.products()]);
+    if (ruleResult.status === "fulfilled") {
+      const rules = ruleResult.value.worker_assignment_rules;
+      setAssignmentRules(rules);
+      setDefaultWorker(rules.find((rule) => rule.product_id === null)?.employee_id ?? "");
+      setProductWorkers(Object.fromEntries(rules.filter((rule) => rule.product_id).map((rule) => [rule.product_id as string, rule.employee_id])));
+    }
+    if (employeeResult.status === "fulfilled") setEmployees(employeeResult.value.employees.filter((employee) => employee.status === "active"));
+    if (productResult.status === "fulfilled") setProducts(productResult.value.products.filter((product) => product.status === "active"));
+  }, []);
+
+  useEffect(() => { loadAssignments().catch((cause) => setError(message(cause))); }, [loadAssignments]);
+
+  const loadPrintJobs = useCallback(async (batchID: string) => {
+    setPrintJobs((await batchAPI.printJobs(batchID)).print_jobs);
+  }, []);
+
+  useEffect(() => {
+    if (batch?.status === "ready") loadPrintJobs(batch.id).catch((cause) => setError(message(cause)));
+  }, [batch?.id, batch?.status, loadPrintJobs]);
 
   useEffect(() => {
     if (printJob?.status !== "generating") return;
@@ -40,7 +74,9 @@ export function BatchPrinting() {
   async function createBatch() {
     setOperation("creating"); setError(""); setPrintJob(null);
     try {
-      const result = await batchAPI.create(selected, crypto.randomUUID());
+      const signature = selected.join("|");
+      const result = await batchAPI.create(selected, idempotencyKey(createRequest, signature));
+      createRequest.current = null;
       setBatch(result.batch); setSelected([]); await loadEligible();
     } catch (cause) { setError(message(cause)); }
     finally { setOperation(null); }
@@ -57,8 +93,35 @@ export function BatchPrinting() {
   async function generate() {
     if (!batch) return;
     setOperation("generating"); setError(""); setPrintJob(null);
-    try { setPrintJob((await batchAPI.generate(batch.id, sortLabels, exportInvoices, crypto.randomUUID())).print_job); }
+    try {
+      const signature = `${batch.id}|${sortLabels}|${exportInvoices}`;
+      const result = await batchAPI.generate(batch.id, sortLabels, exportInvoices, idempotencyKey(printRequest, signature));
+      printRequest.current = null;
+      setPrintJob(result.print_job);
+      await loadPrintJobs(batch.id);
+    }
     catch (cause) { setError(message(cause)); }
+    finally { setOperation(null); }
+  }
+
+  async function saveAssignments() {
+    if (!defaultWorker) return;
+    setOperation("assigning"); setError("");
+    const rules = [{ product_id: null, employee_id: defaultWorker, priority: 100 }, ...Object.entries(productWorkers).filter(([, employeeID]) => employeeID).map(([productID, employeeID]) => ({ product_id: productID, employee_id: employeeID, priority: 10 }))];
+    try { setAssignmentRules((await batchAPI.replaceAssignmentRules(rules)).worker_assignment_rules); }
+    catch (cause) { setError(message(cause)); }
+    finally { setOperation(null); }
+  }
+
+  async function reprint(source: PrintJob) {
+    const reason = reprintReason.trim(); if (!reason) return;
+    setOperation("reprinting"); setError("");
+    try {
+      const signature = `${source.id}|${reason}`;
+      const result = await batchAPI.reprint(source.id, reason, idempotencyKey(reprintRequest, signature));
+      reprintRequest.current = null; setPrintJob(result.print_job); setReprintReason("");
+      await loadPrintJobs(source.batch_id);
+    } catch (cause) { setError(message(cause)); }
     finally { setOperation(null); }
   }
 
@@ -87,18 +150,26 @@ export function BatchPrinting() {
       <section className="panel batch-summary"><div className="status-line"><h2>Batch summary</h2>{batch && <span className={`status status-${batch.status}`}>{batch.status}</span>}</div>
         {!batch ? <p className="empty-state">Create a batch to preview its server-derived totals and printing options.</p> : <><dl className="summary-metrics"><div><dt>Orders</dt><dd>{batch.order_count}</dd></div><div><dt>Products</dt><dd>{batch.product_totals?.length ?? 0}</dd></div><div><dt>Unresolved</dt><dd>{batch.unresolved_count}</dd></div></dl>
           {(batch.product_totals?.length ?? 0) > 0 && <div className="product-totals"><h3>Product totals</h3><ul>{batch.product_totals?.map((product) => <li key={product.product_id}><span><strong>{product.internal_code}</strong> · {product.product_name}<small>{product.order_line_count} order lines</small></span><strong>{product.total_quantity}</strong></li>)}</ul></div>}
+          {(batch.worker_totals?.length ?? 0) > 0 && <div className="product-totals"><h3>Worker totals</h3><ul>{batch.worker_totals?.map((worker) => <li key={worker.employee_id}><span><strong>{worker.employee_name}</strong><small>{worker.product_count} products · {worker.order_line_count} order lines</small></span><strong>{worker.total_quantity}</strong></li>)}</ul></div>}
           {batch.status === "draft" && <div className="panel-actions"><span className="muted">Ready batches can generate printable output.</span><button disabled={batch.unresolved_count > 0 || operation !== null} onClick={readyBatch}>{operation === "readying" ? "Marking ready…" : "Mark ready"}</button></div>}
           {batch.status === "ready" && <div className="print-options"><h3>Printable output</h3><label><input type="checkbox" checked={sortLabels} onChange={(event) => setSortLabels(event.target.checked)} /><span><strong>Sort Labels</strong><small>Use the server-configured Product Master ordering.</small></span></label><label><input type="checkbox" checked={exportInvoices} onChange={(event) => setExportInvoices(event.target.checked)} /><span><strong>Export Invoices</strong><small>Create a separate invoice PDF in corresponding order.</small></span></label><button disabled={operation !== null} onClick={generate}>{operation === "generating" ? "Generating…" : "Generate PDFs"}</button></div>}
         </>}
       </section>
     </div>
+    {employees.length > 0 && products.length > 0 && <section className="panel assignment-config"><div className="status-line"><div><h2>Worker assignments</h2><p className="muted">Exact Product Master rules override the required Flipkart fallback worker.</p></div><span className="status">{assignmentRules.length} rules</span></div><div className="assignment-grid"><label>Fallback worker<select value={defaultWorker} onChange={(event) => setDefaultWorker(event.target.value)}><option value="">Select worker</option>{employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.display_name}</option>)}</select></label>{products.map((product) => <label key={product.id}>{product.internal_code} · {product.name}<select value={productWorkers[product.id] ?? ""} onChange={(event) => setProductWorkers((current) => ({ ...current, [product.id]: event.target.value }))}><option value="">Use fallback</option>{employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.display_name}</option>)}</select></label>)}</div><div className="panel-actions"><span className="muted">Assignments are snapshotted when a batch becomes ready.</span><button disabled={!defaultWorker || operation !== null} onClick={saveAssignments}>{operation === "assigning" ? "Saving…" : "Save assignments"}</button></div></section>}
     {printJob && <section className="panel print-result"><div className="status-line"><div><h2>Print output</h2><p className="muted">Generation {printJob.generation_version}</p></div><span className={`status status-${printJob.status}`}>{printJob.status}</span></div>
       {printJob.status === "generating" && <div className="progress" role="progressbar" aria-label="Generating printable PDFs"><span /></div>}
       {printJob.status === "failed" && <p className="error" role="alert">{printJob.error_message ?? "PDF generation failed."}</p>}
       {printJob.status === "ready" && <><dl className="summary-metrics"><div><dt>Pages</dt><dd>{printJob.artifacts.find((artifact) => artifact.kind === "labels")?.page_count ?? 0}</dd></div><div><dt>Label order</dt><dd>{printJob.sort_labels ? "Sorted" : "Original"}</dd></div><div><dt>Files</dt><dd>{printJob.artifacts.length}</dd></div></dl><div className="artifact-list">{printJob.artifacts.map((artifact) => <article key={artifact.id}><div><strong>{artifact.kind === "labels" ? "Shipping labels PDF" : "Invoices PDF"}</strong><small>{artifact.page_count} pages · {formatBytes(artifact.size_bytes)}</small></div><button disabled={operation !== null} onClick={() => download(artifact)}>Download</button></article>)}</div></>}
     </section>}
+    {batch?.status === "ready" && printJobs.length > 0 && <section className="panel print-history"><div className="status-line"><div><h2>Print history</h2><p className="muted">Every regeneration remains linked to its source print job.</p></div><span className="status">{printJobs.length} jobs</span></div><label className="reprint-reason">Reprint reason<input value={reprintReason} maxLength={500} placeholder="For example: damaged paper" onChange={(event) => setReprintReason(event.target.value)} /></label><div className="artifact-list">{printJobs.map((job) => <article key={job.id}><div><strong>{job.source_print_job_id ? "Reprint" : "Original print"}</strong><small>{new Date(job.created_at).toLocaleString()} · {job.status}{job.reprint_reason ? ` · ${job.reprint_reason}` : ""}</small></div><button disabled={job.status !== "ready" || !reprintReason.trim() || operation !== null} onClick={() => reprint(job)}>{operation === "reprinting" ? "Reprinting…" : "Reprint"}</button></article>)}</div></section>}
   </section>;
 }
 
 function formatBytes(bytes: number) { return bytes < 1024 * 1024 ? `${Math.ceil(bytes / 1024)} KB` : `${(bytes / (1024 * 1024)).toFixed(1)} MB`; }
+type IdempotentRequest = { signature: string; key: string };
+function idempotencyKey(reference: React.MutableRefObject<IdempotentRequest | null>, signature: string) {
+  if (reference.current?.signature !== signature) reference.current = { signature, key: crypto.randomUUID() };
+  return reference.current.key;
+}
 function message(cause: unknown) { return cause instanceof Error ? cause.message : "Something went wrong"; }

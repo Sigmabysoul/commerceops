@@ -28,6 +28,11 @@ type GenerateInput struct {
 	IdempotencyKey string `json:"idempotency_key"`
 }
 
+type ReprintInput struct {
+	Reason         string `json:"reason"`
+	IdempotencyKey string `json:"idempotency_key"`
+}
+
 type PrintJob struct {
 	ID                string     `json:"id"`
 	BatchID           string     `json:"batch_id"`
@@ -35,6 +40,8 @@ type PrintJob struct {
 	SortLabels        bool       `json:"sort_labels"`
 	ExportInvoices    bool       `json:"export_invoices"`
 	GenerationVersion string     `json:"generation_version"`
+	SourcePrintJobID  *string    `json:"source_print_job_id"`
+	ReprintReason     *string    `json:"reprint_reason"`
 	ErrorCode         *string    `json:"error_code"`
 	ErrorMessage      *string    `json:"error_message"`
 	CompletedAt       *time.Time `json:"completed_at"`
@@ -62,11 +69,42 @@ func (s *Service) Generate(ctx context.Context, principal auth.Principal, batchI
 	if err := s.authorizePrint(ctx, principal); err != nil {
 		return PrintJob{}, false, err
 	}
+	return s.generate(ctx, principal, batchID, input, nil, nil)
+}
+
+func (s *Service) Reprint(ctx context.Context, principal auth.Principal, sourceID string, input ReprintInput) (PrintJob, bool, error) {
+	if s.storage == nil || s.generator == nil {
+		return PrintJob{}, false, ErrGenerationFailed
+	}
+	if err := s.authorizeReprint(ctx, principal); err != nil {
+		return PrintJob{}, false, err
+	}
+	input.Reason = strings.TrimSpace(input.Reason)
+	input.IdempotencyKey = strings.TrimSpace(input.IdempotencyKey)
+	if !uuidRE.MatchString(sourceID) || input.Reason == "" || len(input.Reason) > 500 || input.IdempotencyKey == "" || len(input.IdempotencyKey) > 128 {
+		return PrintJob{}, false, ErrInvalidInput
+	}
+	source, err := s.getPrintJob(ctx, principal.CompanyID, sourceID)
+	if err != nil {
+		return PrintJob{}, false, err
+	}
+	if source.Status != "ready" {
+		return PrintJob{}, false, ErrInvalidState
+	}
+	generateInput := GenerateInput{SortLabels: source.SortLabels, ExportInvoices: source.ExportInvoices, IdempotencyKey: input.IdempotencyKey}
+	return s.generate(ctx, principal, source.BatchID, generateInput, &sourceID, &input.Reason)
+}
+
+func (s *Service) generate(ctx context.Context, principal auth.Principal, batchID string, input GenerateInput, sourceID, reprintReason *string) (PrintJob, bool, error) {
 	input.IdempotencyKey = strings.TrimSpace(input.IdempotencyKey)
 	if !uuidRE.MatchString(batchID) || input.IdempotencyKey == "" || len(input.IdempotencyKey) > 128 {
 		return PrintJob{}, false, ErrInvalidInput
 	}
-	hash, _ := json.Marshal(input)
+	hash, _ := json.Marshal(struct {
+		Input    GenerateInput `json:"input"`
+		SourceID *string       `json:"source_print_job_id"`
+		Reason   *string       `json:"reprint_reason"`
+	}{input, sourceID, reprintReason})
 	digest := sha256.Sum256(append([]byte(batchID+"|"), hash...))
 	requestHash := hex.EncodeToString(digest[:])
 	tx, err := s.db.Begin(ctx)
@@ -75,7 +113,7 @@ func (s *Service) Generate(ctx context.Context, principal auth.Principal, batchI
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
 	var jobID string
-	err = tx.QueryRow(ctx, `INSERT INTO print_jobs(company_id,batch_id,requested_by,sort_labels,export_invoices,generation_version,idempotency_key,request_hash) SELECT $1,id,$2,$3,$4,$5,$6,$7 FROM batches WHERE company_id=$1 AND id=$8 AND status='ready' ON CONFLICT(company_id,idempotency_key) DO NOTHING RETURNING id`, principal.CompanyID, principal.UserID, input.SortLabels, input.ExportInvoices, generationVersion, input.IdempotencyKey, requestHash, batchID).Scan(&jobID)
+	err = tx.QueryRow(ctx, `INSERT INTO print_jobs(company_id,batch_id,requested_by,sort_labels,export_invoices,generation_version,idempotency_key,request_hash,source_print_job_id,reprint_reason) SELECT $1,id,$2,$3,$4,$5,$6,$7,$9,$10 FROM batches WHERE company_id=$1 AND id=$8 AND status='ready' ON CONFLICT(company_id,idempotency_key) DO NOTHING RETURNING id`, principal.CompanyID, principal.UserID, input.SortLabels, input.ExportInvoices, generationVersion, input.IdempotencyKey, requestHash, batchID, sourceID, reprintReason).Scan(&jobID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		var existingHash string
 		if err = tx.QueryRow(ctx, `SELECT id,request_hash FROM print_jobs WHERE company_id=$1 AND idempotency_key=$2`, principal.CompanyID, input.IdempotencyKey).Scan(&jobID, &existingHash); errors.Is(err, pgx.ErrNoRows) {
@@ -90,7 +128,7 @@ func (s *Service) Generate(ctx context.Context, principal auth.Principal, batchI
 		if err = tx.Commit(ctx); err != nil {
 			return PrintJob{}, false, err
 		}
-		job, getErr := s.GetPrintJob(ctx, principal, jobID)
+		job, getErr := s.getPrintJob(ctx, principal.CompanyID, jobID)
 		return job, true, getErr
 	}
 	if err != nil {
@@ -118,7 +156,14 @@ func (s *Service) Generate(ctx context.Context, principal auth.Principal, batchI
 			return PrintJob{}, false, err
 		}
 	}
-	if err = s.audit.Record(ctx, tx, principal.CompanyID, principal.UserID, "print.requested", "print_job", jobID, map[string]any{"batch_id": batchID, "sort_labels": input.SortLabels, "export_invoices": input.ExportInvoices, "page_count": len(pages), "generation_version": generationVersion}); err != nil {
+	action := "print.requested"
+	metadata := map[string]any{"batch_id": batchID, "sort_labels": input.SortLabels, "export_invoices": input.ExportInvoices, "page_count": len(pages), "generation_version": generationVersion}
+	if sourceID != nil {
+		action = "print.reprinted"
+		metadata["source_print_job_id"] = *sourceID
+		metadata["reason"] = *reprintReason
+	}
+	if err = s.audit.Record(ctx, tx, principal.CompanyID, principal.UserID, action, "print_job", jobID, metadata); err != nil {
 		return PrintJob{}, false, err
 	}
 	if err = tx.Commit(ctx); err != nil {
@@ -137,7 +182,7 @@ func (s *Service) Generate(ctx context.Context, principal auth.Principal, batchI
 		s.failPrintJob(ctx, principal, jobID, err)
 		return PrintJob{}, false, ErrGenerationFailed
 	}
-	job, err := s.GetPrintJob(ctx, principal, jobID)
+	job, err := s.getPrintJob(ctx, principal.CompanyID, jobID)
 	return job, false, err
 }
 
@@ -240,16 +285,27 @@ func (s *Service) authorizePrint(ctx context.Context, principal auth.Principal) 
 	return s.authorizer.RequirePermission(ctx, principal, "labels.print")
 }
 
+func (s *Service) authorizeReprint(ctx context.Context, principal auth.Principal) error {
+	if err := s.authorizer.RequireModule(ctx, principal, "flipkart"); err != nil {
+		return err
+	}
+	return s.authorizer.RequirePermission(ctx, principal, "labels.reprint")
+}
+
 func (s *Service) GetPrintJob(ctx context.Context, principal auth.Principal, id string) (PrintJob, error) {
 	if err := s.authorizePrint(ctx, principal); err != nil {
 		return PrintJob{}, err
 	}
+	return s.getPrintJob(ctx, principal.CompanyID, id)
+}
+
+func (s *Service) getPrintJob(ctx context.Context, companyID, id string) (PrintJob, error) {
 	var job PrintJob
-	err := s.db.QueryRow(ctx, `SELECT id,batch_id,status,sort_labels,export_invoices,generation_version,error_code,error_message,completed_at,created_at FROM print_jobs WHERE company_id=$1 AND id=$2`, principal.CompanyID, id).Scan(&job.ID, &job.BatchID, &job.Status, &job.SortLabels, &job.ExportInvoices, &job.GenerationVersion, &job.ErrorCode, &job.ErrorMessage, &job.CompletedAt, &job.CreatedAt)
+	err := s.db.QueryRow(ctx, `SELECT id,batch_id,status,sort_labels,export_invoices,generation_version,source_print_job_id,reprint_reason,error_code,error_message,completed_at,created_at FROM print_jobs WHERE company_id=$1 AND id=$2`, companyID, id).Scan(&job.ID, &job.BatchID, &job.Status, &job.SortLabels, &job.ExportInvoices, &job.GenerationVersion, &job.SourcePrintJobID, &job.ReprintReason, &job.ErrorCode, &job.ErrorMessage, &job.CompletedAt, &job.CreatedAt)
 	if err != nil {
 		return PrintJob{}, mapDBError(err)
 	}
-	rows, err := s.db.Query(ctx, `SELECT id,kind,size_bytes,sha256,page_count FROM print_artifacts WHERE company_id=$1 AND print_job_id=$2 ORDER BY kind`, principal.CompanyID, id)
+	rows, err := s.db.Query(ctx, `SELECT id,kind,size_bytes,sha256,page_count FROM print_artifacts WHERE company_id=$1 AND print_job_id=$2 ORDER BY kind`, companyID, id)
 	if err != nil {
 		return PrintJob{}, err
 	}
@@ -263,6 +319,40 @@ func (s *Service) GetPrintJob(ctx context.Context, principal auth.Principal, id 
 		job.Artifacts = append(job.Artifacts, item)
 	}
 	return job, rows.Err()
+}
+
+func (s *Service) ListPrintJobs(ctx context.Context, principal auth.Principal, batchID string) ([]PrintJob, error) {
+	if err := s.authorizePrint(ctx, principal); err != nil {
+		return nil, err
+	}
+	if !uuidRE.MatchString(batchID) {
+		return nil, ErrInvalidInput
+	}
+	rows, err := s.db.Query(ctx, `SELECT id FROM print_jobs WHERE company_id=$1 AND batch_id=$2 ORDER BY created_at DESC,id DESC LIMIT 200`, principal.CompanyID, batchID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	ids := make([]string, 0)
+	for rows.Next() {
+		var id string
+		if err = rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+	items := make([]PrintJob, 0, len(ids))
+	for _, id := range ids {
+		item, getErr := s.getPrintJob(ctx, principal.CompanyID, id)
+		if getErr != nil {
+			return nil, getErr
+		}
+		items = append(items, item)
+	}
+	return items, nil
 }
 
 func (s *Service) DownloadArtifact(ctx context.Context, principal auth.Principal, id string) ([]byte, string, error) {
