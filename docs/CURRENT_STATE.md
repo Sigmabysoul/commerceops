@@ -16,7 +16,7 @@ Phase 4 approved baseline:
 
 ## Phase Status
 
-`IMPLEMENTATION_COMPLETE_AWAITING_EXTERNAL_REVIEW`
+`IMPLEMENTATION_IN_PROGRESS`
 
 Phases 0–4 are approved. The owner authorized Phase 5 after the Phase 4
 acceptance check. Phase 6 is not authorized.
@@ -39,30 +39,30 @@ must be transactional, idempotent, authorized, auditable, and concurrency-safe.
 
 ### Batch A — Ledger foundation and manual operations
 
-- [x] immutable tenant/product inventory ledger
-- [x] transactionally locked cached balances
-- [x] stock-in command
-- [x] manual adjustment and correction commands
-- [x] negative-stock prevention
-- [x] idempotency and canonical-product enforcement
-- [x] inventory read APIs and transaction filters
-- [x] permissions, entitlement, and audit integration
-- [x] PostgreSQL concurrency, rollback, isolation, and load tests
-- [x] API/OpenAPI/database documentation
+- [ ] immutable tenant/product inventory ledger
+- [ ] transactionally locked cached balances
+- [ ] stock-in command
+- [ ] manual adjustment and correction commands
+- [ ] negative-stock prevention
+- [ ] idempotency and canonical-product enforcement
+- [ ] inventory read APIs and transaction filters
+- [ ] permissions, entitlement, and audit integration
+- [ ] PostgreSQL concurrency, rollback, isolation, and load tests
+- [ ] API/OpenAPI/database documentation
 
 ### Batch B — Ecommerce outbound integration
 
-- [x] explicit authorized outbound-confirmation trigger
-- [x] atomic and idempotent `ECOMMERCE_OUT` from batch Product Master totals
-- [x] entire-batch rollback on insufficient stock
-- [x] explicit reprint inventory-neutral regression coverage
+- [ ] explicit authorized outbound-confirmation trigger
+- [ ] atomic and idempotent `ECOMMERCE_OUT` from batch Product Master totals
+- [ ] entire-batch rollback on insufficient stock
+- [ ] explicit reprint inventory-neutral regression coverage
 
 ### Batch C — Reservation foundation and frontend
 
-- [x] source-linked reservation lifecycle
-- [x] on-hand, reserved, and available views
-- [x] inventory dashboard, history, stock-in, and adjustment UI
-- [x] end-to-end verification
+- [ ] source-linked reservation lifecycle
+- [ ] on-hand, reserved, and available views
+- [ ] inventory dashboard, history, stock-in, and adjustment UI
+- [ ] end-to-end verification
 
 ## Approved Phase 4 Record
 
@@ -244,8 +244,9 @@ Do not automatically begin the next batch after completing one if the task expli
 
 ## Blocking Issues
 
-Phase 5 implementation is complete and awaits external architecture/owner
-review. Phase 5 is not yet an approved baseline. Phase 6 is not authorized.
+None for Phase 5 Batch A. Browser/native printing still cannot report physical
+printer completion, so Phase 4 intentionally records system-side PDF readiness.
+Phase 6 is not authorized.
 
 ## Last Verification
 
@@ -316,38 +317,7 @@ including:
 - frontend typecheck, lint, and production build
 - `git diff --check`
 
-Phase 5 Batch A passed the full verification gate against a migrated disposable
-PostgreSQL 18.6 database, including:
-
-- migration `000009` up/down coverage and database-enforced ledger immutability
-- tenant-scoped balances and transactions using canonical Product Master IDs
-- authorized stock-in, manual adjustment, and compensating correction commands
-- exact idempotent replay and conflicting request protection
-- transactionally locked balance updates and concurrent negative-stock prevention
-- failed-command rollback, tenant isolation, permission enforcement, and audits
-- a 250-transaction inventory load scenario
-- the complete existing PostgreSQL-backed Go test suite
-- Go vet/build and frontend typecheck, lint, and production build
-- `git diff --check`
-
-Phase 5 Batches B and C passed the full verification gate against a freshly
-migrated disposable PostgreSQL 18.6 database through migration `000010`,
-including:
-
-- authorized ready-batch ecommerce outbound confirmation
-- atomic multi-product deduction and whole-event rollback on shortage
-- database-backed batch and source/product idempotency
-- explicit print/reprint inventory-neutral regression coverage
-- source-linked reservation create, replay, over-reservation rejection, release,
-  and balance restoration
-- on-hand, reserved, and available inventory views
-- inventory dashboard, transaction filters, stock-in, confirmed adjustment,
-  outbound, and reservation UI
-- migration `000010` up/down coverage within the inventory migration suite
-- the complete PostgreSQL-backed Go suite, Go vet/build, frontend typecheck,
-  lint, production build, and `git diff --check`
-
 ## Next Allowed Task
 
-Perform external architecture and owner review of the complete Phase 5 working
-tree. Do not begin Phase 6 without explicit owner authorization.
+Implement and verify Phase 5 Batch A. Stop for review before ecommerce outbound
+or reservation work.
