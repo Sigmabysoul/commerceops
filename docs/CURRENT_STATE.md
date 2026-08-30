@@ -57,6 +57,13 @@ source of business truth.
 - [x] inventory snapshot and product movement table
 - [x] PostgreSQL-backed end-to-end verification
 
+### Review remediation — Marketplace movement isolation
+
+- [x] marketplace-filtered stock-out resolves ecommerce ledger references through tenant-scoped batches
+- [x] marketplace-filtered product movement excludes other marketplaces' ecommerce deductions
+- [x] company-wide stock-in, adjustment, correction, and live-balance semantics documented
+- [x] Flipkart and synthetic second-marketplace PostgreSQL regression coverage
+
 ## Approved Phase 5 Record
 
 Implement one centralized, tenant-scoped inventory domain using canonical
@@ -359,6 +366,9 @@ including:
 - inventory entitlement and `inventory.view` field-level disclosure controls
 - explicit timezone-offset and inclusive-start/exclusive-end date boundaries
 - authoritative marketplace order, Product Master quantity, and inventory totals
+- marketplace-isolated ecommerce stock-out and product net movement across
+  Flipkart and a synthetic second marketplace
+- company-wide stock-in and adjustment behavior under marketplace filtering
 - empty/restricted inventory response behavior and reporting pagination validation
 - migration `000011` up/down coverage
 - the complete PostgreSQL-backed Go suite, Go vet/build, frontend typecheck,

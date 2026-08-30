@@ -127,6 +127,11 @@ records. Inventory snapshots and ledger movement are returned only when the
 principal also has the `inventory` entitlement and `inventory.view`; otherwise
 `inventory_access` is false and restricted fields are omitted.
 
+With a marketplace filter, ecommerce stock-out and its contribution to product
+net movement are limited through each ledger transaction's tenant-scoped batch
+reference. Stock-in, manual adjustments, corrections, and current balances stay
+company-wide because they have no marketplace ownership.
+
 ## Inventory ledger
 
 Inventory endpoints require the `inventory` entitlement. Commands accept a

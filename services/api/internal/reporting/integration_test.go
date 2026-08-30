@@ -55,6 +55,60 @@ func TestDashboardAuthoritativeTotalsBoundariesAndTenantIsolation(t *testing.T) 
 	}
 }
 
+func TestMarketplaceFilterIsolatesEcommerceMovement(t *testing.T) {
+	db := reportingDB(t)
+	ctx := context.Background()
+	suffix := fmt.Sprint(time.Now().UnixNano())
+	const secondMarketplace = "synthetic_reporting"
+	mustExec(t, db, `INSERT INTO marketplaces(key,display_name) VALUES($1,'Synthetic reporting marketplace') ON CONFLICT(key) DO NOTHING`, secondMarketplace)
+	var company, user, role, product, flipkartBatch, syntheticBatch string
+	mustScan(t, db, `INSERT INTO companies(name) VALUES($1) RETURNING id`, []any{"Marketplace filter " + suffix}, &company)
+	mustScan(t, db, `INSERT INTO users(email,password_hash) VALUES($1,'test') RETURNING id`, []any{"market-filter-" + suffix + "@example.test"}, &user)
+	mustExec(t, db, `INSERT INTO company_users(company_id,user_id) VALUES($1,$2)`, company, user)
+	mustScan(t, db, `INSERT INTO roles(company_id,name) VALUES($1,'Marketplace Reporter') RETURNING id`, []any{company}, &role)
+	mustExec(t, db, `INSERT INTO role_permissions(company_id,role_id,permission_key) VALUES($1,$2,'reports.view'),($1,$2,'inventory.view')`, company, role)
+	mustExec(t, db, `INSERT INTO company_user_roles(company_id,user_id,role_id) VALUES($1,$2,$3)`, company, user, role)
+	mustExec(t, db, `INSERT INTO module_entitlements(company_id,module_key,enabled) VALUES($1,'inventory',true)`, company)
+	mustScan(t, db, `INSERT INTO products(company_id,internal_code,name) VALUES($1,'FILTER-1','Marketplace filter product') RETURNING id`, []any{company}, &product)
+	mustScan(t, db, `INSERT INTO batches(company_id,marketplace_key,status,created_by,idempotency_key,request_hash,ready_at) VALUES($1,'flipkart','ready',$2,$3,$4,now()) RETURNING id`, []any{company, user, "flipkart-batch-" + suffix, fmt.Sprintf("%064x", 1)}, &flipkartBatch)
+	mustScan(t, db, `INSERT INTO batches(company_id,marketplace_key,status,created_by,idempotency_key,request_hash,ready_at) VALUES($1,$2,'ready',$3,$4,$5,now()) RETURNING id`, []any{company, secondMarketplace, user, "synthetic-batch-" + suffix, fmt.Sprintf("%064x", 2)}, &syntheticBatch)
+	at := time.Date(2026, 8, 30, 8, 0, 0, 0, time.UTC)
+	mustExec(t, db, `INSERT INTO inventory_balances(company_id,product_id,on_hand) VALUES($1,$2,73)`, company, product)
+	mustExec(t, db, `INSERT INTO inventory_transactions(company_id,product_id,transaction_type,quantity_delta,previous_balance,resulting_balance,reason,reference_type,reference_id,actor_user_id,idempotency_key,request_hash,created_at) VALUES
+		($1,$2,'stock_in',100,0,100,'Company receipt',NULL,NULL,$3,$4,$8,$9),
+		($1,$2,'manual_adjustment',7,100,107,'Company correction',NULL,NULL,$3,$5,$8,$9),
+		($1,$2,'ecommerce_out',-11,107,96,'Flipkart outbound','batch',$6,$3,$10,$8,$9),
+		($1,$2,'ecommerce_out',-23,96,73,'Synthetic outbound','batch',$7,$3,$11,$8,$9)`,
+		company, product, user, "stock-in-"+suffix, "adjust-"+suffix, flipkartBatch, syntheticBatch, fmt.Sprintf("%064x", 3), at, "flipkart-out-"+suffix, "synthetic-out-"+suffix)
+
+	service := NewService(db, authorization.NewService(db))
+	principal := auth.Principal{CompanyID: company, UserID: user}
+	filter := Filter{From: at.Add(-time.Hour), To: at.Add(time.Hour), Marketplace: "flipkart", Limit: 50}
+	flipkart, err := service.Dashboard(ctx, principal, filter)
+	assertMovement := func(label string, report Report, wantOut, wantNet int64) {
+		t.Helper()
+		if report.Inventory == nil || report.Inventory.StockIn != 100 || report.Inventory.Adjustments != 7 || report.Inventory.StockOut != wantOut || report.Inventory.NetMovement != wantNet || len(report.ProductMovements) != 1 || report.ProductMovements[0].StockIn != 100 || report.ProductMovements[0].Adjustments != 7 || report.ProductMovements[0].StockOut != wantOut || report.ProductMovements[0].NetMovement != wantNet {
+			t.Fatalf("%s report=%#v", label, report)
+		}
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertMovement("flipkart", flipkart, 11, 96)
+	filter.Marketplace = secondMarketplace
+	synthetic, err := service.Dashboard(ctx, principal, filter)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertMovement("synthetic", synthetic, 23, 84)
+	filter.Marketplace = ""
+	all, err := service.Dashboard(ctx, principal, filter)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertMovement("all marketplaces", all, 34, 73)
+}
+
 func TestReportingMigrationUpDown(t *testing.T) {
 	db := reportingDB(t)
 	ctx := context.Background()
