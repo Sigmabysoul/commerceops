@@ -59,3 +59,8 @@ Phase 6 migration `000011_dashboard_reporting` adds `reports.view` and
 company/date/status indexes supporting reporting filters. It introduces no
 report counters or aggregate tables: marketplace, batch, print, and inventory
 tables remain authoritative and reporting queries are rebuild-free by design.
+
+Phase 7 Batch A migration `000012_amazon_processing` adds only an Amazon-scoped
+partial claim index over the existing `processing_jobs` table. Amazon source
+files, jobs, normalized orders/items, errors, leases, and duplicate constraints
+reuse the generic marketplace schema; no Amazon-only business tables exist.

@@ -29,13 +29,21 @@ specialized workers.
 
 ## Background processing
 
-PostgreSQL is the durable authority for Flipkart processing jobs. Each API
-process generates a random, non-secret worker identity and claims queued or
-expired Flipkart work transactionally with `FOR UPDATE SKIP LOCKED`. A bounded
-lease is renewed while extraction runs. Completion and failure transactions
+PostgreSQL is the durable authority for marketplace processing jobs. Each
+marketplace processor has a bounded worker pool. Every API process generates
+random, non-secret worker identities and claims only queued or expired work for
+that processor transactionally with `FOR UPDATE SKIP LOCKED`. A bounded lease
+is renewed while extraction runs. Completion and failure transactions
 must still own the live lease before they may persist results or final state,
 so a stale process cannot commit after another instance reclaims its job.
 
 The in-process wake channel is only a latency optimization. It is not a queue,
 and no Redis, broker, or external workflow system participates in job
 authority.
+
+Shared marketplace orchestration owns upload validation, object storage,
+tenant/marketplace source deduplication, job leases, retries, normalized
+persistence, duplicate protection, Product Master lookup, and audits. Isolated
+adapters under `internal/marketplace/<marketplace>` own only document
+recognition and field extraction. The Phase 7 Amazon adapter consumes bounded
+page text and does not perform OCR or label/invoice association in Batch A.

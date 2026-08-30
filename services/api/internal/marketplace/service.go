@@ -18,6 +18,7 @@ import (
 	"github.com/commerceops/commerceops/services/api/internal/audit"
 	"github.com/commerceops/commerceops/services/api/internal/auth"
 	"github.com/commerceops/commerceops/services/api/internal/authorization"
+	"github.com/commerceops/commerceops/services/api/internal/marketplace/amazon"
 	"github.com/commerceops/commerceops/services/api/internal/marketplace/flipkart"
 	"github.com/commerceops/commerceops/services/api/internal/platform/objectstorage"
 	"github.com/commerceops/commerceops/services/api/internal/platform/pdfextractor"
@@ -48,6 +49,18 @@ type Service struct {
 	workerID          string
 	leaseDuration     time.Duration
 	heartbeatInterval time.Duration
+	processor         processor
+}
+type normalizedRecord struct {
+	Page              int
+	AWB, OrderID, SKU string
+	Quantity          *int
+}
+type processor struct {
+	marketplace, parserVersion, documentName string
+	auditCountKey                            string
+	requireOrderID                           bool
+	parse                                    func([]pdfextractor.Page) ([]normalizedRecord, error)
 }
 type work struct{ CompanyID, UserID, JobID, StorageKey, WorkerID string }
 type UploadResult struct {
@@ -92,7 +105,13 @@ type JobDetails struct {
 }
 
 func NewService(db *pgxpool.Pool, authorizer *authorization.Service, storage objectstorage.Storage, extractor pdfextractor.Extractor) (*Service, error) {
-	s, err := newService(db, authorizer, storage, extractor)
+	return newProcessingService(db, authorizer, storage, extractor, flipkartProcessor())
+}
+func NewAmazonService(db *pgxpool.Pool, authorizer *authorization.Service, storage objectstorage.Storage, extractor pdfextractor.Extractor) (*Service, error) {
+	return newProcessingService(db, authorizer, storage, extractor, amazonProcessor())
+}
+func newProcessingService(db *pgxpool.Pool, authorizer *authorization.Service, storage objectstorage.Storage, extractor pdfextractor.Extractor, p processor) (*Service, error) {
+	s, err := newServiceForProcessor(db, authorizer, storage, extractor, p)
 	if err != nil {
 		return nil, err
 	}
@@ -103,18 +122,50 @@ func NewService(db *pgxpool.Pool, authorizer *authorization.Service, storage obj
 	return s, nil
 }
 func newService(db *pgxpool.Pool, authorizer *authorization.Service, storage objectstorage.Storage, extractor pdfextractor.Extractor) (*Service, error) {
+	return newServiceForProcessor(db, authorizer, storage, extractor, flipkartProcessor())
+}
+func newServiceForProcessor(db *pgxpool.Pool, authorizer *authorization.Service, storage objectstorage.Storage, extractor pdfextractor.Extractor, p processor) (*Service, error) {
 	workerID, err := randomUUID()
 	if err != nil {
 		return nil, fmt.Errorf("create worker identity: %w", err)
 	}
-	return newServiceWithWorkerID(db, authorizer, storage, extractor, workerID), nil
+	return newServiceWithProcessorAndWorkerID(db, authorizer, storage, extractor, workerID, p), nil
 }
 func newServiceWithWorkerID(db *pgxpool.Pool, authorizer *authorization.Service, storage objectstorage.Storage, extractor pdfextractor.Extractor, workerID string) *Service {
+	return newServiceWithProcessorAndWorkerID(db, authorizer, storage, extractor, workerID, flipkartProcessor())
+}
+func newServiceWithProcessorAndWorkerID(db *pgxpool.Pool, authorizer *authorization.Service, storage objectstorage.Storage, extractor pdfextractor.Extractor, workerID string, p processor) *Service {
 	return &Service{
 		db: db, authorizer: authorizer, storage: storage, extractor: extractor,
 		wake: make(chan struct{}, 1), workerID: workerID,
-		leaseDuration: workerLeaseDuration, heartbeatInterval: workerHeartbeatInterval,
+		leaseDuration: workerLeaseDuration, heartbeatInterval: workerHeartbeatInterval, processor: p,
 	}
+}
+func flipkartProcessor() processor {
+	return processor{marketplace: "flipkart", parserVersion: flipkart.ParserVersion, documentName: "Flipkart", auditCountKey: "labels", parse: func(pages []pdfextractor.Page) ([]normalizedRecord, error) {
+		labels, err := flipkart.Parse(pages)
+		if err != nil {
+			return nil, err
+		}
+		out := make([]normalizedRecord, 0, len(labels))
+		for _, label := range labels {
+			out = append(out, normalizedRecord{Page: label.Page, AWB: label.AWB, OrderID: label.OrderID, SKU: label.SKU, Quantity: label.Quantity})
+		}
+		return out, nil
+	}}
+}
+func amazonProcessor() processor {
+	return processor{marketplace: "amazon", parserVersion: amazon.ParserVersion, documentName: "Amazon", auditCountKey: "documents", requireOrderID: true, parse: func(pages []pdfextractor.Page) ([]normalizedRecord, error) {
+		documents, err := amazon.Parse(pages)
+		if err != nil {
+			return nil, err
+		}
+		out := make([]normalizedRecord, 0, len(documents))
+		for _, document := range documents {
+			out = append(out, normalizedRecord{Page: document.Page, AWB: document.AWB, OrderID: document.OrderID, SKU: document.SKU, Quantity: document.Quantity})
+		}
+		return out, nil
+	}}
 }
 func (s *Service) signal() {
 	select {
@@ -124,7 +175,7 @@ func (s *Service) signal() {
 }
 
 func (s *Service) Upload(ctx context.Context, p auth.Principal, filename string, data []byte) (UploadResult, error) {
-	if err := s.authorizer.RequireModule(ctx, p, "flipkart"); err != nil {
+	if err := s.authorizer.RequireModule(ctx, p, s.processor.marketplace); err != nil {
 		return UploadResult{}, err
 	}
 	if err := s.authorizer.RequirePermission(ctx, p, "labels.upload"); err != nil {
@@ -165,7 +216,7 @@ func (s *Service) Upload(ctx context.Context, p auth.Principal, filename string,
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
 	var inserted string
-	err = tx.QueryRow(ctx, `INSERT INTO source_files(id,company_id,marketplace_key,storage_key,original_filename,content_type,size_bytes,sha256,uploaded_by) VALUES($1,$2,'flipkart',$3,$4,'application/pdf',$5,$6,$7) ON CONFLICT(company_id,marketplace_key,sha256) DO NOTHING RETURNING id`, sourceID, p.CompanyID, storageKey, safeFilename(filename), len(data), hash, p.UserID).Scan(&inserted)
+	err = tx.QueryRow(ctx, `INSERT INTO source_files(id,company_id,marketplace_key,storage_key,original_filename,content_type,size_bytes,sha256,uploaded_by) VALUES($1,$2,$3,$4,$5,'application/pdf',$6,$7,$8) ON CONFLICT(company_id,marketplace_key,sha256) DO NOTHING RETURNING id`, sourceID, p.CompanyID, s.processor.marketplace, storageKey, safeFilename(filename), len(data), hash, p.UserID).Scan(&inserted)
 	if errors.Is(err, pgx.ErrNoRows) {
 		_ = tx.Rollback(ctx)
 		existing, findErr := s.findDuplicate(ctx, p.CompanyID, hash)
@@ -178,11 +229,11 @@ func (s *Service) Upload(ctx context.Context, p auth.Principal, filename string,
 		return UploadResult{}, err
 	}
 	var job Job
-	err = tx.QueryRow(ctx, `INSERT INTO processing_jobs(company_id,source_file_id,marketplace_key,status,parser_version) VALUES($1,$2,'flipkart','queued',$3) RETURNING id,status,parser_version,total_pages,processed_pages,created_at,updated_at`, p.CompanyID, sourceID, flipkart.ParserVersion).Scan(&job.ID, &job.Status, &job.ParserVersion, &job.TotalPages, &job.ProcessedPages, &job.CreatedAt, &job.UpdatedAt)
+	err = tx.QueryRow(ctx, `INSERT INTO processing_jobs(company_id,source_file_id,marketplace_key,status,parser_version) VALUES($1,$2,$3,'queued',$4) RETURNING id,status,parser_version,total_pages,processed_pages,created_at,updated_at`, p.CompanyID, sourceID, s.processor.marketplace, s.processor.parserVersion).Scan(&job.ID, &job.Status, &job.ParserVersion, &job.TotalPages, &job.ProcessedPages, &job.CreatedAt, &job.UpdatedAt)
 	if err != nil {
 		return UploadResult{}, err
 	}
-	if err = s.audit.Record(ctx, tx, p.CompanyID, p.UserID, "flipkart.file_uploaded", "processing_job", job.ID, map[string]any{"source_file_id": sourceID, "sha256": hash, "size_bytes": len(data)}); err != nil {
+	if err = s.audit.Record(ctx, tx, p.CompanyID, p.UserID, s.processor.marketplace+".file_uploaded", "processing_job", job.ID, map[string]any{"source_file_id": sourceID, "sha256": hash, "size_bytes": len(data)}); err != nil {
 		return UploadResult{}, err
 	}
 	if err = tx.Commit(ctx); err != nil {
@@ -194,7 +245,7 @@ func (s *Service) Upload(ctx context.Context, p auth.Principal, filename string,
 }
 func (s *Service) findDuplicate(ctx context.Context, companyID, hash string) (Job, error) {
 	var job Job
-	err := s.db.QueryRow(ctx, `SELECT j.id,j.status,j.parser_version,j.total_pages,j.processed_pages,j.created_at,j.updated_at FROM source_files f JOIN processing_jobs j ON j.company_id=f.company_id AND j.source_file_id=f.id WHERE f.company_id=$1 AND f.marketplace_key='flipkart' AND f.sha256=$2 AND j.marketplace_key='flipkart' ORDER BY j.created_at DESC LIMIT 1`, companyID, hash).Scan(&job.ID, &job.Status, &job.ParserVersion, &job.TotalPages, &job.ProcessedPages, &job.CreatedAt, &job.UpdatedAt)
+	err := s.db.QueryRow(ctx, `SELECT j.id,j.status,j.parser_version,j.total_pages,j.processed_pages,j.created_at,j.updated_at FROM source_files f JOIN processing_jobs j ON j.company_id=f.company_id AND j.source_file_id=f.id WHERE f.company_id=$1 AND f.marketplace_key=$2 AND f.sha256=$3 AND j.marketplace_key=$2 ORDER BY j.created_at DESC LIMIT 1`, companyID, s.processor.marketplace, hash).Scan(&job.ID, &job.Status, &job.ParserVersion, &job.TotalPages, &job.ProcessedPages, &job.CreatedAt, &job.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Job{}, ErrNotFound
 	}
@@ -202,21 +253,21 @@ func (s *Service) findDuplicate(ctx context.Context, companyID, hash string) (Jo
 }
 
 func (s *Service) Get(ctx context.Context, p auth.Principal, id string) (JobDetails, error) {
-	if err := s.authorizer.RequireModule(ctx, p, "flipkart"); err != nil {
+	if err := s.authorizer.RequireModule(ctx, p, s.processor.marketplace); err != nil {
 		return JobDetails{}, err
 	}
 	if err := s.authorizer.RequirePermission(ctx, p, "labels.process"); err != nil {
 		return JobDetails{}, err
 	}
 	var out JobDetails
-	err := s.db.QueryRow(ctx, `SELECT id,status,parser_version,total_pages,processed_pages,created_at,updated_at FROM processing_jobs WHERE company_id=$1 AND id=$2 AND marketplace_key='flipkart'`, p.CompanyID, id).Scan(&out.Job.ID, &out.Job.Status, &out.Job.ParserVersion, &out.Job.TotalPages, &out.Job.ProcessedPages, &out.Job.CreatedAt, &out.Job.UpdatedAt)
+	err := s.db.QueryRow(ctx, `SELECT id,status,parser_version,total_pages,processed_pages,created_at,updated_at FROM processing_jobs WHERE company_id=$1 AND id=$2 AND marketplace_key=$3`, p.CompanyID, id, s.processor.marketplace).Scan(&out.Job.ID, &out.Job.Status, &out.Job.ParserVersion, &out.Job.TotalPages, &out.Job.ProcessedPages, &out.Job.CreatedAt, &out.Job.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return JobDetails{}, ErrNotFound
 	}
 	if err != nil {
 		return JobDetails{}, err
 	}
-	rows, err := s.db.Query(ctx, `SELECT id,source_page,marketplace_order_id,awb,status FROM marketplace_orders WHERE company_id=$1 AND processing_job_id=$2 AND marketplace_key='flipkart' ORDER BY source_page,id`, p.CompanyID, id)
+	rows, err := s.db.Query(ctx, `SELECT id,source_page,marketplace_order_id,awb,status FROM marketplace_orders WHERE company_id=$1 AND processing_job_id=$2 AND marketplace_key=$3 ORDER BY source_page,id`, p.CompanyID, id, s.processor.marketplace)
 	if err != nil {
 		return JobDetails{}, err
 	}
@@ -267,7 +318,7 @@ func (s *Service) Get(ctx context.Context, p auth.Principal, id string) (JobDeta
 }
 
 func (s *Service) Retry(ctx context.Context, p auth.Principal, id string) (Job, error) {
-	if err := s.authorizer.RequireModule(ctx, p, "flipkart"); err != nil {
+	if err := s.authorizer.RequireModule(ctx, p, s.processor.marketplace); err != nil {
 		return Job{}, err
 	}
 	if err := s.authorizer.RequirePermission(ctx, p, "labels.process"); err != nil {
@@ -279,7 +330,7 @@ func (s *Service) Retry(ctx context.Context, p auth.Principal, id string) (Job, 
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
 	var status string
-	err = tx.QueryRow(ctx, `SELECT status FROM processing_jobs WHERE company_id=$1 AND id=$2 AND marketplace_key='flipkart' FOR UPDATE`, p.CompanyID, id).Scan(&status)
+	err = tx.QueryRow(ctx, `SELECT status FROM processing_jobs WHERE company_id=$1 AND id=$2 AND marketplace_key=$3 FOR UPDATE`, p.CompanyID, id, s.processor.marketplace).Scan(&status)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Job{}, ErrNotFound
 	}
@@ -289,21 +340,21 @@ func (s *Service) Retry(ctx context.Context, p auth.Principal, id string) (Job, 
 	if status == "queued" || status == "processing" {
 		return Job{}, ErrJobActive
 	}
-	if _, err = tx.Exec(ctx, `DELETE FROM marketplace_order_items WHERE company_id=$1 AND order_id IN(SELECT id FROM marketplace_orders WHERE company_id=$1 AND processing_job_id=$2 AND marketplace_key='flipkart')`, p.CompanyID, id); err != nil {
+	if _, err = tx.Exec(ctx, `DELETE FROM marketplace_order_items WHERE company_id=$1 AND order_id IN(SELECT id FROM marketplace_orders WHERE company_id=$1 AND processing_job_id=$2 AND marketplace_key=$3)`, p.CompanyID, id, s.processor.marketplace); err != nil {
 		return Job{}, err
 	}
-	if _, err = tx.Exec(ctx, `DELETE FROM marketplace_orders WHERE company_id=$1 AND processing_job_id=$2 AND marketplace_key='flipkart'`, p.CompanyID, id); err != nil {
+	if _, err = tx.Exec(ctx, `DELETE FROM marketplace_orders WHERE company_id=$1 AND processing_job_id=$2 AND marketplace_key=$3`, p.CompanyID, id, s.processor.marketplace); err != nil {
 		return Job{}, err
 	}
 	if _, err = tx.Exec(ctx, `DELETE FROM processing_errors WHERE company_id=$1 AND processing_job_id=$2`, p.CompanyID, id); err != nil {
 		return Job{}, err
 	}
 	var job Job
-	err = tx.QueryRow(ctx, `UPDATE processing_jobs SET status='queued',total_pages=0,processed_pages=0,started_at=NULL,completed_at=NULL,worker_id=NULL,lease_expires_at=NULL,updated_at=now(),parser_version=$1 WHERE company_id=$2 AND id=$3 AND marketplace_key='flipkart' RETURNING id,status,parser_version,total_pages,processed_pages,created_at,updated_at`, flipkart.ParserVersion, p.CompanyID, id).Scan(&job.ID, &job.Status, &job.ParserVersion, &job.TotalPages, &job.ProcessedPages, &job.CreatedAt, &job.UpdatedAt)
+	err = tx.QueryRow(ctx, `UPDATE processing_jobs SET status='queued',total_pages=0,processed_pages=0,started_at=NULL,completed_at=NULL,worker_id=NULL,lease_expires_at=NULL,updated_at=now(),parser_version=$1 WHERE company_id=$2 AND id=$3 AND marketplace_key=$4 RETURNING id,status,parser_version,total_pages,processed_pages,created_at,updated_at`, s.processor.parserVersion, p.CompanyID, id, s.processor.marketplace).Scan(&job.ID, &job.Status, &job.ParserVersion, &job.TotalPages, &job.ProcessedPages, &job.CreatedAt, &job.UpdatedAt)
 	if err != nil {
 		return Job{}, err
 	}
-	if err = s.audit.Record(ctx, tx, p.CompanyID, p.UserID, "flipkart.processing_retried", "processing_job", id, map[string]any{"previous_status": status}); err != nil {
+	if err = s.audit.Record(ctx, tx, p.CompanyID, p.UserID, s.processor.marketplace+".processing_retried", "processing_job", id, map[string]any{"previous_status": status}); err != nil {
 		return Job{}, err
 	}
 	if err = tx.Commit(ctx); err != nil {
@@ -333,7 +384,7 @@ func (s *Service) recoverJobs() {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	var eligible bool
-	err := s.db.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM processing_jobs WHERE marketplace_key='flipkart' AND (status='queued' OR (status='processing' AND (lease_expires_at IS NULL OR lease_expires_at<=now()))))`).Scan(&eligible)
+	err := s.db.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM processing_jobs WHERE marketplace_key=$1 AND (status='queued' OR (status='processing' AND (lease_expires_at IS NULL OR lease_expires_at<=now()))))`, s.processor.marketplace).Scan(&eligible)
 	if err == nil && eligible {
 		s.signal()
 	}
@@ -345,14 +396,14 @@ func (s *Service) claim(ctx context.Context) (work, bool, error) {
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
 	var item work
-	err = tx.QueryRow(ctx, `SELECT j.company_id,f.uploaded_by,j.id,f.storage_key FROM processing_jobs j JOIN source_files f ON f.company_id=j.company_id AND f.id=j.source_file_id AND f.marketplace_key='flipkart' WHERE j.marketplace_key='flipkart' AND (j.status='queued' OR (j.status='processing' AND (j.lease_expires_at IS NULL OR j.lease_expires_at<=now()))) ORDER BY j.created_at,j.id FOR UPDATE OF j SKIP LOCKED LIMIT 1`).Scan(&item.CompanyID, &item.UserID, &item.JobID, &item.StorageKey)
+	err = tx.QueryRow(ctx, `SELECT j.company_id,f.uploaded_by,j.id,f.storage_key FROM processing_jobs j JOIN source_files f ON f.company_id=j.company_id AND f.id=j.source_file_id AND f.marketplace_key=$1 WHERE j.marketplace_key=$1 AND (j.status='queued' OR (j.status='processing' AND (j.lease_expires_at IS NULL OR j.lease_expires_at<=now()))) ORDER BY j.created_at,j.id FOR UPDATE OF j SKIP LOCKED LIMIT 1`, s.processor.marketplace).Scan(&item.CompanyID, &item.UserID, &item.JobID, &item.StorageKey)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return work{}, false, nil
 	}
 	if err != nil {
 		return work{}, false, err
 	}
-	result, err := tx.Exec(ctx, `UPDATE processing_jobs SET status='processing',worker_id=$3,lease_expires_at=now()+($4*interval '1 second'),started_at=COALESCE(started_at,now()),completed_at=NULL,updated_at=now() WHERE company_id=$1 AND id=$2 AND marketplace_key='flipkart' AND (status='queued' OR (status='processing' AND (lease_expires_at IS NULL OR lease_expires_at<=now())))`, item.CompanyID, item.JobID, s.workerID, int64(s.leaseDuration/time.Second))
+	result, err := tx.Exec(ctx, `UPDATE processing_jobs SET status='processing',worker_id=$3,lease_expires_at=now()+($4*interval '1 second'),started_at=COALESCE(started_at,now()),completed_at=NULL,updated_at=now() WHERE company_id=$1 AND id=$2 AND marketplace_key=$5 AND (status='queued' OR (status='processing' AND (lease_expires_at IS NULL OR lease_expires_at<=now())))`, item.CompanyID, item.JobID, s.workerID, int64(s.leaseDuration/time.Second), s.processor.marketplace)
 	if err != nil {
 		return work{}, false, err
 	}
@@ -378,7 +429,7 @@ func (s *Service) processNext() (bool, error) {
 		}
 		failureCtx, failureCancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer failureCancel()
-		code, message := classifyWorkerError(err)
+		code, message := s.classifyWorkerError(err)
 		if failErr := s.failJob(failureCtx, item, code, message); failErr != nil {
 			if errors.Is(failErr, ErrLeaseLost) {
 				return true, nil
@@ -421,7 +472,7 @@ func (s *Service) heartbeat(ctx context.Context, cancel context.CancelFunc, item
 	}
 }
 func (s *Service) renewLease(ctx context.Context, item work) error {
-	result, err := s.db.Exec(ctx, `UPDATE processing_jobs SET lease_expires_at=now()+($4*interval '1 second'),updated_at=now() WHERE company_id=$1 AND id=$2 AND marketplace_key='flipkart' AND status='processing' AND worker_id=$3 AND lease_expires_at>now()`, item.CompanyID, item.JobID, item.WorkerID, int64(s.leaseDuration/time.Second))
+	result, err := s.db.Exec(ctx, `UPDATE processing_jobs SET lease_expires_at=now()+($4*interval '1 second'),updated_at=now() WHERE company_id=$1 AND id=$2 AND marketplace_key=$5 AND status='processing' AND worker_id=$3 AND lease_expires_at>now()`, item.CompanyID, item.JobID, item.WorkerID, int64(s.leaseDuration/time.Second), s.processor.marketplace)
 	if err != nil {
 		return fmt.Errorf("renew processing lease: %w", err)
 	}
@@ -450,9 +501,9 @@ func (s *Service) execute(ctx context.Context, w work) error {
 	if err != nil {
 		return fmt.Errorf("PDF extraction failed: %w", err)
 	}
-	labels, err := flipkart.Parse(pages)
+	labels, err := s.processor.parse(pages)
 	if err != nil {
-		return fmt.Errorf("Flipkart parse failed: %w", err)
+		return fmt.Errorf("%s parse failed: %w", s.processor.documentName, err)
 	}
 	tx, err := s.db.Begin(ctx)
 	if err != nil {
@@ -460,12 +511,12 @@ func (s *Service) execute(ctx context.Context, w work) error {
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
 	var sourceID string
-	if err = tx.QueryRow(ctx, `SELECT source_file_id FROM processing_jobs WHERE company_id=$1 AND id=$2 AND marketplace_key='flipkart' AND status='processing' AND worker_id=$3 AND lease_expires_at>now() FOR UPDATE`, w.CompanyID, w.JobID, w.WorkerID).Scan(&sourceID); errors.Is(err, pgx.ErrNoRows) {
+	if err = tx.QueryRow(ctx, `SELECT source_file_id FROM processing_jobs WHERE company_id=$1 AND id=$2 AND marketplace_key=$4 AND status='processing' AND worker_id=$3 AND lease_expires_at>now() FOR UPDATE`, w.CompanyID, w.JobID, w.WorkerID, s.processor.marketplace).Scan(&sourceID); errors.Is(err, pgx.ErrNoRows) {
 		return ErrLeaseLost
 	} else if err != nil {
 		return err
 	}
-	if err = s.audit.Record(ctx, tx, w.CompanyID, w.UserID, "flipkart.processing_started", "processing_job", w.JobID, map[string]any{"parser_version": flipkart.ParserVersion}); err != nil {
+	if err = s.audit.Record(ctx, tx, w.CompanyID, w.UserID, s.processor.marketplace+".processing_started", "processing_job", w.JobID, map[string]any{"parser_version": s.processor.parserVersion}); err != nil {
 		return err
 	}
 	needsReview := false
@@ -478,6 +529,9 @@ func (s *Service) execute(ctx context.Context, w work) error {
 			warnings = append(warnings, "missing_awb")
 		}
 		if label.OrderID == "" {
+			if s.processor.requireOrderID {
+				status = "needs_review"
+			}
 			warnings = append(warnings, "missing_order_id")
 		}
 		if label.SKU == "" {
@@ -485,7 +539,7 @@ func (s *Service) execute(ctx context.Context, w work) error {
 			warnings = append(warnings, "missing_sku")
 		} else {
 			var id string
-			resolutionErr := tx.QueryRow(ctx, `SELECT m.product_id FROM sku_mappings m JOIN products p ON p.company_id=m.company_id AND p.id=m.product_id WHERE m.company_id=$1 AND m.marketplace_key='flipkart' AND m.sku=$2 AND m.status='active' AND p.status='active'`, w.CompanyID, label.SKU).Scan(&id)
+			resolutionErr := tx.QueryRow(ctx, `SELECT m.product_id FROM sku_mappings m JOIN products p ON p.company_id=m.company_id AND p.id=m.product_id WHERE m.company_id=$1 AND m.marketplace_key=$2 AND m.sku=$3 AND m.status='active' AND p.status='active'`, w.CompanyID, s.processor.marketplace, label.SKU).Scan(&id)
 			if resolutionErr == nil {
 				productID = &id
 			} else if errors.Is(resolutionErr, pgx.ErrNoRows) {
@@ -501,14 +555,14 @@ func (s *Service) execute(ctx context.Context, w work) error {
 		}
 		for _, identifier := range []string{label.AWB, label.OrderID} {
 			if identifier != "" {
-				if _, err = tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1,0))`, w.CompanyID+"|flipkart|"+identifier); err != nil {
+				if _, err = tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1,0))`, w.CompanyID+"|"+s.processor.marketplace+"|"+identifier); err != nil {
 					return err
 				}
 			}
 		}
 		var duplicate bool
 		if label.AWB != "" || label.OrderID != "" {
-			if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM marketplace_orders WHERE company_id=$1 AND marketplace_key='flipkart' AND status<>'duplicate' AND (($2<>'' AND awb=$2) OR ($3<>'' AND marketplace_order_id=$3)))`, w.CompanyID, label.AWB, label.OrderID).Scan(&duplicate); err != nil {
+			if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM marketplace_orders WHERE company_id=$1 AND marketplace_key=$2 AND status<>'duplicate' AND (($3<>'' AND awb=$3) OR ($4<>'' AND marketplace_order_id=$4)))`, w.CompanyID, s.processor.marketplace, label.AWB, label.OrderID).Scan(&duplicate); err != nil {
 				return err
 			}
 		}
@@ -521,7 +575,7 @@ func (s *Service) execute(ctx context.Context, w work) error {
 		}
 		metadata, _ := json.Marshal(map[string]any{"extractor": "poppler", "fields_detected": map[string]bool{"awb": label.AWB != "", "order_id": label.OrderID != "", "sku": label.SKU != "", "quantity": label.Quantity != nil}})
 		var orderID string
-		if err = tx.QueryRow(ctx, `INSERT INTO marketplace_orders(company_id,marketplace_key,source_file_id,processing_job_id,source_page,marketplace_order_id,awb,status,parser_version,extraction_metadata) VALUES($1,'flipkart',$2,$3,$4,NULLIF($5,''),NULLIF($6,''),$7,$8,$9) RETURNING id`, w.CompanyID, sourceID, w.JobID, label.Page, label.OrderID, label.AWB, status, flipkart.ParserVersion, metadata).Scan(&orderID); err != nil {
+		if err = tx.QueryRow(ctx, `INSERT INTO marketplace_orders(company_id,marketplace_key,source_file_id,processing_job_id,source_page,marketplace_order_id,awb,status,parser_version,extraction_metadata) VALUES($1,$2,$3,$4,$5,NULLIF($6,''),NULLIF($7,''),$8,$9,$10) RETURNING id`, w.CompanyID, s.processor.marketplace, sourceID, w.JobID, label.Page, label.OrderID, label.AWB, status, s.processor.parserVersion, metadata).Scan(&orderID); err != nil {
 			return err
 		}
 		warningJSON, _ := json.Marshal(warnings)
@@ -550,14 +604,14 @@ func (s *Service) execute(ctx context.Context, w work) error {
 	if needsReview {
 		finalStatus = "needs_review"
 	}
-	result, err := tx.Exec(ctx, `UPDATE processing_jobs SET status=$1,total_pages=$2,processed_pages=$2,completed_at=now(),worker_id=NULL,lease_expires_at=NULL,updated_at=now() WHERE company_id=$3 AND id=$4 AND marketplace_key='flipkart' AND status='processing' AND worker_id=$5`, finalStatus, len(pages), w.CompanyID, w.JobID, w.WorkerID)
+	result, err := tx.Exec(ctx, `UPDATE processing_jobs SET status=$1,total_pages=$2,processed_pages=$2,completed_at=now(),worker_id=NULL,lease_expires_at=NULL,updated_at=now() WHERE company_id=$3 AND id=$4 AND marketplace_key=$6 AND status='processing' AND worker_id=$5`, finalStatus, len(pages), w.CompanyID, w.JobID, w.WorkerID, s.processor.marketplace)
 	if err != nil {
 		return err
 	}
 	if result.RowsAffected() != 1 {
 		return ErrLeaseLost
 	}
-	if err = s.audit.Record(ctx, tx, w.CompanyID, w.UserID, "flipkart.processing_completed", "processing_job", w.JobID, map[string]any{"status": finalStatus, "pages": len(pages), "labels": len(labels)}); err != nil {
+	if err = s.audit.Record(ctx, tx, w.CompanyID, w.UserID, s.processor.marketplace+".processing_completed", "processing_job", w.JobID, map[string]any{"status": finalStatus, "pages": len(pages), s.processor.auditCountKey: len(labels)}); err != nil {
 		return err
 	}
 	if err = tx.Commit(ctx); err != nil {
@@ -572,7 +626,7 @@ func (s *Service) failJob(ctx context.Context, w work, code, message string) err
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
 	var owned bool
-	if err = tx.QueryRow(ctx, `SELECT true FROM processing_jobs WHERE company_id=$1 AND id=$2 AND marketplace_key='flipkart' AND status='processing' AND worker_id=$3 AND lease_expires_at>now() FOR UPDATE`, w.CompanyID, w.JobID, w.WorkerID).Scan(&owned); errors.Is(err, pgx.ErrNoRows) {
+	if err = tx.QueryRow(ctx, `SELECT true FROM processing_jobs WHERE company_id=$1 AND id=$2 AND marketplace_key=$4 AND status='processing' AND worker_id=$3 AND lease_expires_at>now() FOR UPDATE`, w.CompanyID, w.JobID, w.WorkerID, s.processor.marketplace).Scan(&owned); errors.Is(err, pgx.ErrNoRows) {
 		return ErrLeaseLost
 	} else if err != nil {
 		return err
@@ -580,7 +634,7 @@ func (s *Service) failJob(ctx context.Context, w work, code, message string) err
 	if _, err = tx.Exec(ctx, `INSERT INTO processing_errors(company_id,processing_job_id,severity,code,message) VALUES($1,$2,'error',$3,$4)`, w.CompanyID, w.JobID, code, message); err != nil {
 		return err
 	}
-	result, err := tx.Exec(ctx, `UPDATE processing_jobs SET status='failed',completed_at=now(),worker_id=NULL,lease_expires_at=NULL,updated_at=now() WHERE company_id=$1 AND id=$2 AND marketplace_key='flipkart' AND status='processing' AND worker_id=$3`, w.CompanyID, w.JobID, w.WorkerID)
+	result, err := tx.Exec(ctx, `UPDATE processing_jobs SET status='failed',completed_at=now(),worker_id=NULL,lease_expires_at=NULL,updated_at=now() WHERE company_id=$1 AND id=$2 AND marketplace_key=$4 AND status='processing' AND worker_id=$3`, w.CompanyID, w.JobID, w.WorkerID, s.processor.marketplace)
 	if err != nil {
 		return err
 	}
@@ -609,15 +663,15 @@ func randomUUID() (string, error) {
 	raw := hex.EncodeToString(value)
 	return raw[0:8] + "-" + raw[8:12] + "-" + raw[12:16] + "-" + raw[16:20] + "-" + raw[20:32], nil
 }
-func classifyWorkerError(err error) (string, string) {
+func (s *Service) classifyWorkerError(err error) (string, string) {
 	value := err.Error()
 	switch {
 	case strings.Contains(value, "storage"):
 		return "STORAGE_READ_FAILED", "Stored source file could not be read"
 	case strings.Contains(value, "PDF extraction"):
 		return "PDF_EXTRACTION_FAILED", "PDF text extraction failed or exceeded a resource limit"
-	case strings.Contains(value, "Flipkart parse"):
-		return "UNSUPPORTED_FLIPKART_DOCUMENT", "No supported Flipkart label could be extracted"
+	case strings.Contains(value, s.processor.documentName+" parse"):
+		return "UNSUPPORTED_" + strings.ToUpper(s.processor.marketplace) + "_DOCUMENT", "No supported " + s.processor.documentName + " document could be extracted"
 	case strings.Contains(value, "commit"):
 		return "PROCESSING_COMMIT_FAILED", "Processing results could not be committed"
 	default:

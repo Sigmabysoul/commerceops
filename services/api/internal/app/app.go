@@ -51,6 +51,11 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 		return err
 	}
 	marketplaceHTTP := marketplace.NewHTTPHandler(marketplaceService)
+	amazonService, err := marketplace.NewAmazonService(db, authorizer, storage, pdfextractor.NewPoppler())
+	if err != nil {
+		return err
+	}
+	amazonHTTP := marketplace.NewHTTPHandler(amazonService)
 	mux.HandleFunc("/api/v1/auth/login", authHTTP.Login)
 	mux.Handle("/api/v1/auth/logout", authHTTP.RequireSession(http.HandlerFunc(authHTTP.Logout)))
 	mux.Handle("/api/v1/auth/session", authHTTP.RequireSession(http.HandlerFunc(authHTTP.Session)))
@@ -74,6 +79,8 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	mux.Handle("/api/v1/sku-mappings/{mapping_id}", authHTTP.RequireSession(http.HandlerFunc(productHTTP.Mapping)))
 	mux.Handle("/api/v1/flipkart/jobs", authHTTP.RequireSession(http.HandlerFunc(marketplaceHTTP.Jobs)))
 	mux.Handle("/api/v1/flipkart/jobs/{job_id}", authHTTP.RequireSession(http.HandlerFunc(marketplaceHTTP.Job)))
+	mux.Handle("/api/v1/amazon/jobs", authHTTP.RequireSession(http.HandlerFunc(amazonHTTP.Jobs)))
+	mux.Handle("/api/v1/amazon/jobs/{job_id}", authHTTP.RequireSession(http.HandlerFunc(amazonHTTP.Job)))
 	mux.Handle("/api/v1/batches", authHTTP.RequireSession(http.HandlerFunc(batchHTTP.Batches)))
 	mux.Handle("/api/v1/batches/{batch_id}", authHTTP.RequireSession(http.HandlerFunc(batchHTTP.Batch)))
 	mux.Handle("/api/v1/batches/{batch_id}/ready", authHTTP.RequireSession(http.HandlerFunc(batchHTTP.Ready)))

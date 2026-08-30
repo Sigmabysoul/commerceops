@@ -58,9 +58,9 @@ inside one application; it does not imply microservices.
   printing.
 - **Allowed dependencies:** Product Master resolution, authorization, audit,
   PostgreSQL, object-storage interfaces, and PDF-extraction interfaces.
-- **Forbidden leakage:** Flipkart parsing rules must remain in the Flipkart
-  adapter; marketplace processing must not mutate inventory or implement future
-  marketplace adapters outside the active phase.
+- **Forbidden leakage:** Flipkart and Amazon parsing rules must remain in their
+  isolated adapters; marketplace processing must not mutate inventory or
+  implement future marketplace adapters outside the active phase.
 
 ## Inventory (`internal/inventory`)
 

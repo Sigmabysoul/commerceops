@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: CommerceOps API
-  version: 0.6.0
+  version: 0.7.0
 paths:
   /api/v1/health:
     get:
@@ -280,6 +280,44 @@ paths:
           content:
             application/json:
               schema: {$ref: "#/components/schemas/SkuResolution"}
+  /api/v1/amazon/jobs:
+    post:
+      operationId: uploadAmazonJob
+      summary: Upload an Amazon PDF for durable background normalization
+      security: [{sessionCookie: []}]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: {type: string, format: binary}
+      responses:
+        "202": {description: Amazon job queued, or existing source job returned}
+        "400": {$ref: "#/components/responses/Error"}
+        "403": {$ref: "#/components/responses/Error"}
+  /api/v1/amazon/jobs/{job_id}:
+    parameters:
+      - {name: job_id, in: path, required: true, schema: {type: string, format: uuid}}
+    get:
+      operationId: getAmazonJob
+      summary: Read Amazon job, normalized records, items, and review errors
+      security: [{sessionCookie: []}]
+      responses:
+        "200": {description: Tenant-scoped Amazon processing details}
+        "403": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+    post:
+      operationId: retryAmazonJob
+      summary: Clear derived Amazon results and queue the source for reprocessing
+      security: [{sessionCookie: []}]
+      responses:
+        "202": {description: Amazon job queued for retry}
+        "403": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+        "409": {$ref: "#/components/responses/Error"}
   /api/v1/batches:
     get:
       operationId: listBatches

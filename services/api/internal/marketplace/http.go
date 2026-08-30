@@ -68,7 +68,7 @@ func writeError(w http.ResponseWriter, err error) bool {
 	}
 	switch {
 	case errors.Is(err, authorization.ErrPermissionDenied), errors.Is(err, authorization.ErrModuleUnavailable):
-		httpserver.WriteError(w, 403, "FORBIDDEN", "Permission or Flipkart entitlement denied")
+		httpserver.WriteError(w, 403, "FORBIDDEN", "Permission or marketplace entitlement denied")
 	case errors.Is(err, ErrInvalidFile):
 		httpserver.WriteError(w, 400, "INVALID_PDF", "File is not a valid PDF")
 	case errors.Is(err, ErrNotFound):
