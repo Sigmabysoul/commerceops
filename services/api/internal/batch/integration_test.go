@@ -1,6 +1,7 @@
 package batch
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -13,6 +14,8 @@ import (
 
 	"github.com/commerceops/commerceops/services/api/internal/auth"
 	"github.com/commerceops/commerceops/services/api/internal/authorization"
+	"github.com/commerceops/commerceops/services/api/internal/platform/objectstorage"
+	"github.com/commerceops/commerceops/services/api/internal/platform/pdfgenerator"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -22,6 +25,25 @@ type batchFixture struct {
 	companyA, companyB, userID string
 	roleA, productID           string
 	principalA, principalB     auth.Principal
+	storage                    *objectstorage.Local
+	generator                  *recordingGenerator
+}
+
+type recordingGenerator struct {
+	calls [][]pdfgenerator.Page
+	err   error
+}
+
+func (g *recordingGenerator) Generate(_ context.Context, pages []pdfgenerator.Page, invoices bool) (pdfgenerator.Result, error) {
+	g.calls = append(g.calls, append([]pdfgenerator.Page(nil), pages...))
+	if g.err != nil {
+		return pdfgenerator.Result{}, g.err
+	}
+	result := pdfgenerator.Result{Labels: []byte("%PDF-sanitized-labels")}
+	if invoices {
+		result.Invoices = []byte("%PDF-sanitized-invoices")
+	}
+	return result, nil
 }
 
 func setupBatch(t *testing.T) *batchFixture {
@@ -44,7 +66,7 @@ func setupBatch(t *testing.T) *batchFixture {
 	for _, company := range []string{f.companyA, f.companyB} {
 		var role string
 		scanBatchTest(t, db, `INSERT INTO roles(company_id,name) VALUES($1,'Batch Operator') RETURNING id`, []any{company}, &role)
-		execBatchTest(t, db, `INSERT INTO role_permissions(company_id,role_id,permission_key) VALUES($1,$2,'labels.process')`, company, role)
+		execBatchTest(t, db, `INSERT INTO role_permissions(company_id,role_id,permission_key) VALUES($1,$2,'labels.process'),($1,$2,'labels.print')`, company, role)
 		execBatchTest(t, db, `INSERT INTO company_user_roles(company_id,user_id,role_id) VALUES($1,$2,$3)`, company, f.userID, role)
 		execBatchTest(t, db, `INSERT INTO module_entitlements(company_id,module_key,enabled) VALUES($1,'flipkart',true)`, company)
 		if company == f.companyA {
@@ -52,7 +74,12 @@ func setupBatch(t *testing.T) *batchFixture {
 		}
 	}
 	scanBatchTest(t, db, `INSERT INTO products(company_id,internal_code,name) VALUES($1,'P4-PRODUCT','Phase 4 Product') RETURNING id`, []any{f.companyA}, &f.productID)
-	f.service = NewService(db, authorization.NewService(db))
+	f.storage, err = objectstorage.NewLocal(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.generator = &recordingGenerator{}
+	f.service = NewPrintingService(db, authorization.NewService(db), f.storage, f.generator)
 	f.principalA = auth.Principal{CompanyID: f.companyA, UserID: f.userID}
 	f.principalB = auth.Principal{CompanyID: f.companyB, UserID: f.userID}
 	t.Cleanup(func() { cleanupBatch(t, f); db.Close() })
@@ -66,6 +93,9 @@ func (f *batchFixture) order(t *testing.T, company, status string, productID *st
 	sha := hex.EncodeToString(hash[:])
 	var sourceID, jobID, orderID string
 	scanBatchTest(t, f.db, `INSERT INTO source_files(company_id,marketplace_key,storage_key,original_filename,content_type,size_bytes,sha256,uploaded_by) VALUES($1,'flipkart',$2,'batch.pdf','application/pdf',1,$3,$4) RETURNING id`, []any{company, seed, sha, f.userID}, &sourceID)
+	if err := f.storage.Put(context.Background(), seed, bytes.NewReader([]byte("%PDF-source")), 11, "application/pdf"); err != nil {
+		t.Fatal(err)
+	}
 	jobStatus := "processed"
 	if status == "needs_review" {
 		jobStatus = "needs_review"
@@ -181,6 +211,57 @@ func TestBatchFoundationPostgreSQLBehavior(t *testing.T) {
 		}
 	})
 
+	t.Run("print generation persists ordered traceable artifacts", func(t *testing.T) {
+		execBatchTest(t, f.db, `UPDATE marketplace_order_items SET raw_sku=CASE order_id WHEN $1 THEN 'ALPHA' ELSE 'ZETA' END WHERE company_id=$3 AND order_id IN($1,$2)`, first, second, f.companyA)
+		execBatchTest(t, f.db, `DELETE FROM role_permissions WHERE company_id=$1 AND role_id=$2 AND permission_key='labels.print'`, f.companyA, f.roleA)
+		if _, _, err := f.service.Generate(ctx, f.principalA, created.ID, GenerateInput{IdempotencyKey: "print-denied"}); !errors.Is(err, authorization.ErrPermissionDenied) {
+			t.Fatalf("print permission error=%v", err)
+		}
+		execBatchTest(t, f.db, `INSERT INTO role_permissions(company_id,role_id,permission_key) VALUES($1,$2,'labels.print')`, f.companyA, f.roleA)
+		job, replayed, err := f.service.Generate(ctx, f.principalA, created.ID, GenerateInput{ExportInvoices: true, IdempotencyKey: "print-original"})
+		if err != nil || replayed || job.Status != "ready" || len(job.Artifacts) != 2 {
+			t.Fatalf("job=%#v replayed=%v err=%v", job, replayed, err)
+		}
+		positions := printPositions(t, f.db, f.companyA, job.ID)
+		if len(positions) != 2 || positions[0] != second || positions[1] != first {
+			t.Fatalf("original positions=%v", positions)
+		}
+		replay, wasReplay, err := f.service.Generate(ctx, f.principalA, created.ID, GenerateInput{ExportInvoices: true, IdempotencyKey: "print-original"})
+		if err != nil || !wasReplay || replay.ID != job.ID {
+			t.Fatalf("replay=%#v replayed=%v err=%v", replay, wasReplay, err)
+		}
+		sorted, _, err := f.service.Generate(ctx, f.principalA, created.ID, GenerateInput{SortLabels: true, IdempotencyKey: "print-sorted"})
+		if err != nil || len(sorted.Artifacts) != 1 {
+			t.Fatalf("sorted=%#v err=%v", sorted, err)
+		}
+		positions = printPositions(t, f.db, f.companyA, sorted.ID)
+		if positions[0] != first || positions[1] != second {
+			t.Fatalf("sorted positions=%v", positions)
+		}
+		data, _, err := f.service.DownloadArtifact(ctx, f.principalA, job.Artifacts[0].ID)
+		if err != nil || len(data) == 0 {
+			t.Fatalf("download bytes=%d err=%v", len(data), err)
+		}
+		if _, _, err = f.service.DownloadArtifact(ctx, f.principalB, job.Artifacts[0].ID); !errors.Is(err, ErrNotFound) {
+			t.Fatalf("cross-tenant artifact error=%v", err)
+		}
+		f.generator.err = errors.New("fixture generation failure")
+		if _, _, err = f.service.Generate(ctx, f.principalA, created.ID, GenerateInput{IdempotencyKey: "print-failed"}); !errors.Is(err, ErrGenerationFailed) {
+			t.Fatalf("generation failure error=%v", err)
+		}
+		f.generator.err = nil
+		var failedID, failedStatus string
+		scanBatchTest(t, f.db, `SELECT id,status FROM print_jobs WHERE company_id=$1 AND idempotency_key='print-failed'`, []any{f.companyA}, &failedID, &failedStatus)
+		if failedStatus != "failed" {
+			t.Fatalf("failed print status=%s", failedStatus)
+		}
+		var failureAudits int
+		scanBatchTest(t, f.db, `SELECT count(*) FROM audit_logs WHERE company_id=$1 AND target_type='print_job' AND target_id=$2 AND action='print.generation_failed'`, []any{f.companyA, failedID}, &failureAudits)
+		if failureAudits != 1 {
+			t.Fatalf("failure audit count=%d", failureAudits)
+		}
+	})
+
 	var auditCount int
 	scanBatchTest(t, f.db, `SELECT count(*) FROM audit_logs WHERE company_id=$1 AND target_type='batch' AND action IN ('batch.created','batch.ready','batch.cancelled')`, []any{f.companyA}, &auditCount)
 	if auditCount != 4 {
@@ -212,7 +293,7 @@ func TestBatchMigrationUpDown(t *testing.T) {
 		t.Fatal(err)
 	}
 	root := filepath.Join("..", "..", "migrations")
-	for _, name := range []string{"000001_core_platform.up.sql", "000002_tenant_sessions.up.sql", "000003_product_master.up.sql", "000004_flipkart_processing.up.sql", "000005_flipkart_worker_leases.up.sql", "000006_batch_foundation.up.sql"} {
+	for _, name := range []string{"000001_core_platform.up.sql", "000002_tenant_sessions.up.sql", "000003_product_master.up.sql", "000004_flipkart_processing.up.sql", "000005_flipkart_worker_leases.up.sql", "000006_batch_foundation.up.sql", "000007_print_generation.up.sql"} {
 		sql, readErr := os.ReadFile(filepath.Join(root, name))
 		if readErr != nil {
 			t.Fatal(readErr)
@@ -222,10 +303,10 @@ func TestBatchMigrationUpDown(t *testing.T) {
 		}
 	}
 	var exists *string
-	if err = tx.QueryRow(ctx, `SELECT to_regclass($1)`, schema+".batches").Scan(&exists); err != nil || exists == nil {
+	if err = tx.QueryRow(ctx, `SELECT to_regclass($1)`, schema+".print_jobs").Scan(&exists); err != nil || exists == nil {
 		t.Fatalf("up verification=%v err=%v", exists, err)
 	}
-	down, err := os.ReadFile(filepath.Join(root, "000006_batch_foundation.down.sql"))
+	down, err := os.ReadFile(filepath.Join(root, "000007_print_generation.down.sql"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -233,8 +314,19 @@ func TestBatchMigrationUpDown(t *testing.T) {
 		t.Fatalf("down: %v", err)
 	}
 	exists = nil
-	if err = tx.QueryRow(ctx, `SELECT to_regclass($1)`, schema+".batches").Scan(&exists); err != nil || exists != nil {
+	if err = tx.QueryRow(ctx, `SELECT to_regclass($1)`, schema+".print_jobs").Scan(&exists); err != nil || exists != nil {
 		t.Fatalf("down verification=%v err=%v", exists, err)
+	}
+	down, err = os.ReadFile(filepath.Join(root, "000006_batch_foundation.down.sql"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = tx.Exec(ctx, string(down)); err != nil {
+		t.Fatalf("batch foundation down: %v", err)
+	}
+	exists = nil
+	if err = tx.QueryRow(ctx, `SELECT to_regclass($1)`, schema+".batches").Scan(&exists); err != nil || exists != nil {
+		t.Fatalf("batch down verification=%v err=%v", exists, err)
 	}
 }
 
@@ -252,10 +344,28 @@ func scanBatchTest(t *testing.T, db *pgxpool.Pool, query string, args []any, des
 	}
 }
 
+func printPositions(t *testing.T, db *pgxpool.Pool, companyID, jobID string) []string {
+	t.Helper()
+	rows, err := db.Query(context.Background(), `SELECT marketplace_order_id FROM print_job_items WHERE company_id=$1 AND print_job_id=$2 ORDER BY output_position`, companyID, jobID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	positions := make([]string, 0)
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			t.Fatal(err)
+		}
+		positions = append(positions, id)
+	}
+	return positions
+}
+
 func cleanupBatch(t *testing.T, f *batchFixture) {
 	t.Helper()
 	companies := []string{f.companyA, f.companyB}
-	for _, table := range []string{"batch_members", "batches", "marketplace_order_items", "marketplace_orders", "processing_jobs", "source_files", "products", "audit_logs", "module_entitlements", "company_user_roles", "role_permissions", "employees", "roles", "company_users"} {
+	for _, table := range []string{"print_artifacts", "print_job_items", "print_jobs", "batch_members", "batches", "marketplace_order_items", "marketplace_orders", "processing_jobs", "source_files", "products", "audit_logs", "module_entitlements", "company_user_roles", "role_permissions", "employees", "roles", "company_users"} {
 		query := "DELETE FROM " + table + " WHERE company_id=ANY($1::uuid[])"
 		execBatchTest(t, f.db, query, companies)
 	}

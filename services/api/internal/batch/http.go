@@ -73,6 +73,53 @@ func (h *HTTPHandler) Cancel(w http.ResponseWriter, r *http.Request) {
 	h.transition(w, r, h.service.Cancel)
 }
 
+func (h *HTTPHandler) PrintJobs(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		methodNotAllowed(w)
+		return
+	}
+	var input GenerateInput
+	if !httpserver.DecodeJSON(w, r, &input) {
+		return
+	}
+	job, replayed, err := h.service.Generate(r.Context(), principal(r), r.PathValue("batch_id"), input)
+	if writeError(w, err) {
+		return
+	}
+	status := http.StatusCreated
+	if replayed {
+		status = http.StatusOK
+	}
+	httpserver.WriteJSON(w, status, map[string]any{"print_job": job, "idempotent_replay": replayed})
+}
+
+func (h *HTTPHandler) PrintJob(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		methodNotAllowed(w)
+		return
+	}
+	job, err := h.service.GetPrintJob(r.Context(), principal(r), r.PathValue("print_job_id"))
+	if writeError(w, err) {
+		return
+	}
+	httpserver.WriteJSON(w, http.StatusOK, map[string]any{"print_job": job})
+}
+
+func (h *HTTPHandler) Artifact(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		methodNotAllowed(w)
+		return
+	}
+	data, filename, err := h.service.DownloadArtifact(r.Context(), principal(r), r.PathValue("artifact_id"))
+	if writeError(w, err) {
+		return
+	}
+	w.Header().Set("Content-Type", "application/pdf")
+	w.Header().Set("Content-Disposition", `attachment; filename="`+filename+`"`)
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(data)
+}
+
 func (h *HTTPHandler) transition(w http.ResponseWriter, r *http.Request, transition func(context.Context, auth.Principal, string) (Batch, error)) {
 	if r.Method != http.MethodPost {
 		methodNotAllowed(w)
@@ -113,6 +160,8 @@ func writeError(w http.ResponseWriter, err error) bool {
 		httpserver.WriteError(w, http.StatusConflict, "INVALID_BATCH_STATE", "Batch state transition is not allowed")
 	case errors.Is(err, ErrUnresolved):
 		httpserver.WriteError(w, http.StatusConflict, "UNRESOLVED_BATCH", "Batch contains unresolved products or quantities")
+	case errors.Is(err, ErrGenerationFailed):
+		httpserver.WriteError(w, http.StatusUnprocessableEntity, "GENERATION_FAILED", "Printable PDF generation failed")
 	default:
 		httpserver.WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Something went wrong")
 	}

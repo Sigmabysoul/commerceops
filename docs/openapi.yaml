@@ -340,6 +340,41 @@ paths:
       responses:
         "200": {description: Tenant-scoped eligible normalized orders}
         "403": {$ref: "#/components/responses/Error"}
+  /api/v1/batches/{batch_id}/print-jobs:
+    parameters:
+      - {$ref: "#/components/parameters/BatchID"}
+    post:
+      operationId: generateBatchPrintJob
+      summary: Generate storage-backed printable artifacts for a ready batch
+      security: [{sessionCookie: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/GeneratePrintJob"}
+      responses:
+        "201": {description: Print artifacts generated}
+        "200": {description: Existing print job returned for an idempotent replay}
+        "409": {$ref: "#/components/responses/Error"}
+        "422": {$ref: "#/components/responses/Error"}
+  /api/v1/print-jobs/{print_job_id}:
+    parameters:
+      - {$ref: "#/components/parameters/PrintJobID"}
+    get:
+      operationId: getPrintJob
+      security: [{sessionCookie: []}]
+      responses:
+        "200": {description: Tenant print job and artifact metadata}
+        "404": {$ref: "#/components/responses/Error"}
+  /api/v1/print-artifacts/{artifact_id}:
+    parameters:
+      - {$ref: "#/components/parameters/ArtifactID"}
+    get:
+      operationId: downloadPrintArtifact
+      security: [{sessionCookie: []}]
+      responses:
+        "200": {description: Generated PDF artifact}
+        "404": {$ref: "#/components/responses/Error"}
 components:
   securitySchemes:
     sessionCookie:
@@ -353,6 +388,8 @@ components:
     ProductID: {name: product_id, in: path, required: true, schema: {type: string, format: uuid}}
     MappingID: {name: mapping_id, in: path, required: true, schema: {type: string, format: uuid}}
     BatchID: {name: batch_id, in: path, required: true, schema: {type: string, format: uuid}}
+    PrintJobID: {name: print_job_id, in: path, required: true, schema: {type: string, format: uuid}}
+    ArtifactID: {name: artifact_id, in: path, required: true, schema: {type: string, format: uuid}}
   responses:
     Error:
       description: Request failed
@@ -421,6 +458,14 @@ components:
           maxItems: 500
           uniqueItems: true
           items: {type: string, format: uuid}
+        idempotency_key: {type: string, minLength: 1, maxLength: 128}
+    GeneratePrintJob:
+      type: object
+      additionalProperties: false
+      required: [idempotency_key]
+      properties:
+        sort_labels: {type: boolean, default: false}
+        export_invoices: {type: boolean, default: false}
         idempotency_key: {type: string, minLength: 1, maxLength: 128}
     ErrorEnvelope:
       type: object

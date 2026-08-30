@@ -19,6 +19,7 @@ import (
 	"github.com/commerceops/commerceops/services/api/internal/platform/httpserver"
 	"github.com/commerceops/commerceops/services/api/internal/platform/objectstorage"
 	"github.com/commerceops/commerceops/services/api/internal/platform/pdfextractor"
+	"github.com/commerceops/commerceops/services/api/internal/platform/pdfgenerator"
 	"github.com/commerceops/commerceops/services/api/internal/product"
 )
 
@@ -36,11 +37,11 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	authorizer := authorization.NewService(db)
 	coreHTTP := core.NewHTTPHandler(core.NewService(db, authorizer))
 	productHTTP := product.NewHTTPHandler(product.NewService(db, authorizer))
-	batchHTTP := batch.NewHTTPHandler(batch.NewService(db, authorizer))
 	storage, err := newObjectStorage(ctx, cfg)
 	if err != nil {
 		return err
 	}
+	batchHTTP := batch.NewHTTPHandler(batch.NewPrintingService(db, authorizer, storage, pdfgenerator.NewPoppler()))
 	marketplaceService, err := marketplace.NewService(db, authorizer, storage, pdfextractor.NewPoppler())
 	if err != nil {
 		return err
@@ -74,6 +75,9 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	mux.Handle("/api/v1/batches/{batch_id}/ready", authHTTP.RequireSession(http.HandlerFunc(batchHTTP.Ready)))
 	mux.Handle("/api/v1/batches/{batch_id}/cancel", authHTTP.RequireSession(http.HandlerFunc(batchHTTP.Cancel)))
 	mux.Handle("/api/v1/batch-eligible-orders", authHTTP.RequireSession(http.HandlerFunc(batchHTTP.EligibleOrders)))
+	mux.Handle("/api/v1/batches/{batch_id}/print-jobs", authHTTP.RequireSession(http.HandlerFunc(batchHTTP.PrintJobs)))
+	mux.Handle("/api/v1/print-jobs/{print_job_id}", authHTTP.RequireSession(http.HandlerFunc(batchHTTP.PrintJob)))
+	mux.Handle("/api/v1/print-artifacts/{artifact_id}", authHTTP.RequireSession(http.HandlerFunc(batchHTTP.Artifact)))
 	server := &http.Server{Addr: cfg.HTTPAddr, Handler: httpserver.Middleware(logger, cfg.AllowedOrigins, mux), ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 60 * time.Second}
 
 	errCh := make(chan error, 1)

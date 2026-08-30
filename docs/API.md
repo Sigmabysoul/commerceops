@@ -76,6 +76,23 @@ Company identity is never accepted from the request. Batch membership preserves
 the selected sequence. An order can belong to only one operational batch in the
 Batch A model. Replaying the same idempotency key and exact request returns the
 original batch; using that key for different input is a conflict.
+
+## Print generation
+
+Print generation requires the Flipkart entitlement and `labels.print`.
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| POST | `/api/v1/batches/{batch_id}/print-jobs` | Generate idempotent label and optional invoice artifacts for a ready batch |
+| GET | `/api/v1/print-jobs/{print_job_id}` | Read tenant-scoped generation status and artifact metadata |
+| GET | `/api/v1/print-artifacts/{artifact_id}` | Download a tenant-scoped generated PDF |
+
+The generation request accepts `sort_labels`, `export_invoices`, and a required
+idempotency key. Sorting uses normalized Product Master code, normalized raw SKU,
+marketplace order ID, and original batch position as deterministic tie-breakers.
+When sorting is disabled, original batch position is preserved. Generation is
+bounded and synchronous in Batch B; persisted status remains visible as `ready`
+or `failed`.
 # API
 
 All endpoints use the authenticated server-side company context. Errors use the existing `{ "error": { "code", "message" } }` envelope.

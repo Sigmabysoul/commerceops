@@ -28,5 +28,30 @@ batch; reusing it with different input is rejected. A normalized order may be a
 member of only one batch in this foundation, preventing ambiguous operational
 ownership.
 
-Batch B will add bounded PDF generation and print-artifact persistence. Batch C
-will add the frontend workflow. Neither behavior is part of Batch A.
+## Batch B output generation
+
+A ready batch can generate a print job using the validated modern Flipkart A4
+profile. Poppler/Cairo renders the shipping-label region at `(188,26)` with a
+normalized `218 × 360 pt` page. The invoice begins below that label boundary and
+is rendered separately as `595 × 456 pt` only when invoice export is enabled.
+Rendering uses the original MediaBox even for source files whose CropBox already
+hides the invoice, then creates new normalized pages; hidden invoice content is
+not retained in label output.
+
+`Sort Labels` off preserves batch position. When enabled, deterministic ordering
+uses Product Master internal code, normalized SKU, marketplace order ID, then
+batch position. Invoice pages follow the exact generated label order.
+
+Generated PDFs are stored through the platform object-storage boundary. Print
+job items snapshot source file, processing job, normalized order, source page,
+and output position. Artifact metadata records kind, hash, size, page count, and
+generation version `flipkart-a4-v1`. Exact idempotent replays return the existing
+job; failures are persisted without creating an artifact or inventory effect.
+
+Supported output is intentionally limited to the production-validated A4
+single-item layout. Unknown geometry, scanned PDFs, and other marketplace forms
+fail instead of using guessed crop coordinates. Generation is limited to 500
+pages, 20 MiB per source, 100 MiB per artifact, and 60 seconds.
+
+Batch C will add the frontend workflow. Physical printing, reprinting, worker
+assignment, and inventory remain unimplemented.

@@ -35,3 +35,9 @@ prevents silent inclusion in multiple operational batches, while a
 company/idempotency-key constraint makes creation safely replayable. Counts and
 Product Master totals are derived; no inventory or print-artifact tables are
 introduced in Batch A.
+
+Phase 4 Batch B migration `000007_print_generation` adds `print_jobs`, ordered
+`print_job_items`, and immutable `print_artifacts`. Tenant-composite foreign keys
+preserve the batch, normalized order, source file, processing job, and source
+page relationship. Artifacts record storage keys, hashes, sizes, page counts,
+and generation configuration. These records have no inventory side effects.

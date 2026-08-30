@@ -13,6 +13,8 @@ import (
 	"github.com/commerceops/commerceops/services/api/internal/audit"
 	"github.com/commerceops/commerceops/services/api/internal/auth"
 	"github.com/commerceops/commerceops/services/api/internal/authorization"
+	"github.com/commerceops/commerceops/services/api/internal/platform/objectstorage"
+	"github.com/commerceops/commerceops/services/api/internal/platform/pdfgenerator"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -34,6 +36,8 @@ type Service struct {
 	db         *pgxpool.Pool
 	authorizer *authorization.Service
 	audit      audit.Recorder
+	storage    objectstorage.Storage
+	generator  pdfgenerator.Generator
 }
 
 type Batch struct {
@@ -89,6 +93,10 @@ type CreateInput struct {
 
 func NewService(db *pgxpool.Pool, authorizer *authorization.Service) *Service {
 	return &Service{db: db, authorizer: authorizer}
+}
+
+func NewPrintingService(db *pgxpool.Pool, authorizer *authorization.Service, storage objectstorage.Storage, generator pdfgenerator.Generator) *Service {
+	return &Service{db: db, authorizer: authorizer, storage: storage, generator: generator}
 }
 
 func (s *Service) List(ctx context.Context, principal auth.Principal) ([]Batch, error) {

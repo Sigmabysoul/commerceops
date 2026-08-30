@@ -22,9 +22,8 @@ Phase 3 — Flipkart Processing is approved.
 
 Phase 4 work may now begin, but only within the approved Phase 4 scope.
 
-Phase 4 Batch A implementation is complete in the working branch and awaits
-review. It adds the batch persistence/domain foundation only; Batch B and Batch
-C have not started.
+Phase 4 Batch A is committed. Batch B implementation is complete in the working
+branch and awaits review. Batch C has not started.
 
 ## Approved Phases
 
@@ -175,13 +174,13 @@ Recommended sequence:
 - [x] PostgreSQL integration tests
 
 ### Batch B — PDF output generation
-- shipping-label region extraction/cropping
-- normalized printable label pages
-- Sort Labels behavior
-- Export Invoices behavior
-- separate labels/invoices artifacts
-- object-storage persistence
-- regression tests using sanitized Flipkart fixtures
+- [x] shipping-label region extraction/cropping
+- [x] normalized printable label pages
+- [x] Sort Labels behavior
+- [x] Export Invoices behavior
+- [x] separate labels/invoices artifacts
+- [x] object-storage persistence
+- [x] sanitized and representative production-layout regression tests
 
 ### Batch C — Frontend and end-to-end workflow
 - batch creation UI
@@ -205,9 +204,8 @@ Do not automatically begin the next batch after completing one if the task expli
 
 ## Blocking Issues
 
-Batch A awaits review before Batch B begins. PDF output generation, print jobs,
-sorting/assignment behavior, reprinting, and the frontend workflow remain Phase
-4 work.
+Batch B awaits review before Batch C begins. The frontend workflow, worker
+assignment, reprinting, and physical print tracking remain Phase 4 work.
 
 No Phase 5 work is authorized.
 
@@ -247,8 +245,24 @@ PostgreSQL 18.6 database, including:
 - Go vet/build and frontend typecheck, lint, and production build
 - `git diff --check`
 
+Phase 4 Batch B passed the full PostgreSQL-backed verification gate, including:
+
+- migration `000007` up/down validation
+- tenant-scoped print jobs, items, artifacts, downloads, and `labels.print`
+  enforcement
+- deterministic sorted and original-order generation
+- exact idempotent replay and conflicting request protection
+- persisted generation failure behavior and audit coverage
+- sanitized vector PDF label/invoice separation and normalized page geometry
+- first-page generation across all nine representative original PDFs and all
+  nine CropBox counterparts
+- the complete existing Go, PostgreSQL, private Flipkart, worker-lease, and
+  object-storage suites
+- Go vet/build and frontend typecheck, lint, and production build
+- `git diff --check`
+
 ## Next Allowed Task
 
-Review Phase 4 Batch A. Do not begin Batch B until the owner explicitly
-authorizes it after reviewing the batch domain, migration, API contract, tenant
-isolation, idempotency, and state-machine behavior.
+Review Phase 4 Batch B. Do not begin Batch C until the owner explicitly
+authorizes it after reviewing output quality, crop geometry, sorting,
+idempotency, storage persistence, and tenant isolation.
