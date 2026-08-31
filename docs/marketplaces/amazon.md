@@ -1,4 +1,4 @@
-# Amazon adapter — Phase 7 Batch B
+# Amazon adapter — Phase 7 Batch C
 
 The isolated Amazon adapter lives under `internal/marketplace/amazon`. It
 receives bounded, real page-numbered text from the shared Poppler/Tesseract
@@ -62,7 +62,21 @@ addresses, AWB, or routing information. Optional invoice output uses the
 persisted associated invoice page. Generation version is
 `amazon-a4-enriched-v1`; printing and reprinting remain inventory-neutral.
 
-Inventory integration changes and reporting verification are deferred beyond
-Batch B. The private production PDF is not committed. The repository contains
-a sanitized two-page PDF plus sanitized association, extraction, ambiguity, and
-print regression cases.
+## Inventory and reporting
+
+Amazon uses the central ready-batch outbound confirmation without an
+Amazon-specific inventory path. Confirmation aggregates canonical Product
+Master quantities, locks balances, records one tenant/batch outbound event and
+immutable ledger movements, and is idempotent. Any shortage rolls back the
+entire confirmation. Upload, processing, artifact generation, printing, and
+reprinting remain inventory-neutral.
+
+The shared dashboard includes Amazon order, batch, print, product-quantity, and
+confirmed-outbound data when `marketplace=amazon`. Marketplace filtering limits
+only marketplace-owned ecommerce outbound movements. Current balances,
+stock-in, manual adjustments, and corrections remain company-wide because they
+do not own a marketplace dimension.
+
+The private production PDF is not committed. The repository contains a
+sanitized two-page PDF plus sanitized association, extraction, ambiguity,
+print, inventory, and reporting regression cases.

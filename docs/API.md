@@ -130,7 +130,8 @@ in the operator's timezone while PostgreSQL compares authoritative
 `timestamptz` values.
 
 Marketplace, processing, batch, and print metrics derive from their owning
-records. Inventory snapshots and ledger movement are returned only when the
+records. The dashboard marketplace selector supports both `flipkart` and
+`amazon`. Inventory snapshots and ledger movement are returned only when the
 principal also has the `inventory` entitlement and `inventory.view`; otherwise
 `inventory_access` is false and restricted fields are omitted.
 
@@ -152,7 +153,7 @@ accept a company ID or raw marketplace SKU.
 | POST | `/api/v1/inventory/stock-in` | `inventory.stock_in` | Record positive stock-in |
 | POST | `/api/v1/inventory/adjustments` | `inventory.adjust` | Record a nonzero reasoned manual delta |
 | POST | `/api/v1/inventory/corrections` | `inventory.adjust` | Record a compensating correction |
-| POST | `/api/v1/inventory/batches/{batch_id}/confirm-outbound` | `inventory.dispatch` | Atomically deduct a ready batch's Product Master totals once |
+| POST | `/api/v1/inventory/batches/{batch_id}/confirm-outbound` | `inventory.dispatch` | Atomically deduct a ready Flipkart or Amazon batch's Product Master totals once |
 | GET, POST | `/api/v1/inventory/reservations` | `inventory.view` / `inventory.adjust` | List reservations or reserve available stock for a source |
 | POST | `/api/v1/inventory/reservations/{reservation_id}/release` | `inventory.adjust` | Idempotently release an active reservation with a reason |
 
@@ -178,7 +179,7 @@ availability. Reservation consumption is deferred to the future owning workflow.
 
 Uploads are limited to 20 MiB and must begin with a PDF signature. Processing is asynchronous and durably queued in PostgreSQL; clients poll the job endpoint while its state is `queued` or `processing`. Error records expose `source_page`, `severity`, `code`, and `message`.
 
-## Amazon processing — Phase 7 Batch B
+## Amazon processing — Phase 7 Batch C
 
 - `POST /api/v1/amazon/jobs` — multipart PDF upload using `file`; requires the
   `amazon` entitlement plus `labels.upload` and `labels.process`.
@@ -201,3 +202,8 @@ The validated adjacency fallback requires a mutually unique opposite-role pair,
 one stable order ID, unique AWB, invoice SKU, and explicit quantity. Duplicate
 roles, conflicting identifiers, competing neighbors, and incomplete values
 remain review records.
+
+Resolved Amazon orders participate in the shared batch, print, outbound
+confirmation, inventory ledger, and reporting APIs. No Amazon-specific stock
+mutation or PDF-download endpoint exists; print and reprint operations remain
+inventory-neutral.

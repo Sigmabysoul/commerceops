@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -107,6 +108,71 @@ func TestMarketplaceFilterIsolatesEcommerceMovement(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertMovement("all marketplaces", all, 34, 73)
+}
+
+func TestAmazonDashboardIncludesOnlyAmazonEcommerceMovement(t *testing.T) {
+	db := reportingDB(t)
+	ctx := context.Background()
+	suffix := fmt.Sprint(time.Now().UnixNano())
+	at := time.Date(2026, 8, 30, 8, 0, 0, 0, time.UTC)
+	var company, user, role, product string
+	mustScan(t, db, `INSERT INTO companies(name) VALUES($1) RETURNING id`, []any{"Amazon reports " + suffix}, &company)
+	mustScan(t, db, `INSERT INTO users(email,password_hash) VALUES($1,'test') RETURNING id`, []any{"amazon-reports-" + suffix + "@example.test"}, &user)
+	mustExec(t, db, `INSERT INTO company_users(company_id,user_id) VALUES($1,$2)`, company, user)
+	mustScan(t, db, `INSERT INTO roles(company_id,name) VALUES($1,'Amazon Reporter') RETURNING id`, []any{company}, &role)
+	mustExec(t, db, `INSERT INTO role_permissions(company_id,role_id,permission_key) VALUES($1,$2,'reports.view'),($1,$2,'inventory.view')`, company, role)
+	mustExec(t, db, `INSERT INTO company_user_roles(company_id,user_id,role_id) VALUES($1,$2,$3)`, company, user, role)
+	mustExec(t, db, `INSERT INTO module_entitlements(company_id,module_key,enabled) VALUES($1,'inventory',true)`, company)
+	mustScan(t, db, `INSERT INTO products(company_id,internal_code,name) VALUES($1,'AMZ-REPORT','Amazon report product') RETURNING id`, []any{company}, &product)
+
+	type marketplaceFixture struct {
+		key              string
+		quantity         int64
+		previousBalance  int64
+		resultingBalance int64
+		hashByte         string
+	}
+	fixtures := []marketplaceFixture{
+		{key: "amazon", quantity: 4, previousBalance: 11, resultingBalance: 7, hashByte: "a"},
+		{key: "flipkart", quantity: 2, previousBalance: 7, resultingBalance: 5, hashByte: "b"},
+	}
+	for _, fixture := range fixtures {
+		var source, job, order, batch, printJob string
+		mustScan(t, db, `INSERT INTO source_files(company_id,marketplace_key,storage_key,original_filename,content_type,size_bytes,sha256,uploaded_by,created_at) VALUES($1,$2,$3,$4,'application/pdf',1,$5,$6,$7) RETURNING id`, []any{company, fixture.key, fixture.key + "/" + suffix, fixture.key + ".pdf", strings.Repeat(fixture.hashByte, 64), user, at}, &source)
+		mustScan(t, db, `INSERT INTO processing_jobs(company_id,source_file_id,marketplace_key,status,parser_version,total_pages,processed_pages,created_at) VALUES($1,$2,$3,'processed',$4,1,1,$5) RETURNING id`, []any{company, source, fixture.key, fixture.key + "-test", at}, &job)
+		mustScan(t, db, `INSERT INTO marketplace_orders(company_id,marketplace_key,source_file_id,processing_job_id,source_page,marketplace_order_id,status,parser_version,created_at) VALUES($1,$2,$3,$4,1,$5,'resolved',$6,$7) RETURNING id`, []any{company, fixture.key, source, job, fixture.key + "-ORDER-" + suffix, fixture.key + "-test", at}, &order)
+		mustExec(t, db, `INSERT INTO marketplace_order_items(company_id,order_id,raw_sku,product_id,quantity,quantity_source,resolution_status) VALUES($1,$2,$3,$4,$5,'extracted','resolved')`, company, order, fixture.key+"-SKU", product, fixture.quantity)
+		mustScan(t, db, `INSERT INTO batches(company_id,marketplace_key,status,created_by,idempotency_key,request_hash,ready_at,created_at) VALUES($1,$2,'ready',$3,$4,$5,$6,$6) RETURNING id`, []any{company, fixture.key, user, fixture.key + "-batch-" + suffix, strings.Repeat(fixture.hashByte, 64), at}, &batch)
+		mustExec(t, db, `INSERT INTO batch_members(company_id,batch_id,marketplace_order_id,position) VALUES($1,$2,$3,1)`, company, batch, order)
+		mustScan(t, db, `INSERT INTO print_jobs(company_id,batch_id,requested_by,status,sort_labels,export_invoices,generation_version,idempotency_key,request_hash,completed_at,created_at) VALUES($1,$2,$3,'ready',false,false,$4,$5,$6,$7,$7) RETURNING id`, []any{company, batch, user, fixture.key + "-print-test", fixture.key + "-print-" + suffix, strings.Repeat(fixture.hashByte, 64), at}, &printJob)
+		mustExec(t, db, `INSERT INTO print_artifacts(company_id,print_job_id,kind,storage_key,size_bytes,sha256,page_count,created_at) VALUES($1,$2,'labels',$3,1,$4,1,$5)`, company, printJob, fixture.key+"/artifact/"+suffix, strings.Repeat(fixture.hashByte, 64), at)
+		mustExec(t, db, `INSERT INTO inventory_outbound_events(company_id,batch_id,actor_user_id,idempotency_key,request_hash,created_at) VALUES($1,$2,$3,$4,$5,$6)`, company, batch, user, fixture.key+"-out-event-"+suffix, strings.Repeat(fixture.hashByte, 64), at)
+		mustExec(t, db, `INSERT INTO inventory_transactions(company_id,product_id,transaction_type,quantity_delta,previous_balance,resulting_balance,reason,reference_type,reference_id,actor_user_id,idempotency_key,request_hash,created_at) VALUES($1,$2,'ecommerce_out',$3,$4,$5,$6,'batch',$7,$8,$9,$10,$11)`, company, product, -fixture.quantity, fixture.previousBalance, fixture.resultingBalance, fixture.key+" outbound", batch, user, fixture.key+"-out-"+suffix, strings.Repeat(fixture.hashByte, 64), at)
+	}
+	mustExec(t, db, `INSERT INTO inventory_balances(company_id,product_id,on_hand,reserved) VALUES($1,$2,5,1)`, company, product)
+	mustExec(t, db, `INSERT INTO inventory_transactions(company_id,product_id,transaction_type,quantity_delta,previous_balance,resulting_balance,reason,actor_user_id,idempotency_key,request_hash,created_at) VALUES
+		($1,$2,'stock_in',10,0,10,'Company receipt',$3,$4,$6,$7),
+		($1,$2,'manual_adjustment',1,10,11,'Company correction',$3,$5,$6,$7)`,
+		company, product, user, "amazon-report-stock-"+suffix, "amazon-report-adjust-"+suffix, strings.Repeat("c", 64), at)
+
+	service := NewService(db, authorization.NewService(db))
+	principal := auth.Principal{CompanyID: company, UserID: user}
+	assertReport := func(marketplace string, wantOrders, wantQuantity, wantOut, wantNet int64) {
+		t.Helper()
+		report, err := service.Dashboard(ctx, principal, Filter{From: at.Add(-time.Hour), To: at.Add(time.Hour), Marketplace: marketplace, Limit: 50})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if report.Summary.OrdersProcessed != wantOrders || report.Summary.LabelsGenerated != wantOrders || report.Summary.PrintRunsCompleted != wantOrders || report.Summary.Batches != wantOrders || report.Summary.OutboundOrders == nil || *report.Summary.OutboundOrders != wantOrders || len(report.ProductQuantities) != 1 || report.ProductQuantities[0].Quantity != wantQuantity {
+			t.Fatalf("%s summary=%#v quantities=%#v", marketplace, report.Summary, report.ProductQuantities)
+		}
+		if report.Inventory == nil || report.Inventory.CurrentOnHand != 5 || report.Inventory.CurrentReserved != 1 || report.Inventory.StockIn != 10 || report.Inventory.Adjustments != 1 || report.Inventory.StockOut != wantOut || report.Inventory.NetMovement != wantNet || len(report.ProductMovements) != 1 || report.ProductMovements[0].OrderQuantity != wantQuantity || report.ProductMovements[0].StockOut != wantOut {
+			t.Fatalf("%s inventory=%#v movements=%#v", marketplace, report.Inventory, report.ProductMovements)
+		}
+	}
+	assertReport("amazon", 1, 4, 4, 7)
+	assertReport("flipkart", 1, 2, 2, 9)
+	assertReport("", 2, 6, 6, 5)
 }
 
 func TestReportingMigrationUpDown(t *testing.T) {

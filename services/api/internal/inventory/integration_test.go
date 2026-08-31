@@ -281,6 +281,52 @@ func TestEcommerceOutboundAtomicAndIdempotent(t *testing.T) {
 	}
 }
 
+func TestAmazonUsesCentralEcommerceOutboundEvent(t *testing.T) {
+	f := setup(t)
+	ctx := context.Background()
+	exec(t, f.db, `INSERT INTO module_entitlements(company_id,module_key,enabled) VALUES($1,'amazon',true)`, f.company)
+	var source, job, order, batch string
+	scan(t, f.db, `INSERT INTO source_files(company_id,marketplace_key,storage_key,original_filename,content_type,size_bytes,sha256,uploaded_by) VALUES($1,'amazon',$2,'amazon-outbound.pdf','application/pdf',1,$3,$4) RETURNING id`, []any{f.company, "amazon-outbound-" + f.company, "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", f.user}, &source)
+	scan(t, f.db, `INSERT INTO processing_jobs(company_id,source_file_id,marketplace_key,status,parser_version,total_pages,processed_pages) VALUES($1,$2,'amazon','processed','amazon-associated-v3',2,2) RETURNING id`, []any{f.company, source}, &job)
+	scan(t, f.db, `INSERT INTO marketplace_orders(company_id,marketplace_key,source_file_id,processing_job_id,source_page,marketplace_order_id,status,parser_version) VALUES($1,'amazon',$2,$3,1,$4,'resolved','amazon-associated-v3') RETURNING id`, []any{f.company, source, job, "AMAZON-OUT-" + f.company}, &order)
+	exec(t, f.db, `INSERT INTO marketplace_order_items(company_id,order_id,product_id,quantity,quantity_source,resolution_status) VALUES($1,$2,$3,4,'extracted','resolved')`, f.company, order, f.product)
+	scan(t, f.db, `INSERT INTO batches(company_id,marketplace_key,status,created_by,idempotency_key,request_hash,ready_at) VALUES($1,'amazon','ready',$2,$3,$4,now()) RETURNING id`, []any{f.company, f.user, "amazon-outbound-batch-" + f.company, "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"}, &batch)
+	exec(t, f.db, `INSERT INTO batch_members(company_id,batch_id,marketplace_order_id,position) VALUES($1,$2,$3,1)`, f.company, batch, order)
+	if _, _, err := f.service.StockIn(ctx, f.principal, CommandInput{ProductID: f.product, Quantity: 9, Reason: "Amazon dispatch stock", IdempotencyKey: "amazon-dispatch-stock"}); err != nil {
+		t.Fatal(err)
+	}
+	items, replay, err := f.service.ConfirmEcommerceOutbound(ctx, f.principal, batch, OutboundInput{IdempotencyKey: "amazon-dispatch"})
+	if err != nil || replay || len(items) != 1 || items[0].QuantityDelta != -4 || items[0].ResultingBalance != 5 || items[0].ReferenceID == nil || *items[0].ReferenceID != batch {
+		t.Fatalf("Amazon outbound=%#v replay=%v err=%v", items, replay, err)
+	}
+	items, replay, err = f.service.ConfirmEcommerceOutbound(ctx, f.principal, batch, OutboundInput{IdempotencyKey: "amazon-dispatch"})
+	if err != nil || !replay || len(items) != 1 {
+		t.Fatalf("Amazon replay=%#v replay=%v err=%v", items, replay, err)
+	}
+	var events, transactions, audits int
+	scan(t, f.db, `SELECT count(*) FROM inventory_outbound_events WHERE company_id=$1 AND batch_id=$2`, []any{f.company, batch}, &events)
+	scan(t, f.db, `SELECT count(*) FROM inventory_transactions WHERE company_id=$1 AND transaction_type='ecommerce_out' AND reference_type='batch' AND reference_id=$2`, []any{f.company, batch}, &transactions)
+	scan(t, f.db, `SELECT count(*) FROM audit_logs WHERE company_id=$1 AND action='inventory.ecommerce_out' AND target_id=$2`, []any{f.company, batch}, &audits)
+	if events != 1 || transactions != 1 || audits != 1 {
+		t.Fatalf("Amazon trace events=%d transactions=%d audits=%d", events, transactions, audits)
+	}
+
+	var secondOrder, secondBatch string
+	scan(t, f.db, `INSERT INTO marketplace_orders(company_id,marketplace_key,source_file_id,processing_job_id,source_page,marketplace_order_id,status,parser_version) VALUES($1,'amazon',$2,$3,3,$4,'resolved','amazon-associated-v3') RETURNING id`, []any{f.company, source, job, "AMAZON-OUT-2-" + f.company}, &secondOrder)
+	exec(t, f.db, `INSERT INTO marketplace_order_items(company_id,order_id,product_id,quantity,quantity_source,resolution_status) VALUES($1,$2,$3,6,'extracted','resolved')`, f.company, secondOrder, f.product)
+	scan(t, f.db, `INSERT INTO batches(company_id,marketplace_key,status,created_by,idempotency_key,request_hash,ready_at) VALUES($1,'amazon','ready',$2,$3,$4,now()) RETURNING id`, []any{f.company, f.user, "amazon-outbound-short-" + f.company, "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"}, &secondBatch)
+	exec(t, f.db, `INSERT INTO batch_members(company_id,batch_id,marketplace_order_id,position) VALUES($1,$2,$3,1)`, f.company, secondBatch, secondOrder)
+	if _, _, err = f.service.ConfirmEcommerceOutbound(ctx, f.principal, secondBatch, OutboundInput{IdempotencyKey: "amazon-insufficient"}); !errors.Is(err, ErrInsufficientStock) {
+		t.Fatalf("Amazon insufficient=%v", err)
+	}
+	var balance, failedEvents int64
+	scan(t, f.db, `SELECT on_hand FROM inventory_balances WHERE company_id=$1 AND product_id=$2`, []any{f.company, f.product}, &balance)
+	scan(t, f.db, `SELECT count(*) FROM inventory_outbound_events WHERE company_id=$1 AND batch_id=$2`, []any{f.company, secondBatch}, &failedEvents)
+	if balance != 5 || failedEvents != 0 {
+		t.Fatalf("Amazon atomic rollback balance=%d events=%d", balance, failedEvents)
+	}
+}
+
 type execer interface {
 	Exec(context.Context, string, ...any) (pgconn.CommandTag, error)
 }

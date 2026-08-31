@@ -14,7 +14,7 @@ Phase 6 approved baseline:
 
 ## Phase Status
 
-`BATCH_B_COMPLETE_AWAITING_EXTERNAL_REVIEW`
+`BATCH_C_COMPLETE_AWAITING_EXTERNAL_REVIEW`
 
 Phases 0–6 are approved.
 
@@ -68,41 +68,47 @@ batch, inventory, or reporting infrastructure.
 - [x] Amazon invoice artifact export plus print/reprint inventory neutrality
 - [x] full PostgreSQL-backed verification
 
-### Explicitly deferred after Batch B
+### Batch C — Inventory and reporting integration
 
-- inventory integration changes
-- Amazon reporting inclusion verification
-- later Phase 7 batches and Phase 8
+- [x] Amazon ready batches use the central transactional ecommerce outbound confirmation
+- [x] Amazon outbound confirmation is idempotent and shortage-safe
+- [x] outbound event, immutable ledger, and audit traceability remain tenant/batch scoped
+- [x] upload, processing, printing, and reprinting remain inventory-neutral
+- [x] Amazon orders, labels, print runs, batches, quantities, and confirmed outbound appear in shared reporting
+- [x] Amazon-filtered ecommerce stock-out excludes Flipkart stock-out and vice versa
+- [x] company-wide current balances, stock-in, adjustments, and corrections retain their documented semantics under marketplace filters
+- [x] the dashboard marketplace selector exposes Amazon
+- [x] full PostgreSQL-backed verification
 
-## Phase 7 Batch B Verification
+### Explicitly deferred after Batch C
 
-Batch B passed `make verify-full` against a freshly initialized disposable
+- external architecture and owner review
+- any separately authorized later Phase 7 batch
+- Phase 8
+
+## Phase 7 Batch C Verification
+
+Batch C passed `make verify-full` against a freshly initialized disposable
 PostgreSQL 18.6 database migrated through `000013`, including:
 
-- Amazon entitlement plus `labels.upload` / `labels.process` authorization
-- tenant isolation and tenant/marketplace source-file deduplication
-- marketplace-scoped durable worker claims and lease-safe persistence
-- exact active Amazon SKU resolution through Product Master
-- missing and ambiguous field review behavior without quantity defaults
-- source file, source page, marketplace, document role, extraction method, and
-  `amazon-associated-v3` traceability
-- retry after SKU training and duplicate Amazon order visibility
-- sanitized two-page Amazon PDF extraction
-- exact order-ID association and ambiguous-association review behavior
-- validated/rejected adjacency and legacy-useful invoice SKU precedence
-- shared Amazon batch/printing, artifact traceability, and inventory-neutral reprints
-- sanitized and private A4 enriched-output PDF regression checks
-- private ten-page OCR/association validation without committing or logging identifiers
-- migration `000013` up/down coverage
+- Amazon ready-batch outbound event, ledger, balance, and audit traceability
+- replay-safe Amazon confirmation without duplicate deduction
+- atomic rollback when an Amazon batch cannot be fully fulfilled
+- Amazon-versus-Flipkart reporting isolation for orders, labels, print runs,
+  batches, product quantities, confirmed orders, and ecommerce stock-out
+- company-wide current balance, stock-in, and adjustment semantics under both
+  marketplace filters
+- all prior Amazon extraction, association, Product Master, shared batch/print,
+  tenant, authorization, migration, and PDF regressions
 - the complete PostgreSQL-backed Go suite, Go vet/build, frontend typecheck,
   lint, production build, and `git diff --check`
 
 ## Remaining Scope
 
-The existing outbound inventory event integration and Phase 6 reporting
-inclusion still require separately reviewed later Phase 7 batches.
+Phase 7 Batches A through C are implemented. Any additional Phase 7 work
+requires separate authorization and review. Phase 8 remains unauthorized.
 
 ## Next Allowed Task
 
-Perform external architecture and owner review of Phase 7 Batch B. Do not begin
+Perform external architecture and owner review of Phase 7 Batch C. Do not begin
 another Phase 7 batch or Phase 8 without explicit authorization.
