@@ -64,3 +64,8 @@ Phase 7 Batch A migration `000012_amazon_processing` adds only an Amazon-scoped
 partial claim index over the existing `processing_jobs` table. Amazon source
 files, jobs, normalized orders/items, errors, leases, and duplicate constraints
 reuse the generic marketplace schema; no Amazon-only business tables exist.
+
+Phase 7 Batch B migration `000013_amazon_document_association` adds the generic
+tenant-scoped `marketplace_order_documents` child relation. It preserves every
+contributing source page, role, source file, and extraction method for normalized
+orders and later shared print-artifact traceability.

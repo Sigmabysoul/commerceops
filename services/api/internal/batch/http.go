@@ -198,7 +198,7 @@ func writeError(w http.ResponseWriter, err error) bool {
 	}
 	switch {
 	case errors.Is(err, authorization.ErrPermissionDenied), errors.Is(err, authorization.ErrModuleUnavailable):
-		httpserver.WriteError(w, http.StatusForbidden, "FORBIDDEN", "Permission or Flipkart entitlement denied")
+		httpserver.WriteError(w, http.StatusForbidden, "FORBIDDEN", "Permission or marketplace entitlement denied")
 	case errors.Is(err, ErrNotFound):
 		httpserver.WriteError(w, http.StatusNotFound, "NOT_FOUND", "Batch not found")
 	case errors.Is(err, ErrInvalidInput):

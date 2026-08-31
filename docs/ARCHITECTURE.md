@@ -50,3 +50,10 @@ boundary may opt into bounded OCR for text-empty pages; Phase 7 enables that
 capability only for Amazon. Amazon associates label and invoice pages by an
 exact order ID and persists every contributing page through the generic
 order-document traceability relation.
+
+Shared batch/print jobs route normalized print inputs through a marketplace-keyed
+generator. Flipkart continues to use the shared Poppler crop generator. Amazon's
+adapter owns its A4 validation and SKU/quantity enrichment, while the batch
+domain continues to own authorization, sorting, idempotency, artifact storage,
+auditing, downloads, and reprint traceability. Print generation never calls the
+inventory domain.

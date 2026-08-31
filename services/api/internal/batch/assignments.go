@@ -42,22 +42,26 @@ func (s *Service) ListAssignmentRules(ctx context.Context, principal auth.Princi
 	if err := s.authorize(ctx, principal); err != nil {
 		return nil, err
 	}
-	if strings.TrimSpace(marketplace) != "flipkart" {
+	marketplace = strings.TrimSpace(marketplace)
+	if !supportedMarketplace(marketplace) {
 		return nil, ErrInvalidInput
+	}
+	if err := s.authorizer.RequireModule(ctx, principal, marketplace); err != nil {
+		return nil, err
 	}
 	return s.assignmentRules(ctx, principal.CompanyID, marketplace)
 }
 
 func (s *Service) ReplaceAssignmentRules(ctx context.Context, principal auth.Principal, input ReplaceAssignmentRulesInput) ([]AssignmentRule, error) {
-	if err := s.authorizer.RequireModule(ctx, principal, "flipkart"); err != nil {
-		return nil, err
-	}
 	if err := s.authorizer.RequirePermission(ctx, principal, "employees.manage"); err != nil {
 		return nil, err
 	}
 	input.MarketplaceKey = strings.TrimSpace(input.MarketplaceKey)
-	if input.MarketplaceKey != "flipkart" || len(input.Rules) == 0 || len(input.Rules) > 1000 {
+	if !supportedMarketplace(input.MarketplaceKey) || len(input.Rules) == 0 || len(input.Rules) > 1000 {
 		return nil, ErrInvalidInput
+	}
+	if err := s.authorizer.RequireModule(ctx, principal, input.MarketplaceKey); err != nil {
+		return nil, err
 	}
 	seen, defaults := make(map[string]struct{}, len(input.Rules)), 0
 	for index := range input.Rules {

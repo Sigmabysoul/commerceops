@@ -38,7 +38,12 @@ type Service struct {
 	authorizer *authorization.Service
 	audit      audit.Recorder
 	storage    objectstorage.Storage
-	generator  pdfgenerator.Generator
+	generators map[string]printGenerator
+}
+
+type printGenerator struct {
+	version   string
+	generator pdfgenerator.Generator
 }
 
 type Batch struct {
@@ -98,7 +103,15 @@ func NewService(db *pgxpool.Pool, authorizer *authorization.Service) *Service {
 }
 
 func NewPrintingService(db *pgxpool.Pool, authorizer *authorization.Service, storage objectstorage.Storage, generator pdfgenerator.Generator) *Service {
-	return &Service{db: db, authorizer: authorizer, storage: storage, generator: generator}
+	return &Service{db: db, authorizer: authorizer, storage: storage, generators: map[string]printGenerator{"flipkart": {version: "flipkart-a4-v1", generator: generator}}}
+}
+
+func (s *Service) RegisterPrintGenerator(marketplace, version string, generator pdfgenerator.Generator) *Service {
+	if s.generators == nil {
+		s.generators = map[string]printGenerator{}
+	}
+	s.generators[marketplace] = printGenerator{version: version, generator: generator}
+	return s
 }
 
 func (s *Service) List(ctx context.Context, principal auth.Principal) ([]Batch, error) {
@@ -110,6 +123,7 @@ func (s *Service) List(ctx context.Context, principal auth.Principal) ([]Batch, 
 		       count(*) FILTER (WHERE mo.id IS NOT NULL AND (mo.status<>'resolved' OR moi.id IS NULL OR moi.product_id IS NULL OR moi.quantity IS NULL OR moi.resolution_status<>'resolved')),
 		       b.ready_at,b.cancelled_at,b.created_at,b.updated_at
 		FROM batches b
+		JOIN module_entitlements me ON me.company_id=b.company_id AND me.module_key=b.marketplace_key AND me.enabled=true
 		LEFT JOIN batch_members bm ON bm.company_id=b.company_id AND bm.batch_id=b.id
 		LEFT JOIN marketplace_orders mo ON mo.company_id=bm.company_id AND mo.id=bm.marketplace_order_id
 		LEFT JOIN marketplace_order_items moi ON moi.company_id=mo.company_id AND moi.order_id=mo.id
@@ -134,8 +148,11 @@ func (s *Service) EligibleOrders(ctx context.Context, principal auth.Principal, 
 		return nil, err
 	}
 	marketplace = strings.TrimSpace(marketplace)
-	if marketplace != "flipkart" {
+	if !supportedMarketplace(marketplace) {
 		return nil, ErrInvalidInput
+	}
+	if err := s.authorizer.RequireModule(ctx, principal, marketplace); err != nil {
+		return nil, err
 	}
 	rows, err := s.db.Query(ctx, `
 		SELECT mo.id,mo.source_file_id,mo.processing_job_id,mo.source_page,mo.marketplace_order_id,mo.awb,mo.status,
@@ -168,6 +185,9 @@ func (s *Service) Create(ctx context.Context, principal auth.Principal, input Cr
 	}
 	if !normalizeCreateInput(&input) {
 		return Batch{}, false, ErrInvalidInput
+	}
+	if err := s.authorizer.RequireModule(ctx, principal, input.MarketplaceKey); err != nil {
+		return Batch{}, false, err
 	}
 	requestHash, err := hashRequest(input)
 	if err != nil {
@@ -223,7 +243,14 @@ func (s *Service) Get(ctx context.Context, principal auth.Principal, id string) 
 	if err := s.authorize(ctx, principal); err != nil {
 		return Batch{}, err
 	}
-	return s.get(ctx, principal.CompanyID, id)
+	item, err := s.get(ctx, principal.CompanyID, id)
+	if err != nil {
+		return Batch{}, err
+	}
+	if err = s.authorizer.RequireModule(ctx, principal, item.MarketplaceKey); err != nil {
+		return Batch{}, err
+	}
+	return item, nil
 }
 
 func (s *Service) get(ctx context.Context, companyID, id string) (Batch, error) {
@@ -273,6 +300,9 @@ func (s *Service) transition(ctx context.Context, principal auth.Principal, id, 
 	if err = tx.QueryRow(ctx, `SELECT status,marketplace_key FROM batches WHERE company_id=$1 AND id=$2 FOR UPDATE`, principal.CompanyID, id).Scan(&status, &marketplace); err != nil {
 		return Batch{}, mapDBError(err)
 	}
+	if err = s.authorizer.RequireModule(ctx, principal, marketplace); err != nil {
+		return Batch{}, err
+	}
 	if status == target {
 		if err = tx.Commit(ctx); err != nil {
 			return Batch{}, err
@@ -311,9 +341,6 @@ func (s *Service) transition(ctx context.Context, principal auth.Principal, id, 
 }
 
 func (s *Service) authorize(ctx context.Context, principal auth.Principal) error {
-	if err := s.authorizer.RequireModule(ctx, principal, "flipkart"); err != nil {
-		return err
-	}
 	return s.authorizer.RequirePermission(ctx, principal, "labels.process")
 }
 
@@ -358,7 +385,7 @@ func scanBatch(row interface{ Scan(...any) error }, item *Batch) error {
 func normalizeCreateInput(input *CreateInput) bool {
 	input.MarketplaceKey = strings.TrimSpace(input.MarketplaceKey)
 	input.IdempotencyKey = strings.TrimSpace(input.IdempotencyKey)
-	if input.MarketplaceKey != "flipkart" || input.IdempotencyKey == "" || len(input.IdempotencyKey) > 128 || len(input.OrderIDs) == 0 || len(input.OrderIDs) > maxBatchMembers {
+	if !supportedMarketplace(input.MarketplaceKey) || input.IdempotencyKey == "" || len(input.IdempotencyKey) > 128 || len(input.OrderIDs) == 0 || len(input.OrderIDs) > maxBatchMembers {
 		return false
 	}
 	seen := make(map[string]struct{}, len(input.OrderIDs))
@@ -373,6 +400,10 @@ func normalizeCreateInput(input *CreateInput) bool {
 		seen[input.OrderIDs[index]] = struct{}{}
 	}
 	return true
+}
+
+func supportedMarketplace(marketplace string) bool {
+	return marketplace == "flipkart" || marketplace == "amazon"
 }
 
 func hashRequest(input CreateInput) (string, error) {

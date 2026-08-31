@@ -8,9 +8,12 @@ import (
 var ErrUnsupportedLayout = errors.New("unsupported PDF layout")
 
 type Page struct {
-	SourceID string
-	PDF      []byte
-	Number   int
+	SourceID      string
+	PDF           []byte
+	Number        int
+	InvoiceNumber int
+	SKU           string
+	Quantity      int
 }
 
 type Result struct {

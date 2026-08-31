@@ -16,6 +16,7 @@ import (
 	"github.com/commerceops/commerceops/services/api/internal/health"
 	"github.com/commerceops/commerceops/services/api/internal/inventory"
 	"github.com/commerceops/commerceops/services/api/internal/marketplace"
+	"github.com/commerceops/commerceops/services/api/internal/marketplace/amazon"
 	"github.com/commerceops/commerceops/services/api/internal/platform/database"
 	"github.com/commerceops/commerceops/services/api/internal/platform/httpserver"
 	"github.com/commerceops/commerceops/services/api/internal/platform/objectstorage"
@@ -45,7 +46,8 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	if err != nil {
 		return err
 	}
-	batchHTTP := batch.NewHTTPHandler(batch.NewPrintingService(db, authorizer, storage, pdfgenerator.NewPoppler()))
+	printingService := batch.NewPrintingService(db, authorizer, storage, pdfgenerator.NewPoppler()).RegisterPrintGenerator("amazon", amazon.PrintGenerationVersion, amazon.NewPrintGenerator())
+	batchHTTP := batch.NewHTTPHandler(printingService)
 	marketplaceService, err := marketplace.NewService(db, authorizer, storage, pdfextractor.NewPoppler())
 	if err != nil {
 		return err

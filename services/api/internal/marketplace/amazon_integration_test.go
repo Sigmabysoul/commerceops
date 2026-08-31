@@ -70,7 +70,7 @@ func TestAmazonBatchBPostgreSQLIntegration(t *testing.T) {
 		t.Fatalf("details=%#v err=%v", details, err)
 	}
 	var traceable bool
-	mustScanP3(t, f.db, `SELECT o.source_file_id=j.source_file_id AND o.parser_version=j.parser_version AND f.marketplace_key='amazon' AND f.storage_key LIKE $3 FROM marketplace_orders o JOIN processing_jobs j ON j.company_id=o.company_id AND j.id=o.processing_job_id JOIN source_files f ON f.company_id=o.company_id AND f.id=o.source_file_id WHERE o.company_id=$1 AND o.processing_job_id=$2`, []any{f.companyA, uploaded.Job.ID, f.companyA + "/%"}, &traceable)
+	mustScanP3(t, f.db, `SELECT o.source_file_id=j.source_file_id AND o.parser_version=j.parser_version AND f.marketplace_key='amazon' AND f.storage_key LIKE $3 AND o.extraction_metadata->>'association_method'='single_document' FROM marketplace_orders o JOIN processing_jobs j ON j.company_id=o.company_id AND j.id=o.processing_job_id JOIN source_files f ON f.company_id=o.company_id AND f.id=o.source_file_id WHERE o.company_id=$1 AND o.processing_job_id=$2`, []any{f.companyA, uploaded.Job.ID, f.companyA + "/%"}, &traceable)
 	if !traceable {
 		t.Fatal("Amazon source/job/order/parser traceability was not preserved")
 	}
@@ -90,6 +90,11 @@ func TestAmazonBatchBPostgreSQLIntegration(t *testing.T) {
 		detail, getErr := service.Get(ctx, f.principalA, result.Job.ID)
 		if getErr != nil || detail.Job.Status != "processed" || len(detail.Orders) != 1 || detail.Orders[0].SourcePage != 5 || len(detail.Orders[0].Documents) != 2 || detail.Orders[0].Documents[0].ExtractionMethod != "ocr" || detail.Orders[0].Documents[1].Role != "invoice" || detail.Orders[0].Items[0].Quantity == nil || *detail.Orders[0].Items[0].Quantity != 3 {
 			t.Fatalf("detail=%#v err=%v", detail, getErr)
+		}
+		var method string
+		mustScanP3(t, f.db, `SELECT extraction_metadata->>'association_method' FROM marketplace_orders WHERE company_id=$1 AND processing_job_id=$2`, []any{f.companyA, result.Job.ID}, &method)
+		if method != "exact_order_id" {
+			t.Fatalf("association method=%s", method)
 		}
 	})
 	if _, err = service.Get(ctx, f.principalB, uploaded.Job.ID); !errors.Is(err, ErrNotFound) {

@@ -60,13 +60,13 @@ The OpenAPI source is `docs/openapi.yaml`. It must be updated whenever the publi
 
 ## Batch foundation
 
-Batch endpoints require the Flipkart entitlement and existing `labels.process`
-permission. `labels.print` covers generation and downloads, while
+Batch endpoints require the selected Flipkart or Amazon entitlement and the
+existing `labels.process` permission. `labels.print` covers generation and downloads, while
 `labels.reprint` separately authorizes source-linked reprints.
 
 | Method | Path | Purpose |
 | --- | --- | --- |
-| GET | `/api/v1/batch-eligible-orders?marketplace=flipkart` | List completed, non-duplicate normalized orders not already in a batch |
+| GET | `/api/v1/batch-eligible-orders?marketplace={flipkart|amazon}` | List completed, non-duplicate normalized orders not already in a batch |
 | GET, POST | `/api/v1/batches` | List batches or idempotently create a draft from one to 500 orders |
 | GET | `/api/v1/batches/{batch_id}` | Read ordered source traceability and Product Master totals |
 | POST | `/api/v1/batches/{batch_id}/ready` | Ready a fully resolved draft |
@@ -79,7 +79,7 @@ original batch; using that key for different input is a conflict.
 
 ## Print generation
 
-Print generation requires the Flipkart entitlement and `labels.print`.
+Print generation requires the batch marketplace entitlement and `labels.print`.
 
 | Method | Path | Purpose |
 | --- | --- | --- |
@@ -96,6 +96,13 @@ When sorting is disabled, original batch position is preserved. Generation is
 bounded and synchronous in Batch B; persisted status remains visible as `ready`
 or `failed`.
 
+Flipkart batches retain `flipkart-a4-v1` generation. Amazon batches use
+`amazon-a4-enriched-v1`: the adapter validates A4 geometry, preserves the full
+shipping-label page with uniform scaling, and reserves a non-overlapping banner
+for `SKU: <raw seller SKU> | QTY: <explicit quantity>`. Optional Amazon invoice
+artifacts use the associated invoice pages. Missing traceability or enrichment
+values fails generation rather than producing a guessed label.
+
 Reprints create a separate print job with `source_print_job_id` and
 `reprint_reason`; they do not mutate the source job or any inventory domain.
 
@@ -103,7 +110,7 @@ Reprints create a separate print job with `source_print_job_id` and
 
 | Method | Path | Purpose |
 | --- | --- | --- |
-| GET | `/api/v1/worker-assignment-rules?marketplace=flipkart` | List exact-product rules and the marketplace fallback worker (`labels.process`) |
+| GET | `/api/v1/worker-assignment-rules?marketplace={flipkart|amazon}` | List exact-product rules and the marketplace fallback worker (`labels.process`) |
 | PUT | `/api/v1/worker-assignment-rules` | Atomically replace rules (`employees.manage`) |
 
 Each configuration contains exactly one fallback. Exact Product Master rules
@@ -188,7 +195,9 @@ and error envelope as Flipkart. Exact active `amazon` SKU mappings resolve to
 canonical Product Master products. Missing tracking, seller SKU, quantity, or
 mapping values remain explicit review data and are never guessed.
 
-Amazon image-only pages use bounded OCR. A shipping label and invoice become
-one canonical order only when their extracted Amazon order IDs match exactly.
-Duplicate roles, conflicting values, and incomplete identifiers remain review
-records; page position is never an association key.
+Amazon image-only pages use bounded OCR. A shipping label and invoice normally
+become one canonical order when their extracted Amazon order IDs match exactly.
+The validated adjacency fallback requires a mutually unique opposite-role pair,
+one stable order ID, unique AWB, invoice SKU, and explicit quantity. Duplicate
+roles, conflicting identifiers, competing neighbors, and incomplete values
+remain review records.

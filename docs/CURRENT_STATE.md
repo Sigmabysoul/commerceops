@@ -56,16 +56,20 @@ batch, inventory, or reporting infrastructure.
 
 - [x] opt-in bounded OCR for text-empty Amazon pages
 - [x] exact Amazon order-ID label/invoice association without position matching
+- [x] mutually unique, evidence-complete one-page adjacency fallback
+- [x] legacy-useful invoice SKU precedence including bracketed value before `HSN`
 - [x] label AWB plus invoice seller SKU/explicit quantity normalization
 - [x] ambiguous and incomplete associations remain review data
 - [x] source file, source page, document role, and extraction-method traceability
 - [x] sanitized parser/association and private production-structure regressions
 - [x] tenant-scoped PostgreSQL persistence and migration up/down coverage
+- [x] Amazon eligibility in shared batches and worker-assignment snapshots
+- [x] validated A4 `SKU | QTY` printable enrichment through shared print artifacts
+- [x] Amazon invoice artifact export plus print/reprint inventory neutrality
 - [x] full PostgreSQL-backed verification
 
 ### Explicitly deferred after Batch B
 
-- Amazon batch/print output manipulation
 - inventory integration changes
 - Amazon reporting inclusion verification
 - later Phase 7 batches and Phase 8
@@ -81,10 +85,13 @@ PostgreSQL 18.6 database migrated through `000013`, including:
 - exact active Amazon SKU resolution through Product Master
 - missing and ambiguous field review behavior without quantity defaults
 - source file, source page, marketplace, document role, extraction method, and
-  `amazon-associated-v2` traceability
+  `amazon-associated-v3` traceability
 - retry after SKU training and duplicate Amazon order visibility
 - sanitized two-page Amazon PDF extraction
 - exact order-ID association and ambiguous-association review behavior
+- validated/rejected adjacency and legacy-useful invoice SKU precedence
+- shared Amazon batch/printing, artifact traceability, and inventory-neutral reprints
+- sanitized and private A4 enriched-output PDF regression checks
 - private ten-page OCR/association validation without committing or logging identifiers
 - migration `000013` up/down coverage
 - the complete PostgreSQL-backed Go suite, Go vet/build, frontend typecheck,
@@ -92,10 +99,8 @@ PostgreSQL 18.6 database migrated through `000013`, including:
 
 ## Remaining Scope
 
-Amazon normalized orders are not yet enabled in the shared batch/printing
-workflow. Amazon print-page manipulation, the existing outbound inventory event
-integration, and Phase 6 reporting inclusion still require separately reviewed
-later Phase 7 batches.
+The existing outbound inventory event integration and Phase 6 reporting
+inclusion still require separately reviewed later Phase 7 batches.
 
 ## Next Allowed Task
 

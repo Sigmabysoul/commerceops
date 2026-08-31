@@ -131,3 +131,13 @@ inside one application; it does not imply microservices.
   specialized workers.
 - **Forbidden leakage:** extraction tools must not become a second business
   backend or persist authoritative business records.
+
+## PDF generation (`internal/platform/pdfgenerator` and marketplace adapters)
+
+- **Owns:** bounded normalized PDF generation contracts and shared Flipkart A4
+  rendering. Marketplace-specific output rules remain in their marketplace
+  adapter; Amazon owns validated A4 enrichment.
+- **Does not own:** tenant authorization, batch state, Product Master mapping,
+  artifact persistence, reprint policy, or inventory mutations.
+- **Forbidden leakage:** generation must not infer missing SKU/quantity, obscure
+  required shipping content, or create inventory transactions.

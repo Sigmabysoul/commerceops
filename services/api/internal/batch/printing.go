@@ -18,8 +18,6 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-const generationVersion = "flipkart-a4-v1"
-
 var ErrGenerationFailed = errors.New("print generation failed")
 
 type GenerateInput struct {
@@ -59,11 +57,12 @@ type Artifact struct {
 
 type printPage struct {
 	OrderID, SourceID, ProcessingJobID, StorageKey string
-	SourcePage                                     int
+	MarketplaceKey, SKU                            string
+	SourcePage, InvoicePage, Quantity              int
 }
 
 func (s *Service) Generate(ctx context.Context, principal auth.Principal, batchID string, input GenerateInput) (PrintJob, bool, error) {
-	if s.storage == nil || s.generator == nil {
+	if s.storage == nil || len(s.generators) == 0 {
 		return PrintJob{}, false, ErrGenerationFailed
 	}
 	if err := s.authorizePrint(ctx, principal); err != nil {
@@ -73,7 +72,7 @@ func (s *Service) Generate(ctx context.Context, principal auth.Principal, batchI
 }
 
 func (s *Service) Reprint(ctx context.Context, principal auth.Principal, sourceID string, input ReprintInput) (PrintJob, bool, error) {
-	if s.storage == nil || s.generator == nil {
+	if s.storage == nil || len(s.generators) == 0 {
 		return PrintJob{}, false, ErrGenerationFailed
 	}
 	if err := s.authorizeReprint(ctx, principal); err != nil {
@@ -100,6 +99,14 @@ func (s *Service) generate(ctx context.Context, principal auth.Principal, batchI
 	if !uuidRE.MatchString(batchID) || input.IdempotencyKey == "" || len(input.IdempotencyKey) > 128 {
 		return PrintJob{}, false, ErrInvalidInput
 	}
+	marketplace, err := s.requireBatchModule(ctx, principal, batchID)
+	if err != nil {
+		return PrintJob{}, false, err
+	}
+	generator, ok := s.generators[marketplace]
+	if !ok || generator.generator == nil {
+		return PrintJob{}, false, ErrGenerationFailed
+	}
 	hash, _ := json.Marshal(struct {
 		Input    GenerateInput `json:"input"`
 		SourceID *string       `json:"source_print_job_id"`
@@ -113,7 +120,7 @@ func (s *Service) generate(ctx context.Context, principal auth.Principal, batchI
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
 	var jobID string
-	err = tx.QueryRow(ctx, `INSERT INTO print_jobs(company_id,batch_id,requested_by,sort_labels,export_invoices,generation_version,idempotency_key,request_hash,source_print_job_id,reprint_reason) SELECT $1,id,$2,$3,$4,$5,$6,$7,$9,$10 FROM batches WHERE company_id=$1 AND id=$8 AND status='ready' ON CONFLICT(company_id,idempotency_key) DO NOTHING RETURNING id`, principal.CompanyID, principal.UserID, input.SortLabels, input.ExportInvoices, generationVersion, input.IdempotencyKey, requestHash, batchID, sourceID, reprintReason).Scan(&jobID)
+	err = tx.QueryRow(ctx, `INSERT INTO print_jobs(company_id,batch_id,requested_by,sort_labels,export_invoices,generation_version,idempotency_key,request_hash,source_print_job_id,reprint_reason) SELECT $1,id,$2,$3,$4,$5,$6,$7,$9,$10 FROM batches WHERE company_id=$1 AND id=$8 AND status='ready' ON CONFLICT(company_id,idempotency_key) DO NOTHING RETURNING id`, principal.CompanyID, principal.UserID, input.SortLabels, input.ExportInvoices, generator.version, input.IdempotencyKey, requestHash, batchID, sourceID, reprintReason).Scan(&jobID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		var existingHash string
 		if err = tx.QueryRow(ctx, `SELECT id,request_hash FROM print_jobs WHERE company_id=$1 AND idempotency_key=$2`, principal.CompanyID, input.IdempotencyKey).Scan(&jobID, &existingHash); errors.Is(err, pgx.ErrNoRows) {
@@ -134,14 +141,14 @@ func (s *Service) generate(ctx context.Context, principal auth.Principal, batchI
 	if err != nil {
 		return PrintJob{}, false, err
 	}
-	rows, err := tx.Query(ctx, `SELECT mo.id,mo.source_file_id,mo.processing_job_id,mo.source_page,sf.storage_key FROM batch_members bm JOIN marketplace_orders mo ON mo.company_id=bm.company_id AND mo.id=bm.marketplace_order_id JOIN source_files sf ON sf.company_id=mo.company_id AND sf.id=mo.source_file_id JOIN marketplace_order_items moi ON moi.company_id=mo.company_id AND moi.order_id=mo.id JOIN products p ON p.company_id=moi.company_id AND p.id=moi.product_id WHERE bm.company_id=$1 AND bm.batch_id=$2 ORDER BY CASE WHEN $3 THEN p.internal_code END,CASE WHEN $3 THEN moi.raw_sku END,CASE WHEN $3 THEN COALESCE(mo.marketplace_order_id,'') END,bm.position`, principal.CompanyID, batchID, input.SortLabels)
+	rows, err := tx.Query(ctx, `SELECT mo.id,mo.source_file_id,mo.processing_job_id,b.marketplace_key,CASE WHEN b.marketplace_key='amazon' THEN COALESCE(label.source_page,0) ELSE mo.source_page END,COALESCE(invoice.source_page,0),sf.storage_key,COALESCE(moi.raw_sku,''),COALESCE(moi.quantity,0) FROM batch_members bm JOIN batches b ON b.company_id=bm.company_id AND b.id=bm.batch_id JOIN marketplace_orders mo ON mo.company_id=bm.company_id AND mo.id=bm.marketplace_order_id JOIN source_files sf ON sf.company_id=mo.company_id AND sf.id=mo.source_file_id JOIN marketplace_order_items moi ON moi.company_id=mo.company_id AND moi.order_id=mo.id JOIN products p ON p.company_id=moi.company_id AND p.id=moi.product_id LEFT JOIN marketplace_order_documents label ON label.company_id=mo.company_id AND label.order_id=mo.id AND label.document_role='shipping_label' LEFT JOIN marketplace_order_documents invoice ON invoice.company_id=mo.company_id AND invoice.order_id=mo.id AND invoice.document_role='invoice' WHERE bm.company_id=$1 AND bm.batch_id=$2 ORDER BY CASE WHEN $3 THEN p.internal_code END,CASE WHEN $3 THEN moi.raw_sku END,CASE WHEN $3 THEN COALESCE(mo.marketplace_order_id,'') END,bm.position`, principal.CompanyID, batchID, input.SortLabels)
 	if err != nil {
 		return PrintJob{}, false, err
 	}
 	pages := make([]printPage, 0)
 	for rows.Next() {
 		var page printPage
-		if err = rows.Scan(&page.OrderID, &page.SourceID, &page.ProcessingJobID, &page.SourcePage, &page.StorageKey); err != nil {
+		if err = rows.Scan(&page.OrderID, &page.SourceID, &page.ProcessingJobID, &page.MarketplaceKey, &page.SourcePage, &page.InvoicePage, &page.StorageKey, &page.SKU, &page.Quantity); err != nil {
 			rows.Close()
 			return PrintJob{}, false, err
 		}
@@ -157,7 +164,7 @@ func (s *Service) generate(ctx context.Context, principal auth.Principal, batchI
 		}
 	}
 	action := "print.requested"
-	metadata := map[string]any{"batch_id": batchID, "sort_labels": input.SortLabels, "export_invoices": input.ExportInvoices, "page_count": len(pages), "generation_version": generationVersion}
+	metadata := map[string]any{"batch_id": batchID, "marketplace": marketplace, "sort_labels": input.SortLabels, "export_invoices": input.ExportInvoices, "page_count": len(pages), "generation_version": generator.version}
 	if sourceID != nil {
 		action = "print.reprinted"
 		metadata["source_print_job_id"] = *sourceID
@@ -173,7 +180,7 @@ func (s *Service) generate(ctx context.Context, principal auth.Principal, batchI
 	generatedPages, err := s.loadPages(ctx, pages)
 	if err == nil {
 		var result pdfgenerator.Result
-		result, err = s.generator.Generate(ctx, generatedPages, input.ExportInvoices)
+		result, err = generator.generator.Generate(ctx, generatedPages, input.ExportInvoices)
 		if err == nil {
 			err = s.persistArtifacts(ctx, principal, jobID, len(pages), input.ExportInvoices, result)
 		}
@@ -203,7 +210,7 @@ func (s *Service) loadPages(ctx context.Context, pages []printPage) ([]pdfgenera
 			}
 			data[page.SourceID] = pdf
 		}
-		result = append(result, pdfgenerator.Page{SourceID: page.SourceID, PDF: pdf, Number: page.SourcePage})
+		result = append(result, pdfgenerator.Page{SourceID: page.SourceID, PDF: pdf, Number: page.SourcePage, InvoiceNumber: page.InvoicePage, SKU: page.SKU, Quantity: page.Quantity})
 	}
 	return result, nil
 }
@@ -279,24 +286,36 @@ func (s *Service) failPrintJob(ctx context.Context, principal auth.Principal, jo
 }
 
 func (s *Service) authorizePrint(ctx context.Context, principal auth.Principal) error {
-	if err := s.authorizer.RequireModule(ctx, principal, "flipkart"); err != nil {
-		return err
-	}
 	return s.authorizer.RequirePermission(ctx, principal, "labels.print")
 }
 
 func (s *Service) authorizeReprint(ctx context.Context, principal auth.Principal) error {
-	if err := s.authorizer.RequireModule(ctx, principal, "flipkart"); err != nil {
-		return err
-	}
 	return s.authorizer.RequirePermission(ctx, principal, "labels.reprint")
+}
+
+func (s *Service) requireBatchModule(ctx context.Context, principal auth.Principal, batchID string) (string, error) {
+	var marketplace string
+	if err := s.db.QueryRow(ctx, `SELECT marketplace_key FROM batches WHERE company_id=$1 AND id=$2`, principal.CompanyID, batchID).Scan(&marketplace); err != nil {
+		return "", mapDBError(err)
+	}
+	if err := s.authorizer.RequireModule(ctx, principal, marketplace); err != nil {
+		return "", err
+	}
+	return marketplace, nil
 }
 
 func (s *Service) GetPrintJob(ctx context.Context, principal auth.Principal, id string) (PrintJob, error) {
 	if err := s.authorizePrint(ctx, principal); err != nil {
 		return PrintJob{}, err
 	}
-	return s.getPrintJob(ctx, principal.CompanyID, id)
+	job, err := s.getPrintJob(ctx, principal.CompanyID, id)
+	if err != nil {
+		return PrintJob{}, err
+	}
+	if _, err = s.requireBatchModule(ctx, principal, job.BatchID); err != nil {
+		return PrintJob{}, err
+	}
+	return job, nil
 }
 
 func (s *Service) getPrintJob(ctx context.Context, companyID, id string) (PrintJob, error) {
@@ -327,6 +346,9 @@ func (s *Service) ListPrintJobs(ctx context.Context, principal auth.Principal, b
 	}
 	if !uuidRE.MatchString(batchID) {
 		return nil, ErrInvalidInput
+	}
+	if _, err := s.requireBatchModule(ctx, principal, batchID); err != nil {
+		return nil, err
 	}
 	rows, err := s.db.Query(ctx, `SELECT id FROM print_jobs WHERE company_id=$1 AND batch_id=$2 ORDER BY created_at DESC,id DESC LIMIT 200`, principal.CompanyID, batchID)
 	if err != nil {
@@ -359,10 +381,13 @@ func (s *Service) DownloadArtifact(ctx context.Context, principal auth.Principal
 	if err := s.authorizePrint(ctx, principal); err != nil {
 		return nil, "", err
 	}
-	var key, kind string
+	var key, kind, batchID string
 	var size int64
-	if err := s.db.QueryRow(ctx, `SELECT storage_key,kind,size_bytes FROM print_artifacts WHERE company_id=$1 AND id=$2`, principal.CompanyID, id).Scan(&key, &kind, &size); err != nil {
+	if err := s.db.QueryRow(ctx, `SELECT pa.storage_key,pa.kind,pa.size_bytes,pj.batch_id FROM print_artifacts pa JOIN print_jobs pj ON pj.company_id=pa.company_id AND pj.id=pa.print_job_id WHERE pa.company_id=$1 AND pa.id=$2`, principal.CompanyID, id).Scan(&key, &kind, &size, &batchID); err != nil {
 		return nil, "", mapDBError(err)
+	}
+	if _, err := s.requireBatchModule(ctx, principal, batchID); err != nil {
+		return nil, "", err
 	}
 	if size <= 0 || size > 100<<20 {
 		return nil, "", ErrGenerationFailed

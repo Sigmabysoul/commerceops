@@ -48,8 +48,56 @@ func TestAssociatesLabelAndInvoiceByExactOrderID(t *testing.T) {
 		t.Fatalf("documents=%#v err=%v", documents, err)
 	}
 	document := documents[0]
-	if document.Page != 3 || document.AWB != "TRACKASSOC123" || document.SKU != "INVOICE-SKU" || document.Quantity == nil || *document.Quantity != 4 || len(document.Sources) != 2 || document.Sources[0].ExtractionMethod != "text" || document.Sources[1].ExtractionMethod != "ocr" {
+	if document.Page != 3 || document.AWB != "TRACKASSOC123" || document.SKU != "INVOICE-SKU" || document.Quantity == nil || *document.Quantity != 4 || len(document.Sources) != 2 || document.Sources[0].ExtractionMethod != "ocr" || document.Sources[1].ExtractionMethod != "text" || document.AssociationMethod != "exact_order_id" || document.Confidence != "high" {
 		t.Fatalf("document=%#v", document)
+	}
+}
+
+func TestInvoiceSKUPrecedenceFromLegacyUsefulPatterns(t *testing.T) {
+	tests := []struct{ name, body, expected string }{
+		{"bracket directly before HSN", "Description [BRACKET-DIRECT] HSN 4202", "BRACKET-DIRECT"},
+		{"bracketed code", "Description (USEFUL_SKU) details HSN 4202", "USEFUL_SKU"},
+		{"token before HSN", "Description TOKEN-HSN HSN 4202", "TOKEN-HSN"},
+		{"labeled fallback", "Seller SKU: LABELED-SKU", "LABELED-SKU"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			text := "amazon.in\nTax Invoice\nOrder ID: 406-1212121-3434343\n" + test.body + "\nQuantity: 2"
+			documents, err := Parse([]pdfextractor.Page{{Number: 2, Text: text}})
+			if err != nil || len(documents) != 1 || documents[0].SKU != test.expected {
+				t.Fatalf("documents=%#v err=%v", documents, err)
+			}
+		})
+	}
+}
+
+func TestAmbiguousHigherPrecedenceSKUNeverFallsThrough(t *testing.T) {
+	text := "amazon.in\nTax Invoice\nOrder ID: 406-4545454-6767676\n[SKU-ONE] HSN 4202\n[SKU-TWO] HSN 4202\nSeller SKU: LOWER-FALLBACK\nQuantity: 2"
+	documents, err := Parse([]pdfextractor.Page{{Number: 2, Text: text}})
+	if err != nil || len(documents) != 1 || documents[0].SKU != "" {
+		t.Fatalf("documents=%#v err=%v", documents, err)
+	}
+}
+
+func TestValidatedAdjacencyFallbackRequiresMutualCompleteEvidence(t *testing.T) {
+	pages := []pdfextractor.Page{
+		{Number: 1, ExtractionMethod: "ocr", Text: "amazon.in Shipping Label\nAWB: TRACKADJACENT1"},
+		{Number: 2, Text: "amazon.in\nTax Invoice\nOrder ID: 406-5656565-7878787\nSeller SKU: ADJ-SKU\nQuantity: 3"},
+	}
+	documents, err := Parse(pages)
+	if err != nil || len(documents) != 1 || documents[0].OrderID == "" || documents[0].AWB != "TRACKADJACENT1" || documents[0].SKU != "ADJ-SKU" || documents[0].Quantity == nil || documents[0].AssociationMethod != "validated_adjacency" || documents[0].Confidence != "medium" {
+		t.Fatalf("documents=%#v err=%v", documents, err)
+	}
+
+	pages = append(pages, pdfextractor.Page{Number: 3, ExtractionMethod: "ocr", Text: "amazon.in Shipping Label\nAWB: TRACKCOMPETING1"})
+	documents, err = Parse(pages)
+	if err != nil || len(documents) != 3 {
+		t.Fatalf("competing documents=%#v err=%v", documents, err)
+	}
+	for _, document := range documents {
+		if document.AssociationMethod == "validated_adjacency" {
+			t.Fatalf("unvalidated fallback=%#v", documents)
+		}
 	}
 }
 

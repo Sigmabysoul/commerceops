@@ -57,6 +57,8 @@ type normalizedRecord struct {
 	Quantity          *int
 	Documents         []normalizedDocument
 	Warnings          []string
+	AssociationMethod string
+	Confidence        string
 }
 type normalizedDocument struct {
 	Page                   int
@@ -174,7 +176,7 @@ func amazonProcessor() processor {
 		}
 		out := make([]normalizedRecord, 0, len(documents))
 		for _, document := range documents {
-			record := normalizedRecord{Page: document.Page, AWB: document.AWB, OrderID: document.OrderID, SKU: document.SKU, Quantity: document.Quantity, Warnings: document.Warnings}
+			record := normalizedRecord{Page: document.Page, AWB: document.AWB, OrderID: document.OrderID, SKU: document.SKU, Quantity: document.Quantity, Warnings: document.Warnings, AssociationMethod: document.AssociationMethod, Confidence: document.Confidence}
 			for _, source := range document.Sources {
 				record.Documents = append(record.Documents, normalizedDocument{Page: source.Page, Role: source.Role, ExtractionMethod: source.ExtractionMethod})
 			}
@@ -613,7 +615,7 @@ func (s *Service) execute(ctx context.Context, w work) error {
 		if status != "resolved" {
 			needsReview = true
 		}
-		metadata, _ := json.Marshal(map[string]any{"extractor": "poppler", "fields_detected": map[string]bool{"awb": label.AWB != "", "order_id": label.OrderID != "", "sku": label.SKU != "", "quantity": label.Quantity != nil}})
+		metadata, _ := json.Marshal(map[string]any{"extractor": "poppler", "association_method": label.AssociationMethod, "association_confidence": label.Confidence, "fields_detected": map[string]bool{"awb": label.AWB != "", "order_id": label.OrderID != "", "sku": label.SKU != "", "quantity": label.Quantity != nil}})
 		var orderID string
 		if err = tx.QueryRow(ctx, `INSERT INTO marketplace_orders(company_id,marketplace_key,source_file_id,processing_job_id,source_page,marketplace_order_id,awb,status,parser_version,extraction_metadata) VALUES($1,$2,$3,$4,$5,NULLIF($6,''),NULLIF($7,''),$8,$9,$10) RETURNING id`, w.CompanyID, s.processor.marketplace, sourceID, w.JobID, label.Page, label.OrderID, label.AWB, status, s.processor.parserVersion, metadata).Scan(&orderID); err != nil {
 			return err
