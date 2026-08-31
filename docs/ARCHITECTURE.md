@@ -57,3 +57,10 @@ adapter owns its A4 validation and SKU/quantity enrichment, while the batch
 domain continues to own authorization, sorting, idempotency, artifact storage,
 auditing, downloads, and reprint traceability. Print generation never calls the
 inventory domain.
+
+The Phase 8 returns domain references normalized marketplace orders and
+canonical Product Master items for shared Flipkart/Amazon cancellation and
+physical-return intake. It owns lifecycle records and append-only events, but
+not stock. Cancellation and receipt states are inventory-neutral; a later
+explicit restock disposition must cross the centralized inventory boundary
+rather than introducing return-owned counters.

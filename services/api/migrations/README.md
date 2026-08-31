@@ -22,6 +22,11 @@ queued/processing jobs. Amazon reuses the existing normalized marketplace tables
 `000013_amazon_document_association` adds tenant-scoped contributing-document
 traceability for Amazon label/invoice associations without duplicating orders.
 
+`000014_returns_cancellations_foundation` adds tenant-scoped cancellation
+records, return cases/items, append-only return intake events, and granular
+returns permissions. It does not add a return-owned stock counter or mutate the
+inventory ledger.
+
 ```sh
 make migrate
 ```

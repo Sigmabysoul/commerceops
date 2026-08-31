@@ -27,3 +27,13 @@ RULE RETURN-001
 A returned product must not increase sellable stock
 until its return disposition permits restocking.
 
+RULE RETURN-002
+
+A cancellation status alone must never restore inventory. Post-outbound stock
+may increase only after a physical return is received and explicitly accepted
+for restock.
+
+RULE RETURN-003
+
+Expected and received return quantities must be explicit, must remain bounded
+by the normalized order quantity, and must never default to one.

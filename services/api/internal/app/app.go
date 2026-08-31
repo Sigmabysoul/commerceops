@@ -24,6 +24,7 @@ import (
 	"github.com/commerceops/commerceops/services/api/internal/platform/pdfgenerator"
 	"github.com/commerceops/commerceops/services/api/internal/product"
 	"github.com/commerceops/commerceops/services/api/internal/reporting"
+	returnsdomain "github.com/commerceops/commerceops/services/api/internal/returns"
 )
 
 func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
@@ -42,6 +43,7 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	productHTTP := product.NewHTTPHandler(product.NewService(db, authorizer))
 	inventoryHTTP := inventory.NewHTTPHandler(inventory.NewService(db, authorizer))
 	reportingHTTP := reporting.NewHTTPHandler(reporting.NewService(db, authorizer))
+	returnsHTTP := returnsdomain.NewHTTPHandler(returnsdomain.NewService(db, authorizer))
 	storage, err := newObjectStorage(ctx, cfg)
 	if err != nil {
 		return err
@@ -102,6 +104,11 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	mux.Handle("/api/v1/inventory/reservations", authHTTP.RequireSession(http.HandlerFunc(inventoryHTTP.Reservations)))
 	mux.Handle("/api/v1/inventory/reservations/{reservation_id}/release", authHTTP.RequireSession(http.HandlerFunc(inventoryHTTP.ReleaseReservation)))
 	mux.Handle("/api/v1/reports/dashboard", authHTTP.RequireSession(http.HandlerFunc(reportingHTTP.Dashboard)))
+	mux.Handle("/api/v1/cancellations", authHTTP.RequireSession(http.HandlerFunc(returnsHTTP.Cancellations)))
+	mux.Handle("/api/v1/cancellations/{cancellation_id}", authHTTP.RequireSession(http.HandlerFunc(returnsHTTP.Cancellation)))
+	mux.Handle("/api/v1/returns", authHTTP.RequireSession(http.HandlerFunc(returnsHTTP.Returns)))
+	mux.Handle("/api/v1/returns/{return_id}", authHTTP.RequireSession(http.HandlerFunc(returnsHTTP.Return)))
+	mux.Handle("/api/v1/returns/{return_id}/receive", authHTTP.RequireSession(http.HandlerFunc(returnsHTTP.Receive)))
 	server := &http.Server{Addr: cfg.HTTPAddr, Handler: httpserver.Middleware(logger, cfg.AllowedOrigins, mux), ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 60 * time.Second}
 
 	errCh := make(chan error, 1)

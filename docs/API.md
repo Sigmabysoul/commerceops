@@ -171,6 +171,27 @@ Reservations are source-linked and unique per company/source/product. Creating
 one increases `reserved` without changing `on_hand`; releasing it restores
 availability. Reservation consumption is deferred to the future owning workflow.
 
+## Returns and cancellations — Phase 8 Batch A
+
+Returns endpoints require the `returns` module entitlement. Read operations
+require `returns.view`; intake and receipt operations require `returns.manage`.
+Company identity always comes from the authenticated session.
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| GET, POST | `/api/v1/cancellations` | List or idempotently record a normalized order cancellation |
+| GET | `/api/v1/cancellations/{cancellation_id}` | Read cancellation detail and its outbound snapshot |
+| GET, POST | `/api/v1/returns` | List or idempotently create expected physical returns |
+| GET | `/api/v1/returns/{return_id}` | Read return items and append-only lifecycle history |
+| POST | `/api/v1/returns/{return_id}/receive` | Idempotently record explicit received quantities |
+
+Cancellation creation records whether a central ready-batch outbound event
+already exists. Neither pre-outbound nor post-outbound cancellation changes
+stock. Return intake accepts only resolved normalized order items and explicit
+quantities within the original ordered quantity. Marking a return received also
+does not restock it; inspection and disposition are required in a later Phase 8
+batch.
+
 ## Flipkart processing
 
 - `POST /api/v1/flipkart/jobs` — multipart upload using field `file`; requires the `flipkart` entitlement and `labels.upload` plus `labels.process`. Returns HTTP 202 with `{job, duplicate_source}`.
