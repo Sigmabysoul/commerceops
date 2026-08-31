@@ -9,8 +9,9 @@ const (
 )
 
 type Page struct {
-	Number int
-	Text   string
+	Number           int
+	Text             string
+	ExtractionMethod string
 }
 type Extractor interface {
 	Extract(ctx context.Context, pdf []byte) ([]Page, error)

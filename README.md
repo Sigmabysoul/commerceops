@@ -12,7 +12,8 @@ implemented modules, review gates, and explicitly forbidden work.
 - pnpm 11.19.0
 - Docker with the Compose plugin
 - GNU Make
-- Poppler (`pdfinfo` and `pdftotext`) for PDF extraction
+- Poppler (`pdfinfo`, `pdftotext`, and `pdftoppm`) plus Tesseract English data
+  for Amazon image-only page OCR
 
 ### Arch Linux
 
@@ -20,7 +21,7 @@ The following official Arch packages provide the required toolchain. Corepack
 is used so pnpm matches the version pinned by this repository.
 
 ```bash
-sudo pacman -S --needed go nodejs-lts-jod corepack docker docker-compose make poppler
+sudo pacman -S --needed go nodejs-lts-jod corepack docker docker-compose make poppler tesseract tesseract-data-eng
 sudo systemctl enable --now docker.service
 corepack install --global pnpm@11.19.0
 ```
@@ -33,7 +34,8 @@ The package names are documented by Arch for
 [`docker-compose`](https://archlinux.org/packages/extra/x86_64/docker-compose/),
 [`make`](https://archlinux.org/packages/core/x86_64/make/), and
 [`poppler`](https://archlinux.org/packages/extra/x86_64/poppler/). Arch's
-Poppler package includes both required command-line tools.
+Poppler package includes the required command-line tools.
+Tesseract is used only by the opt-in Amazon OCR extractor.
 
 Docker commands require access to the Docker daemon. Use `sudo` or configure
 Docker group access according to your local security policy; membership in the

@@ -51,7 +51,7 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 		return err
 	}
 	marketplaceHTTP := marketplace.NewHTTPHandler(marketplaceService)
-	amazonService, err := marketplace.NewAmazonService(db, authorizer, storage, pdfextractor.NewPoppler())
+	amazonService, err := marketplace.NewAmazonService(db, authorizer, storage, pdfextractor.NewPopplerWithOCR())
 	if err != nil {
 		return err
 	}

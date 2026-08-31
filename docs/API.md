@@ -171,12 +171,14 @@ availability. Reservation consumption is deferred to the future owning workflow.
 
 Uploads are limited to 20 MiB and must begin with a PDF signature. Processing is asynchronous and durably queued in PostgreSQL; clients poll the job endpoint while its state is `queued` or `processing`. Error records expose `source_page`, `severity`, `code`, and `message`.
 
-## Amazon processing — Phase 7 Batch A
+## Amazon processing — Phase 7 Batch B
 
 - `POST /api/v1/amazon/jobs` — multipart PDF upload using `file`; requires the
   `amazon` entitlement plus `labels.upload` and `labels.process`.
 - `GET /api/v1/amazon/jobs/{job_id}` — reads the tenant-scoped job, normalized
-  candidate records/items, and page-level review errors.
+  normalized orders/items, contributing `documents`, and page-level review
+  errors. Each document exposes `source_page`, `role`, and
+  `extraction_method` (`text` or `ocr`).
 - `POST /api/v1/amazon/jobs/{job_id}` — safely retries a completed/review/failed
   Amazon source after Product Master training or parser updates.
 
@@ -185,3 +187,8 @@ company/marketplace hash deduplication, PostgreSQL job leases, response shapes,
 and error envelope as Flipkart. Exact active `amazon` SKU mappings resolve to
 canonical Product Master products. Missing tracking, seller SKU, quantity, or
 mapping values remain explicit review data and are never guessed.
+
+Amazon image-only pages use bounded OCR. A shipping label and invoice become
+one canonical order only when their extracted Amazon order IDs match exactly.
+Duplicate roles, conflicting values, and incomplete identifiers remain review
+records; page position is never an association key.

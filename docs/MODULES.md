@@ -123,7 +123,8 @@ inside one application; it does not imply microservices.
 ## PDF extraction (`internal/platform/pdfextractor`)
 
 - **Owns:** bounded conversion of an untrusted PDF into numbered page text. The
-  current implementation invokes Poppler.
+  current implementation invokes Poppler and offers opt-in Tesseract OCR for
+  pages with no extractable text.
 - **Does not own:** Flipkart field interpretation, tenant context, Product
   Master resolution, persistence, duplicates, or job state decisions.
 - **Allowed dependencies:** bounded document-processing tools or approved

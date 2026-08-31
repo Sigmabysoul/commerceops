@@ -44,6 +44,9 @@ authority.
 Shared marketplace orchestration owns upload validation, object storage,
 tenant/marketplace source deduplication, job leases, retries, normalized
 persistence, duplicate protection, Product Master lookup, and audits. Isolated
-adapters under `internal/marketplace/<marketplace>` own only document
-recognition and field extraction. The Phase 7 Amazon adapter consumes bounded
-page text and does not perform OCR or label/invoice association in Batch A.
+adapters under `internal/marketplace/<marketplace>` own document recognition,
+field extraction, and marketplace-specific page association. The shared PDF
+boundary may opt into bounded OCR for text-empty pages; Phase 7 enables that
+capability only for Amazon. Amazon associates label and invoice pages by an
+exact order ID and persists every contributing page through the generic
+order-document traceability relation.

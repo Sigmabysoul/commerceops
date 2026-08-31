@@ -14,7 +14,7 @@ import (
 	"github.com/commerceops/commerceops/services/api/internal/platform/pdfextractor"
 )
 
-func TestAmazonBatchAPostgreSQLIntegration(t *testing.T) {
+func TestAmazonBatchBPostgreSQLIntegration(t *testing.T) {
 	f := setupPhaseThree(t)
 	ctx := context.Background()
 	mustExecP3(t, f.db, `INSERT INTO module_entitlements(company_id,module_key,enabled) VALUES($1,'amazon',true),($2,'amazon',true)`, f.companyA, f.companyB)
@@ -66,7 +66,7 @@ func TestAmazonBatchAPostgreSQLIntegration(t *testing.T) {
 		t.Fatalf("processed=%v err=%v", processed, err)
 	}
 	details, err := service.Get(ctx, f.principalA, uploaded.Job.ID)
-	if err != nil || details.Job.Status != "processed" || details.Job.ParserVersion != amazon.ParserVersion || len(details.Orders) != 1 || details.Orders[0].SourcePage != 6 || details.Orders[0].Items[0].ProductID == nil || *details.Orders[0].Items[0].ProductID != f.productID || details.Orders[0].Items[0].Quantity == nil || *details.Orders[0].Items[0].Quantity != 2 {
+	if err != nil || details.Job.Status != "processed" || details.Job.ParserVersion != amazon.ParserVersion || len(details.Orders) != 1 || details.Orders[0].SourcePage != 6 || len(details.Orders[0].Documents) != 1 || details.Orders[0].Documents[0].SourcePage != 6 || details.Orders[0].Documents[0].Role != "shipping_label" || details.Orders[0].Items[0].ProductID == nil || *details.Orders[0].Items[0].ProductID != f.productID || details.Orders[0].Items[0].Quantity == nil || *details.Orders[0].Items[0].Quantity != 2 {
 		t.Fatalf("details=%#v err=%v", details, err)
 	}
 	var traceable bool
@@ -74,6 +74,24 @@ func TestAmazonBatchAPostgreSQLIntegration(t *testing.T) {
 	if !traceable {
 		t.Fatal("Amazon source/job/order/parser traceability was not preserved")
 	}
+
+	t.Run("OCR label and invoice associate by order ID with both pages traceable", func(t *testing.T) {
+		orderID := "406-2500000-2500000"
+		pdf := f.register("amazon-associated",
+			pdfextractor.Page{Number: 5, ExtractionMethod: "ocr", Text: "amazon.in Shipping Label\nOrder ID: " + orderID + "\nAWB: TRACKASSOC250"},
+			pdfextractor.Page{Number: 11, ExtractionMethod: "text", Text: "amazon.in\nTax Invoice\nOrder Number: " + orderID + "\nSeller SKU: AMZ-KNOWN\nQuantity: 3"})
+		result, uploadErr := service.Upload(ctx, f.principalA, "associated.pdf", pdf)
+		if uploadErr != nil {
+			t.Fatal(uploadErr)
+		}
+		if ok, processErr := service.processNext(); processErr != nil || !ok {
+			t.Fatalf("process=%v err=%v", ok, processErr)
+		}
+		detail, getErr := service.Get(ctx, f.principalA, result.Job.ID)
+		if getErr != nil || detail.Job.Status != "processed" || len(detail.Orders) != 1 || detail.Orders[0].SourcePage != 5 || len(detail.Orders[0].Documents) != 2 || detail.Orders[0].Documents[0].ExtractionMethod != "ocr" || detail.Orders[0].Documents[1].Role != "invoice" || detail.Orders[0].Items[0].Quantity == nil || *detail.Orders[0].Items[0].Quantity != 3 {
+			t.Fatalf("detail=%#v err=%v", detail, getErr)
+		}
+	})
 	if _, err = service.Get(ctx, f.principalB, uploaded.Job.ID); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("cross-tenant get=%v", err)
 	}
@@ -156,7 +174,7 @@ func TestAmazonProcessingMigrationUpDown(t *testing.T) {
 		t.Fatal(err)
 	}
 	root := filepath.Join("..", "..", "migrations")
-	for _, name := range []string{"000001_core_platform.up.sql", "000002_tenant_sessions.up.sql", "000003_product_master.up.sql", "000004_flipkart_processing.up.sql", "000005_flipkart_worker_leases.up.sql", "000006_batch_foundation.up.sql", "000007_print_generation.up.sql", "000008_worker_assignments_reprints.up.sql", "000009_inventory_ledger.up.sql", "000010_inventory_outbound_reservations.up.sql", "000011_dashboard_reporting.up.sql", "000012_amazon_processing.up.sql"} {
+	for _, name := range []string{"000001_core_platform.up.sql", "000002_tenant_sessions.up.sql", "000003_product_master.up.sql", "000004_flipkart_processing.up.sql", "000005_flipkart_worker_leases.up.sql", "000006_batch_foundation.up.sql", "000007_print_generation.up.sql", "000008_worker_assignments_reprints.up.sql", "000009_inventory_ledger.up.sql", "000010_inventory_outbound_reservations.up.sql", "000011_dashboard_reporting.up.sql", "000012_amazon_processing.up.sql", "000013_amazon_document_association.up.sql"} {
 		data, readErr := os.ReadFile(filepath.Join(root, name))
 		if readErr != nil {
 			t.Fatal(readErr)
@@ -166,10 +184,10 @@ func TestAmazonProcessingMigrationUpDown(t *testing.T) {
 		}
 	}
 	var exists *string
-	if err = tx.QueryRow(ctx, `SELECT to_regclass($1)`, schema+".processing_jobs_amazon_claim_idx").Scan(&exists); err != nil || exists == nil {
+	if err = tx.QueryRow(ctx, `SELECT to_regclass($1)`, schema+".marketplace_order_documents").Scan(&exists); err != nil || exists == nil {
 		t.Fatalf("up=%v err=%v", exists, err)
 	}
-	down, err := os.ReadFile(filepath.Join(root, "000012_amazon_processing.down.sql"))
+	down, err := os.ReadFile(filepath.Join(root, "000013_amazon_document_association.down.sql"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -177,7 +195,7 @@ func TestAmazonProcessingMigrationUpDown(t *testing.T) {
 		t.Fatal(err)
 	}
 	exists = nil
-	if err = tx.QueryRow(ctx, `SELECT to_regclass($1)`, schema+".processing_jobs_amazon_claim_idx").Scan(&exists); err != nil || exists != nil {
+	if err = tx.QueryRow(ctx, `SELECT to_regclass($1)`, schema+".marketplace_order_documents").Scan(&exists); err != nil || exists != nil {
 		t.Fatalf("down=%v err=%v", exists, err)
 	}
 }

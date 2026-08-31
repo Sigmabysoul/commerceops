@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -15,11 +16,19 @@ import (
 
 var pagesRE = regexp.MustCompile(`(?m)^Pages:\s+([0-9]+)\s*$`)
 
+const maxOCRImageBytes = 50 << 20
+
 // Poppler uses the mature pdfinfo/pdftotext boundary for untrusted PDF
 // decoding. It returns page-delimited text only; business parsing stays in Go.
-type Poppler struct{ timeout time.Duration }
+type Poppler struct {
+	timeout       time.Duration
+	ocrEmptyPages bool
+}
 
 func NewPoppler() *Poppler { return &Poppler{timeout: 30 * time.Second} }
+func NewPopplerWithOCR() *Poppler {
+	return &Poppler{timeout: 2 * time.Minute, ocrEmptyPages: true}
+}
 func (p *Poppler) Extract(parent context.Context, pdf []byte) ([]Page, error) {
 	ctx, cancel := context.WithTimeout(parent, p.timeout)
 	defer cancel()
@@ -76,9 +85,51 @@ func (p *Poppler) Extract(parent context.Context, pdf []byte) ([]Page, error) {
 		if len(text) > MaxPageTextBytes {
 			return nil, fmt.Errorf("page %d text exceeds limit", index+1)
 		}
-		pages = append(pages, Page{Number: index + 1, Text: text})
+		method := "text"
+		if strings.TrimSpace(text) == "" && p.ocrEmptyPages {
+			text, err = p.ocrPage(ctx, name, index+1)
+			if err != nil {
+				return nil, err
+			}
+			method = "ocr"
+		}
+		pages = append(pages, Page{Number: index + 1, Text: text, ExtractionMethod: method})
 	}
 	return pages, nil
+}
+
+func (p *Poppler) ocrPage(ctx context.Context, pdf string, page int) (string, error) {
+	dir, err := os.MkdirTemp("", "commerceops-ocr-*")
+	if err != nil {
+		return "", err
+	}
+	defer os.RemoveAll(dir)
+	prefix := filepath.Join(dir, "page")
+	if output, commandErr := exec.CommandContext(ctx, "pdftoppm", "-f", strconv.Itoa(page), "-l", strconv.Itoa(page), "-singlefile", "-r", "300", "-png", pdf, prefix).CombinedOutput(); commandErr != nil {
+		return "", fmt.Errorf("render page %d for OCR: %w", page, commandErr)
+	} else if len(output) > MaxPageTextBytes {
+		return "", fmt.Errorf("page %d renderer output exceeds limit", page)
+	}
+	info, err := os.Stat(prefix + ".png")
+	if err != nil {
+		return "", fmt.Errorf("inspect rendered page %d: %w", page, err)
+	}
+	if info.Size() > maxOCRImageBytes {
+		return "", fmt.Errorf("page %d OCR image exceeds limit", page)
+	}
+	cmd := exec.CommandContext(ctx, "tesseract", prefix+".png", "stdout", "--psm", "6")
+	var output limitedBuffer
+	output.limit = MaxPageTextBytes + 1
+	cmd.Stdout = &output
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err = cmd.Run(); err != nil {
+		return "", fmt.Errorf("OCR page %d: %w", page, err)
+	}
+	if output.exceeded {
+		return "", fmt.Errorf("page %d OCR text exceeds limit", page)
+	}
+	return strings.ReplaceAll(output.String(), "\r\n", "\n"), nil
 }
 
 type limitedBuffer struct {

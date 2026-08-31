@@ -55,6 +55,12 @@ type normalizedRecord struct {
 	Page              int
 	AWB, OrderID, SKU string
 	Quantity          *int
+	Documents         []normalizedDocument
+	Warnings          []string
+}
+type normalizedDocument struct {
+	Page                   int
+	Role, ExtractionMethod string
 }
 type processor struct {
 	marketplace, parserVersion, documentName string
@@ -91,12 +97,18 @@ type Item struct {
 	Warnings         json.RawMessage `json:"warnings"`
 }
 type Order struct {
-	ID                 string  `json:"id"`
-	SourcePage         int     `json:"source_page"`
-	MarketplaceOrderID *string `json:"marketplace_order_id"`
-	AWB                *string `json:"awb"`
-	Status             string  `json:"status"`
-	Items              []Item  `json:"items"`
+	ID                 string     `json:"id"`
+	SourcePage         int        `json:"source_page"`
+	MarketplaceOrderID *string    `json:"marketplace_order_id"`
+	AWB                *string    `json:"awb"`
+	Status             string     `json:"status"`
+	Items              []Item     `json:"items"`
+	Documents          []Document `json:"documents"`
+}
+type Document struct {
+	SourcePage       int    `json:"source_page"`
+	Role             string `json:"role"`
+	ExtractionMethod string `json:"extraction_method"`
 }
 type JobDetails struct {
 	Job    Job         `json:"job"`
@@ -162,7 +174,11 @@ func amazonProcessor() processor {
 		}
 		out := make([]normalizedRecord, 0, len(documents))
 		for _, document := range documents {
-			out = append(out, normalizedRecord{Page: document.Page, AWB: document.AWB, OrderID: document.OrderID, SKU: document.SKU, Quantity: document.Quantity})
+			record := normalizedRecord{Page: document.Page, AWB: document.AWB, OrderID: document.OrderID, SKU: document.SKU, Quantity: document.Quantity, Warnings: document.Warnings}
+			for _, source := range document.Sources {
+				record.Documents = append(record.Documents, normalizedDocument{Page: source.Page, Role: source.Role, ExtractionMethod: source.ExtractionMethod})
+			}
+			out = append(out, record)
 		}
 		return out, nil
 	}}
@@ -283,6 +299,7 @@ func (s *Service) Get(ctx context.Context, p auth.Principal, id string) (JobDeta
 			return JobDetails{}, queryErr
 		}
 		o.Items = []Item{}
+		o.Documents = []Document{}
 		for ir.Next() {
 			var item Item
 			if queryErr = ir.Scan(&item.RawSKU, &item.ProductID, &item.Quantity, &item.QuantitySource, &item.ResolutionStatus, &item.Warnings); queryErr != nil {
@@ -296,6 +313,23 @@ func (s *Service) Get(ctx context.Context, p auth.Principal, id string) (JobDeta
 			return JobDetails{}, queryErr
 		}
 		ir.Close()
+		dr, queryErr := s.db.Query(ctx, `SELECT source_page,document_role,extraction_method FROM marketplace_order_documents WHERE company_id=$1 AND order_id=$2 ORDER BY source_page,document_role`, p.CompanyID, o.ID)
+		if queryErr != nil {
+			return JobDetails{}, queryErr
+		}
+		for dr.Next() {
+			var document Document
+			if queryErr = dr.Scan(&document.SourcePage, &document.Role, &document.ExtractionMethod); queryErr != nil {
+				dr.Close()
+				return JobDetails{}, queryErr
+			}
+			o.Documents = append(o.Documents, document)
+		}
+		if queryErr = dr.Err(); queryErr != nil {
+			dr.Close()
+			return JobDetails{}, queryErr
+		}
+		dr.Close()
 		out.Orders = append(out.Orders, o)
 	}
 	if err = rows.Err(); err != nil {
@@ -339,6 +373,9 @@ func (s *Service) Retry(ctx context.Context, p auth.Principal, id string) (Job, 
 	}
 	if status == "queued" || status == "processing" {
 		return Job{}, ErrJobActive
+	}
+	if _, err = tx.Exec(ctx, `DELETE FROM marketplace_order_documents WHERE company_id=$1 AND order_id IN(SELECT id FROM marketplace_orders WHERE company_id=$1 AND processing_job_id=$2 AND marketplace_key=$3)`, p.CompanyID, id, s.processor.marketplace); err != nil {
+		return Job{}, err
 	}
 	if _, err = tx.Exec(ctx, `DELETE FROM marketplace_order_items WHERE company_id=$1 AND order_id IN(SELECT id FROM marketplace_orders WHERE company_id=$1 AND processing_job_id=$2 AND marketplace_key=$3)`, p.CompanyID, id, s.processor.marketplace); err != nil {
 		return Job{}, err
@@ -522,7 +559,10 @@ func (s *Service) execute(ctx context.Context, w work) error {
 	needsReview := false
 	for _, label := range labels {
 		status := "resolved"
-		warnings := []string{}
+		warnings := append([]string{}, label.Warnings...)
+		if len(label.Warnings) > 0 {
+			status = "needs_review"
+		}
 		var productID *string
 		if label.AWB == "" {
 			status = "needs_review"
@@ -593,6 +633,11 @@ func (s *Service) execute(ctx context.Context, w work) error {
 		}
 		if _, err = tx.Exec(ctx, `INSERT INTO marketplace_order_items(company_id,order_id,raw_sku,product_id,quantity,quantity_source,resolution_status,warnings) VALUES($1,$2,$3,$4,$5,$6,$7,$8)`, w.CompanyID, orderID, sku, productID, label.Quantity, quantitySource, resolutionStatus, warningJSON); err != nil {
 			return err
+		}
+		for _, document := range label.Documents {
+			if _, err = tx.Exec(ctx, `INSERT INTO marketplace_order_documents(company_id,order_id,source_file_id,source_page,document_role,extraction_method) VALUES($1,$2,$3,$4,$5,$6)`, w.CompanyID, orderID, sourceID, document.Page, document.Role, document.ExtractionMethod); err != nil {
+				return err
+			}
 		}
 		for _, code := range warnings {
 			if _, err = tx.Exec(ctx, `INSERT INTO processing_errors(company_id,processing_job_id,source_page,severity,code,message) VALUES($1,$2,$3,'warning',$4,$5)`, w.CompanyID, w.JobID, label.Page, strings.ToUpper(code), strings.ReplaceAll(code, "_", " ")); err != nil {

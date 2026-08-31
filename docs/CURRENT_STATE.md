@@ -14,7 +14,7 @@ Phase 6 approved baseline:
 
 ## Phase Status
 
-`BATCH_A_COMPLETE_AWAITING_EXTERNAL_REVIEW`
+`BATCH_B_COMPLETE_AWAITING_EXTERNAL_REVIEW`
 
 Phases 0–6 are approved.
 
@@ -52,40 +52,52 @@ batch, inventory, or reporting infrastructure.
 - [x] sanitized Amazon PDF and private production-structure regression coverage
 - [x] full PostgreSQL-backed verification
 
-### Explicitly deferred after Batch A
+### Batch B — OCR and deterministic document association
 
-- final shipping-label/invoice association
-- OCR for image-only Amazon shipping-label pages
+- [x] opt-in bounded OCR for text-empty Amazon pages
+- [x] exact Amazon order-ID label/invoice association without position matching
+- [x] label AWB plus invoice seller SKU/explicit quantity normalization
+- [x] ambiguous and incomplete associations remain review data
+- [x] source file, source page, document role, and extraction-method traceability
+- [x] sanitized parser/association and private production-structure regressions
+- [x] tenant-scoped PostgreSQL persistence and migration up/down coverage
+- [x] full PostgreSQL-backed verification
+
+### Explicitly deferred after Batch B
+
 - Amazon batch/print output manipulation
 - inventory integration changes
-- Phase 7 Batch B and Phase 8
+- Amazon reporting inclusion verification
+- later Phase 7 batches and Phase 8
 
-## Phase 7 Batch A Verification
+## Phase 7 Batch B Verification
 
-Batch A passed `make verify-full` against a freshly initialized disposable
-PostgreSQL 18.6 database migrated through `000012`, including:
+Batch B passed `make verify-full` against a freshly initialized disposable
+PostgreSQL 18.6 database migrated through `000013`, including:
 
 - Amazon entitlement plus `labels.upload` / `labels.process` authorization
 - tenant isolation and tenant/marketplace source-file deduplication
 - marketplace-scoped durable worker claims and lease-safe persistence
 - exact active Amazon SKU resolution through Product Master
 - missing and ambiguous field review behavior without quantity defaults
-- source file, source page, marketplace, and `amazon-text-v1` traceability
+- source file, source page, marketplace, document role, extraction method, and
+  `amazon-associated-v2` traceability
 - retry after SKU training and duplicate Amazon order visibility
 - sanitized two-page Amazon PDF extraction
-- private ten-page production structure validation without committing or logging identifiers
-- migration `000012` up/down coverage
+- exact order-ID association and ambiguous-association review behavior
+- private ten-page OCR/association validation without committing or logging identifiers
+- migration `000013` up/down coverage
 - the complete PostgreSQL-backed Go suite, Go vet/build, frontend typecheck,
   lint, production build, and `git diff --check`
 
-## Blocking Issues
+## Remaining Scope
 
-The supplied production shipping-label pages are image-only and expose no text
-through the approved Poppler boundary. OCR and deterministic label/invoice
-association require a separately reviewed later batch. Batch A records only
-explicit text-extractable values and does not position-match alternating pages.
+Amazon normalized orders are not yet enabled in the shared batch/printing
+workflow. Amazon print-page manipulation, the existing outbound inventory event
+integration, and Phase 6 reporting inclusion still require separately reviewed
+later Phase 7 batches.
 
 ## Next Allowed Task
 
-Perform external architecture and owner review of Phase 7 Batch A. Do not begin
-Batch B or Phase 8 without explicit authorization.
+Perform external architecture and owner review of Phase 7 Batch B. Do not begin
+another Phase 7 batch or Phase 8 without explicit authorization.

@@ -19,6 +19,9 @@ company/date/status indexes. It adds no reporting tables or duplicated counters.
 `000012_amazon_processing` adds the partial durable-claim index for Amazon
 queued/processing jobs. Amazon reuses the existing normalized marketplace tables.
 
+`000013_amazon_document_association` adds tenant-scoped contributing-document
+traceability for Amazon label/invoice associations without duplicating orders.
+
 ```sh
 make migrate
 ```

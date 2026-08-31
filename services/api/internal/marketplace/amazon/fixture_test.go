@@ -21,10 +21,10 @@ func TestSanitizedAmazonFixture(t *testing.T) {
 	if err != nil || len(documents) != 2 {
 		t.Fatalf("documents=%#v err=%v", documents, err)
 	}
-	if documents[0].Page != 1 || documents[0].AWB == "" || documents[0].SKU == "" || documents[0].Quantity == nil {
+	if documents[0].Page != 1 || documents[0].AWB == "" || documents[0].SKU == "" || documents[0].Quantity == nil || len(documents[0].Sources) != 1 {
 		t.Fatalf("label=%#v", documents[0])
 	}
-	if documents[1].Page != 2 || documents[1].OrderID == "" || documents[1].SKU == "" || documents[1].Quantity == nil {
+	if documents[1].Page != 2 || documents[1].OrderID == "" || documents[1].SKU == "" || documents[1].Quantity == nil || len(documents[1].Sources) != 1 {
 		t.Fatalf("invoice=%#v", documents[1])
 	}
 }
@@ -38,7 +38,7 @@ func TestPrivateAmazonSampleStructure(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	pages, err := pdfextractor.NewPoppler().Extract(context.Background(), pdf)
+	pages, err := pdfextractor.NewPopplerWithOCR().Extract(context.Background(), pdf)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -50,8 +50,8 @@ func TestPrivateAmazonSampleStructure(t *testing.T) {
 		t.Fatalf("pages=%d normalized_documents=%d", len(pages), len(documents))
 	}
 	for _, document := range documents {
-		if document.Page%2 != 0 || document.OrderID == "" || document.SKU == "" || document.Quantity == nil || document.AWB != "" {
-			t.Fatalf("page %d fields: order=%t sku=%t quantity=%t awb_absent=%t", document.Page, document.OrderID != "", document.SKU != "", document.Quantity != nil, document.AWB == "")
+		if document.Page%2 == 0 || document.OrderID == "" || document.SKU == "" || document.Quantity == nil || document.AWB == "" || len(document.Sources) != 2 {
+			t.Fatalf("page %d fields: order=%t sku=%t quantity=%t awb=%t sources=%d", document.Page, document.OrderID != "", document.SKU != "", document.Quantity != nil, document.AWB != "", len(document.Sources))
 		}
 	}
 }
