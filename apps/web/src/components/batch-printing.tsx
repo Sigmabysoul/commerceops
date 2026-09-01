@@ -1,13 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AssignmentRule, Batch, EligibleOrder, PrintArtifact, PrintJob, batchAPI } from "@/api/batches";
+import { AssignmentRule, Batch, EligibleOrder, MarketplaceKey, PrintArtifact, PrintJob, batchAPI } from "@/api/batches";
 import { Employee, coreAPI } from "@/api/core";
 import { Product, productAPI } from "@/api/products";
 
 type Operation = "creating" | "readying" | "generating" | "downloading" | "assigning" | "reprinting" | null;
 
 export function BatchPrinting() {
+  const [marketplace, setMarketplace] = useState<MarketplaceKey>("flipkart");
   const [orders, setOrders] = useState<EligibleOrder[]>([]);
   const [selected, setSelected] = useState<string[]>([]);
   const [batch, setBatch] = useState<Batch | null>(null);
@@ -29,17 +30,17 @@ export function BatchPrinting() {
   const reprintRequest = useRef<IdempotentRequest | null>(null);
 
   const loadEligible = useCallback(async () => {
-    const result = await batchAPI.eligibleOrders();
+    const result = await batchAPI.eligibleOrders(marketplace);
     setOrders(result.orders);
     setSelected((current) => current.filter((id) => result.orders.some((order) => order.order_id === id)));
-  }, []);
+  }, [marketplace]);
 
   useEffect(() => {
     loadEligible().catch(() => setAvailable(false));
   }, [loadEligible]);
 
   const loadAssignments = useCallback(async () => {
-    const [ruleResult, employeeResult, productResult] = await Promise.allSettled([batchAPI.assignmentRules(), coreAPI.employees(), productAPI.products()]);
+    const [ruleResult, employeeResult, productResult] = await Promise.allSettled([batchAPI.assignmentRules(marketplace), coreAPI.employees(), productAPI.products()]);
     if (ruleResult.status === "fulfilled") {
       const rules = ruleResult.value.worker_assignment_rules;
       setAssignmentRules(rules);
@@ -48,7 +49,7 @@ export function BatchPrinting() {
     }
     if (employeeResult.status === "fulfilled") setEmployees(employeeResult.value.employees.filter((employee) => employee.status === "active"));
     if (productResult.status === "fulfilled") setProducts(productResult.value.products.filter((product) => product.status === "active"));
-  }, []);
+  }, [marketplace]);
 
   useEffect(() => { loadAssignments().catch((cause) => setError(message(cause))); }, [loadAssignments]);
 
@@ -74,8 +75,8 @@ export function BatchPrinting() {
   async function createBatch() {
     setOperation("creating"); setError(""); setPrintJob(null);
     try {
-      const signature = selected.join("|");
-      const result = await batchAPI.create(selected, idempotencyKey(createRequest, signature));
+      const signature = `${marketplace}|${selected.join("|")}`;
+      const result = await batchAPI.create(marketplace, selected, idempotencyKey(createRequest, signature));
       createRequest.current = null;
       setBatch(result.batch); setSelected([]); await loadEligible();
     } catch (cause) { setError(message(cause)); }
@@ -108,7 +109,7 @@ export function BatchPrinting() {
     if (!defaultWorker) return;
     setOperation("assigning"); setError("");
     const rules = [{ product_id: null, employee_id: defaultWorker, priority: 100 }, ...Object.entries(productWorkers).filter(([, employeeID]) => employeeID).map(([productID, employeeID]) => ({ product_id: productID, employee_id: employeeID, priority: 10 }))];
-    try { setAssignmentRules((await batchAPI.replaceAssignmentRules(rules)).worker_assignment_rules); }
+    try { setAssignmentRules((await batchAPI.replaceAssignmentRules(marketplace, rules)).worker_assignment_rules); }
     catch (cause) { setError(message(cause)); }
     finally { setOperation(null); }
   }
@@ -136,10 +137,17 @@ export function BatchPrinting() {
     setSelected((current) => current.includes(id) ? current.filter((value) => value !== id) : [...current, id]);
   }
 
+  function selectMarketplace(value: MarketplaceKey) {
+    setMarketplace(value);
+    setOrders([]); setSelected([]); setBatch(null); setPrintJob(null); setPrintJobs([]);
+    setAssignmentRules([]); setDefaultWorker(""); setProductWorkers({}); setExportInvoices(false); setAvailable(true); setError("");
+    createRequest.current = null; printRequest.current = null; reprintRequest.current = null;
+  }
+
   if (!available) return <section className="panel batch-printing"><h2>Batch printing</h2><p className="muted">Batch printing is not available for this account.</p></section>;
 
   return <section className="batch-printing">
-    <div className="product-heading"><div><p className="eyebrow">Phase 4</p><h2>Batch printing</h2><p className="muted">Select processed Flipkart orders, review product totals, and generate print-ready PDFs.</p></div><button className="secondary" disabled={operation !== null} onClick={() => loadEligible().catch((cause) => setError(message(cause)))}>Refresh orders</button></div>
+    <div className="product-heading"><div><p className="eyebrow">Shared marketplace workflow</p><h2>Batch printing</h2><p className="muted">Select processed marketplace orders, review Product Master totals, and generate traceable output.</p></div><div className="workspace-controls"><select aria-label="Batch marketplace" value={marketplace} onChange={(event) => selectMarketplace(event.target.value as MarketplaceKey)}><option value="flipkart">Flipkart</option><option value="amazon">Amazon</option><option value="meesho">Meesho</option></select><button className="secondary" disabled={operation !== null} onClick={() => loadEligible().catch((cause) => setError(message(cause)))}>Refresh orders</button></div></div>
     {error && <p className="error" role="alert">{error}</p>}
     <div className="batch-layout">
       <section className="panel batch-orders"><div className="status-line"><div><h2>Eligible orders</h2><p className="muted">{orders.length} available · {selected.length} selected</p></div>{orders.length > 0 && <button className="secondary" onClick={() => setSelected(selected.length === orders.length ? [] : orders.map((order) => order.order_id))}>{selected.length === orders.length ? "Clear all" : "Select all"}</button>}</div>
@@ -148,15 +156,15 @@ export function BatchPrinting() {
       </section>
 
       <section className="panel batch-summary"><div className="status-line"><h2>Batch summary</h2>{batch && <span className={`status status-${batch.status}`}>{batch.status}</span>}</div>
-        {!batch ? <p className="empty-state">Create a batch to preview its server-derived totals and printing options.</p> : <><dl className="summary-metrics"><div><dt>Orders</dt><dd>{batch.order_count}</dd></div><div><dt>Products</dt><dd>{batch.product_totals?.length ?? 0}</dd></div><div><dt>Unresolved</dt><dd>{batch.unresolved_count}</dd></div></dl>
+        {!batch ? <p className="empty-state">Create a batch to preview its server-derived totals and printing options.</p> : <><dl className="summary-metrics"><div><dt>Marketplace</dt><dd>{batch.marketplace_key}</dd></div><div><dt>Orders</dt><dd>{batch.order_count}</dd></div><div><dt>Products</dt><dd>{batch.product_totals?.length ?? 0}</dd></div><div><dt>Unresolved</dt><dd>{batch.unresolved_count}</dd></div></dl>
           {(batch.product_totals?.length ?? 0) > 0 && <div className="product-totals"><h3>Product totals</h3><ul>{batch.product_totals?.map((product) => <li key={product.product_id}><span><strong>{product.internal_code}</strong> · {product.product_name}<small>{product.order_line_count} order lines</small></span><strong>{product.total_quantity}</strong></li>)}</ul></div>}
           {(batch.worker_totals?.length ?? 0) > 0 && <div className="product-totals"><h3>Worker totals</h3><ul>{batch.worker_totals?.map((worker) => <li key={worker.employee_id}><span><strong>{worker.employee_name}</strong><small>{worker.product_count} products · {worker.order_line_count} order lines</small></span><strong>{worker.total_quantity}</strong></li>)}</ul></div>}
           {batch.status === "draft" && <div className="panel-actions"><span className="muted">Ready batches can generate printable output.</span><button disabled={batch.unresolved_count > 0 || operation !== null} onClick={readyBatch}>{operation === "readying" ? "Marking ready…" : "Mark ready"}</button></div>}
-          {batch.status === "ready" && <div className="print-options"><h3>Printable output</h3><label><input type="checkbox" checked={sortLabels} onChange={(event) => setSortLabels(event.target.checked)} /><span><strong>Sort Labels</strong><small>Use the server-configured Product Master ordering.</small></span></label><label><input type="checkbox" checked={exportInvoices} onChange={(event) => setExportInvoices(event.target.checked)} /><span><strong>Export Invoices</strong><small>Create a separate invoice PDF in corresponding order.</small></span></label><button disabled={operation !== null} onClick={generate}>{operation === "generating" ? "Generating…" : "Generate PDFs"}</button></div>}
+          {batch.status === "ready" && <div className="print-options"><h3>Printable output</h3><label><input type="checkbox" checked={sortLabels} onChange={(event) => setSortLabels(event.target.checked)} /><span><strong>Sort Labels</strong><small>Use the server-configured Product Master ordering.</small></span></label>{batch.marketplace_key !== "meesho" && <label><input type="checkbox" checked={exportInvoices} onChange={(event) => setExportInvoices(event.target.checked)} /><span><strong>Export Invoices</strong><small>Create a separate invoice PDF in corresponding order.</small></span></label>}{batch.marketplace_key === "meesho" && <p className="muted">Meesho output preserves each complete source label page. Invoice export is unavailable because no deterministic invoice association is established.</p>}<button disabled={operation !== null} onClick={generate}>{operation === "generating" ? "Generating…" : "Generate PDFs"}</button></div>}
         </>}
       </section>
     </div>
-    {employees.length > 0 && products.length > 0 && <section className="panel assignment-config"><div className="status-line"><div><h2>Worker assignments</h2><p className="muted">Exact Product Master rules override the required Flipkart fallback worker.</p></div><span className="status">{assignmentRules.length} rules</span></div><div className="assignment-grid"><label>Fallback worker<select value={defaultWorker} onChange={(event) => setDefaultWorker(event.target.value)}><option value="">Select worker</option>{employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.display_name}</option>)}</select></label>{products.map((product) => <label key={product.id}>{product.internal_code} · {product.name}<select value={productWorkers[product.id] ?? ""} onChange={(event) => setProductWorkers((current) => ({ ...current, [product.id]: event.target.value }))}><option value="">Use fallback</option>{employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.display_name}</option>)}</select></label>)}</div><div className="panel-actions"><span className="muted">Assignments are snapshotted when a batch becomes ready.</span><button disabled={!defaultWorker || operation !== null} onClick={saveAssignments}>{operation === "assigning" ? "Saving…" : "Save assignments"}</button></div></section>}
+    {employees.length > 0 && products.length > 0 && <section className="panel assignment-config"><div className="status-line"><div><h2>Worker assignments</h2><p className="muted">Exact Product Master rules override the required {marketplace} fallback worker.</p></div><span className="status">{assignmentRules.length} rules</span></div><div className="assignment-grid"><label>Fallback worker<select value={defaultWorker} onChange={(event) => setDefaultWorker(event.target.value)}><option value="">Select worker</option>{employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.display_name}</option>)}</select></label>{products.map((product) => <label key={product.id}>{product.internal_code} · {product.name}<select value={productWorkers[product.id] ?? ""} onChange={(event) => setProductWorkers((current) => ({ ...current, [product.id]: event.target.value }))}><option value="">Use fallback</option>{employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.display_name}</option>)}</select></label>)}</div><div className="panel-actions"><span className="muted">Assignments are snapshotted when a batch becomes ready.</span><button disabled={!defaultWorker || operation !== null} onClick={saveAssignments}>{operation === "assigning" ? "Saving…" : "Save assignments"}</button></div></section>}
     {printJob && <section className="panel print-result"><div className="status-line"><div><h2>Print output</h2><p className="muted">Generation {printJob.generation_version}</p></div><span className={`status status-${printJob.status}`}>{printJob.status}</span></div>
       {printJob.status === "generating" && <div className="progress" role="progressbar" aria-label="Generating printable PDFs"><span /></div>}
       {printJob.status === "failed" && <p className="error" role="alert">{printJob.error_message ?? "PDF generation failed."}</p>}

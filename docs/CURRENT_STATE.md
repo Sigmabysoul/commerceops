@@ -8,75 +8,78 @@ Phase 10 — Meesho
 
 ## Approved Baseline
 
-Phase 9 completed baseline explicitly advanced by the owner for Phase 10:
+Phase 10 Batch A processing foundation:
 
-`69fa09c8`
+`17b85018dec8983be98f1a1b8a6cb44bdae39088`
 
 ## Phase Status
 
-`PHASE_10_BATCH_A_COMPLETE_AWAITING_REVIEW`
+`PHASE_10_COMPLETE_AWAITING_EXTERNAL_REVIEW`
 
-Phases 0–9 are implemented. The owner explicitly authorized Phase 10. Phase 10
-is being delivered in medium cohesive batches; Batch A establishes Meesho
-processing without prematurely adding printing or inventory behavior.
+Phases 0–9 are implemented. The owner explicitly authorized completion of all
+remaining Phase 10 work from the approved Batch A foundation.
 
 Phase 11 is not authorized.
 
-## Phase 10 Goal
+## Phase 10 Delivery
 
-Add Meesho as a first-class marketplace while reusing generic secure upload,
-durable processing, Product Master, review, duplicate, traceability, batch,
-printing, inventory, reporting, and returns infrastructure. Marketplace-specific
-document recognition and output rules remain isolated in the Meesho adapter.
-
-## Batch A Delivery
-
-### Processing foundation
+### Meesho adapter and processing
 
 - [x] isolated `meesho-labeled-v1` adapter using bounded Poppler page text
 - [x] explicit sub-order/order ID, AWB/tracking, supplier/seller SKU, and positive quantity extraction
-- [x] sub-order precedence and conservative multi-signal shipping-label recognition
-- [x] missing, zero, malformed, or ambiguous fields persisted for review without guessing or quantity defaults
-- [x] exact active Meesho Product Master resolution and safe reprocessing after SKU training
-- [x] source file, source page, extraction method, parser version, job, order, and item traceability
+- [x] conservative multi-signal recognition with no inferred values or quantity default
+- [x] unresolved/review behavior for missing, malformed, conflicting, duplicate, and unknown Product Master values
+- [x] source file, source page, extraction method, parser version, job, normalized order, and item traceability
+- [x] generic secure upload, object storage, tenant keys, source deduplication, PostgreSQL leases, permissions, entitlement, retry, and audit behavior
 
-### Shared platform integration
+### Shared batch and printing
 
-- [x] existing PDF validation, object storage, tenant keys, hash deduplication, PostgreSQL leases, workers, permissions, entitlement, and audit infrastructure
-- [x] marketplace-isolated worker claims, duplicate-source behavior, duplicate business-identifier review, and tenant-safe reads/retries
-- [x] inventory-neutral upload and processing
-- [x] `/api/v1/meesho/jobs` upload and tenant-scoped job read/retry endpoints
-- [x] reusable typed marketplace-processing client/view shared with Flipkart plus a Meesho operator panel
-- [x] migration `000018` limited to a Meesho queued-job claim index; no Meesho business tables
+- [x] Meesho eligible-order listing, idempotent batch creation, Product Master totals, readiness, and cancellation
+- [x] configurable fallback/exact-product worker assignments snapshotted at readiness
+- [x] generic `source-page-v1` artifact generation preserving the complete shipping-label source page
+- [x] deterministic sorting, tenant-scoped downloads, print history, and traceable idempotent reprints
+- [x] explicit rejection of unsupported Meesho invoice export instead of guessed association or geometry
+- [x] typed frontend marketplace selector for Flipkart, Amazon, and Meesho batch operations
 
-### Regression coverage
+### Inventory, reporting, and returns
 
-- [x] sanitized structural Meesho label fixture and parser regressions
-- [x] optional private-PDF regression hook through `MEESHO_PRIVATE_SAMPLE`
-- [x] PostgreSQL coverage for entitlements, tenant isolation, Product Master resolution, retries, source/business duplicates, traceability, marketplace worker isolation, and inventory neutrality
-- [x] migration `000018` up/down coverage
+- [x] upload, parsing, batching, printing, and reprinting remain inventory-neutral
+- [x] central ready-batch confirmation creates atomic, immutable, idempotent Meesho `ecommerce_out` entries
+- [x] dashboard Meesho filter includes only Meesho orders/batches/print/outbound and Meesho-linked return movement
+- [x] company-wide current balances, stock-in, general adjustment/correction, and consignment semantics remain unchanged under the Meesho filter
+- [x] shared cancellation and physical-return workflows accept resolved Meesho orders and explicit quantities
+- [x] dashboard, returns, and batch operator selectors include Meesho
 
-## Deliberately Deferred from Batch A
+### Database and API
 
-- Meesho OCR or deterministic cross-page association, pending representative private samples
-- shared batch membership and printable artifact generation
-- outbound confirmation and inventory ledger integration
-- reporting and returns integration
-- Phase 11
+- [x] migration `000018` remains the only Phase 10 migration and adds only the Meesho claim index
+- [x] no Meesho-specific business, batch, print, inventory, reporting, or returns tables
+- [x] existing batch/assignment API marketplace contracts expanded to Meesho; no duplicate endpoints
+- [x] OpenAPI 0.10.0 and module/architecture/database/workflow documentation updated
+
+## Evidence-based Limits
+
+Representative private Meesho PDFs were not supplied. Phase 10 therefore does
+not invent OCR, cross-page association, crop coordinates, overlays, or invoice
+matching. The private sample regression hook remains available through
+`MEESHO_PRIVATE_SAMPLE`; future layout-specific behavior requires representative
+evidence and sanitized regression fixtures.
 
 ## Verification
 
-Batch A passed the complete PostgreSQL-backed verification path against a
-disposable database migrated through `000018`, including Go tests/vet/build,
-frontend typecheck/lint/production build, OpenAPI parsing, migration coverage,
-and `git diff --check`.
+Phase 10 passed the complete PostgreSQL-backed `make verify-full` path against
+a fresh disposable PostgreSQL 18.6 database migrated through `000018`. Coverage
+includes parser behavior, tenant/permission/entitlement enforcement, Product
+Master resolution, duplicates and retry, batch/assignment/print traceability,
+print/reprint neutrality, outbound idempotency, reporting isolation, Returns
+compatibility, migration up/down, Go vet/build, frontend typecheck/lint/build,
+OpenAPI parsing, and repository checks.
 
-The optional private Meesho PDF test was skipped because
-`MEESHO_PRIVATE_SAMPLE` was not supplied. Sanitized parser and full platform
-regressions passed.
+Private Meesho production-PDF validation was skipped because
+`MEESHO_PRIVATE_SAMPLE` was not supplied. Sanitized and platform regressions
+passed.
 
 ## Next Allowed Task
 
-Review Phase 10 Batch A. A separately authorized Batch B may add evidence-based
-Meesho association/print support and shared batch participation. Do not begin
-Batch B or Phase 11 automatically.
+Externally review and approve Phase 10. Do not begin Phase 11 or Myntra
+automatically.

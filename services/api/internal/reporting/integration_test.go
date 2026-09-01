@@ -110,7 +110,7 @@ func TestMarketplaceFilterIsolatesEcommerceMovement(t *testing.T) {
 	assertMovement("all marketplaces", all, 34, 73)
 }
 
-func TestAmazonDashboardIncludesOnlyAmazonEcommerceMovement(t *testing.T) {
+func TestMarketplaceDashboardIncludesMeeshoAndIsolatesEcommerceMovement(t *testing.T) {
 	db := reportingDB(t)
 	ctx := context.Background()
 	suffix := fmt.Sprint(time.Now().UnixNano())
@@ -135,6 +135,7 @@ func TestAmazonDashboardIncludesOnlyAmazonEcommerceMovement(t *testing.T) {
 	fixtures := []marketplaceFixture{
 		{key: "amazon", quantity: 4, previousBalance: 11, resultingBalance: 7, hashByte: "a"},
 		{key: "flipkart", quantity: 2, previousBalance: 7, resultingBalance: 5, hashByte: "b"},
+		{key: "meesho", quantity: 3, previousBalance: 5, resultingBalance: 2, hashByte: "d"},
 	}
 	for _, fixture := range fixtures {
 		var source, job, order, batch, printJob string
@@ -149,7 +150,7 @@ func TestAmazonDashboardIncludesOnlyAmazonEcommerceMovement(t *testing.T) {
 		mustExec(t, db, `INSERT INTO inventory_outbound_events(company_id,batch_id,actor_user_id,idempotency_key,request_hash,created_at) VALUES($1,$2,$3,$4,$5,$6)`, company, batch, user, fixture.key+"-out-event-"+suffix, strings.Repeat(fixture.hashByte, 64), at)
 		mustExec(t, db, `INSERT INTO inventory_transactions(company_id,product_id,transaction_type,quantity_delta,previous_balance,resulting_balance,reason,reference_type,reference_id,actor_user_id,idempotency_key,request_hash,created_at) VALUES($1,$2,'ecommerce_out',$3,$4,$5,$6,'batch',$7,$8,$9,$10,$11)`, company, product, -fixture.quantity, fixture.previousBalance, fixture.resultingBalance, fixture.key+" outbound", batch, user, fixture.key+"-out-"+suffix, strings.Repeat(fixture.hashByte, 64), at)
 	}
-	mustExec(t, db, `INSERT INTO inventory_balances(company_id,product_id,on_hand,reserved) VALUES($1,$2,5,1)`, company, product)
+	mustExec(t, db, `INSERT INTO inventory_balances(company_id,product_id,on_hand,reserved) VALUES($1,$2,2,1)`, company, product)
 	mustExec(t, db, `INSERT INTO inventory_transactions(company_id,product_id,transaction_type,quantity_delta,previous_balance,resulting_balance,reason,actor_user_id,idempotency_key,request_hash,created_at) VALUES
 		($1,$2,'stock_in',10,0,10,'Company receipt',$3,$4,$6,$7),
 		($1,$2,'manual_adjustment',1,10,11,'Company correction',$3,$5,$6,$7)`,
@@ -166,13 +167,14 @@ func TestAmazonDashboardIncludesOnlyAmazonEcommerceMovement(t *testing.T) {
 		if report.Summary.OrdersProcessed != wantOrders || report.Summary.LabelsGenerated != wantOrders || report.Summary.PrintRunsCompleted != wantOrders || report.Summary.Batches != wantOrders || report.Summary.OutboundOrders == nil || *report.Summary.OutboundOrders != wantOrders || len(report.ProductQuantities) != 1 || report.ProductQuantities[0].Quantity != wantQuantity {
 			t.Fatalf("%s summary=%#v quantities=%#v", marketplace, report.Summary, report.ProductQuantities)
 		}
-		if report.Inventory == nil || report.Inventory.CurrentOnHand != 5 || report.Inventory.CurrentReserved != 1 || report.Inventory.StockIn != 10 || report.Inventory.Adjustments != 1 || report.Inventory.StockOut != wantOut || report.Inventory.NetMovement != wantNet || len(report.ProductMovements) != 1 || report.ProductMovements[0].OrderQuantity != wantQuantity || report.ProductMovements[0].StockOut != wantOut {
+		if report.Inventory == nil || report.Inventory.CurrentOnHand != 2 || report.Inventory.CurrentReserved != 1 || report.Inventory.StockIn != 10 || report.Inventory.Adjustments != 1 || report.Inventory.StockOut != wantOut || report.Inventory.NetMovement != wantNet || len(report.ProductMovements) != 1 || report.ProductMovements[0].OrderQuantity != wantQuantity || report.ProductMovements[0].StockOut != wantOut {
 			t.Fatalf("%s inventory=%#v movements=%#v", marketplace, report.Inventory, report.ProductMovements)
 		}
 	}
 	assertReport("amazon", 1, 4, 4, 7)
 	assertReport("flipkart", 1, 2, 2, 9)
-	assertReport("", 2, 6, 6, 5)
+	assertReport("meesho", 1, 3, 3, 8)
+	assertReport("", 3, 9, 9, 2)
 }
 
 func TestReportingMigrationUpDown(t *testing.T) {

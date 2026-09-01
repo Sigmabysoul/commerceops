@@ -87,13 +87,13 @@ idempotency key and expected versions where state or line concurrency matters.
 
 ## Batch foundation
 
-Batch endpoints require the selected Flipkart or Amazon entitlement and the
+Batch endpoints require the selected Flipkart, Amazon, or Meesho entitlement and the
 existing `labels.process` permission. `labels.print` covers generation and downloads, while
 `labels.reprint` separately authorizes source-linked reprints.
 
 | Method | Path | Purpose |
 | --- | --- | --- |
-| GET | `/api/v1/batch-eligible-orders?marketplace={flipkart|amazon}` | List completed, non-duplicate normalized orders not already in a batch |
+| GET | `/api/v1/batch-eligible-orders?marketplace={flipkart|amazon|meesho}` | List completed, non-duplicate normalized orders not already in a batch |
 | GET, POST | `/api/v1/batches` | List batches or idempotently create a draft from one to 500 orders |
 | GET | `/api/v1/batches/{batch_id}` | Read ordered source traceability and Product Master totals |
 | POST | `/api/v1/batches/{batch_id}/ready` | Ready a fully resolved draft |
@@ -130,6 +130,12 @@ for `SKU: <raw seller SKU> | QTY: <explicit quantity>`. Optional Amazon invoice
 artifacts use the associated invoice pages. Missing traceability or enrichment
 values fails generation rather than producing a guessed label.
 
+Meesho batches use generic `source-page-v1` generation. It preserves each full
+shipping-label source page in deterministic batch/sort order and produces one
+traceable labels artifact. Invoice export is rejected because no representative
+Meesho evidence establishes a deterministic invoice association. No cropping or
+overlay geometry is guessed.
+
 Reprints create a separate print job with `source_print_job_id` and
 `reprint_reason`; they do not mutate the source job or any inventory domain.
 
@@ -137,7 +143,7 @@ Reprints create a separate print job with `source_print_job_id` and
 
 | Method | Path | Purpose |
 | --- | --- | --- |
-| GET | `/api/v1/worker-assignment-rules?marketplace={flipkart|amazon}` | List exact-product rules and the marketplace fallback worker (`labels.process`) |
+| GET | `/api/v1/worker-assignment-rules?marketplace={flipkart|amazon|meesho}` | List exact-product rules and the marketplace fallback worker (`labels.process`) |
 | PUT | `/api/v1/worker-assignment-rules` | Atomically replace rules (`employees.manage`) |
 
 Each configuration contains exactly one fallback. Exact Product Master rules
@@ -157,8 +163,8 @@ in the operator's timezone while PostgreSQL compares authoritative
 `timestamptz` values.
 
 Marketplace, processing, batch, and print metrics derive from their owning
-records. The dashboard marketplace selector supports both `flipkart` and
-`amazon`. Inventory snapshots and ledger movement are returned only when the
+records. The dashboard marketplace selector supports `flipkart`, `amazon`, and
+`meesho`. Inventory snapshots and ledger movement are returned only when the
 principal also has the `inventory` entitlement and `inventory.view`; otherwise
 `inventory_access` is false and restricted fields are omitted.
 
@@ -192,7 +198,7 @@ accept a company ID or raw marketplace SKU.
 | POST | `/api/v1/inventory/stock-in` | `inventory.stock_in` | Record positive stock-in |
 | POST | `/api/v1/inventory/adjustments` | `inventory.adjust` | Record a nonzero reasoned manual delta |
 | POST | `/api/v1/inventory/corrections` | `inventory.adjust` | Record a compensating correction |
-| POST | `/api/v1/inventory/batches/{batch_id}/confirm-outbound` | `inventory.dispatch` | Atomically deduct a ready Flipkart or Amazon batch's Product Master totals once |
+| POST | `/api/v1/inventory/batches/{batch_id}/confirm-outbound` | `inventory.dispatch` | Atomically deduct a ready Flipkart, Amazon, or Meesho batch's Product Master totals once |
 | GET, POST | `/api/v1/inventory/reservations` | `inventory.view` / `inventory.adjust` | List reservations or reserve available stock for a source |
 | POST | `/api/v1/inventory/reservations/{reservation_id}/release` | `inventory.adjust` | Idempotently release an active reservation with a reason |
 
@@ -286,7 +292,7 @@ confirmation, inventory ledger, and reporting APIs. No Amazon-specific stock
 mutation or PDF-download endpoint exists; print and reprint operations remain
 inventory-neutral.
 
-## Meesho processing — Phase 10 Batch A
+## Meesho processing — Phase 10
 
 - `POST /api/v1/meesho/jobs` — multipart PDF upload using `file`; requires the
   `meesho` entitlement plus `labels.upload` and `labels.process`.
@@ -297,11 +303,12 @@ inventory-neutral.
 
 Meesho reuses the generic 20 MiB PDF validation, tenant storage keys,
 company/marketplace source deduplication, PostgreSQL leases, response shapes,
-error envelope, and exact Product Master mapping behavior. Batch A accepts
+error envelope, and exact Product Master mapping behavior. The adapter accepts
 only explicitly labeled order/sub-order ID, AWB/tracking ID, seller/supplier
 SKU, and positive quantity values. Missing, zero, conflicting, or ambiguous
 values remain review-required; quantity is never defaulted to one.
 
-Batch A is processing-only. Meesho batch membership, printable artifact
-generation, outbound confirmation, reporting, and returns integration remain
-future Phase 10 batches and are not exposed by marketplace-specific APIs.
+Resolved Meesho orders participate in the shared batch, worker-assignment,
+source-page print artifact, reprint, outbound confirmation, reporting, and
+returns workflows. Printing/reprinting are inventory-neutral; only explicit
+ready-batch outbound confirmation creates idempotent `ecommerce_out` entries.

@@ -53,5 +53,16 @@ single-item layout. Unknown geometry, scanned PDFs, and other marketplace forms
 fail instead of using guessed crop coordinates. Generation is limited to 500
 pages, 20 MiB per source, 100 MiB per artifact, and 60 seconds.
 
-Batch C will add the frontend workflow. Physical printing, reprinting, worker
-assignment, and inventory remain unimplemented.
+The shared frontend supports batch selection, worker-assignment configuration,
+artifact generation/download, and traceable reprints. These operations remain
+inventory-neutral; physical printer-agent automation is a later phase.
+
+## Meesho source-page output
+
+Phase 10 routes Meesho through the same ready-batch, print-job, artifact,
+download, sorting, assignment, and reprint records. Generation version
+`source-page-v1` extracts and combines the complete normalized shipping-label
+source pages without cropping, scaling, overlays, or marketplace-specific PDF
+storage. Invoice export is rejected because no representative evidence defines
+a safe association. Generation and reprinting never call Inventory; only the
+separate ready-batch outbound confirmation may deduct stock.

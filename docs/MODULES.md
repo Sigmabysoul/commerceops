@@ -114,16 +114,16 @@ inside one application; it does not imply microservices.
   infer departments from employee names, treat pouch references as globally
   unique, or complete partially prepared work.
 
-## Printing (future, locked)
+## Printing (`internal/batch` and `internal/platform/pdfgenerator`)
 
-- **Owns:** when approved, print-ready output, print jobs, printer state, and
+- **Owns:** print-ready output, print jobs, artifact traceability, and
   traceable reprints.
 - **Does not own:** source order parsing, Product Master, stock deductions, or
   authorization infrastructure.
 - **Allowed dependencies:** normalized labels/orders, authorized actors, object
   storage, and approved batch relationships.
-- **Forbidden leakage:** reprinting must never imply inventory movement. No
-  printing implementation is authorized during Phase 3.
+- **Forbidden leakage:** reprinting must never imply inventory movement, and
+  marketplace geometry must not be guessed without representative evidence.
 
 ## Audit (`internal/audit`)
 
@@ -162,9 +162,9 @@ inside one application; it does not imply microservices.
 
 ## PDF generation (`internal/platform/pdfgenerator` and marketplace adapters)
 
-- **Owns:** bounded normalized PDF generation contracts and shared Flipkart A4
-  rendering. Marketplace-specific output rules remain in their marketplace
-  adapter; Amazon owns validated A4 enrichment.
+- **Owns:** bounded normalized PDF generation contracts, shared Flipkart A4
+  rendering, and complete-source-page preservation. Marketplace-specific output
+  rules remain in their marketplace adapter; Amazon owns validated A4 enrichment.
 - **Does not own:** tenant authorization, batch state, Product Master mapping,
   artifact persistence, reprint policy, or inventory mutations.
 - **Forbidden leakage:** generation must not infer missing SKU/quantity, obscure

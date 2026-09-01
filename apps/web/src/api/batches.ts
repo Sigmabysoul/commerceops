@@ -1,5 +1,7 @@
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080";
 
+export type MarketplaceKey = "flipkart" | "amazon" | "meesho";
+
 export type EligibleOrder = {
   order_id: string;
   source_file_id: string;
@@ -40,7 +42,7 @@ export type WorkerTotal = {
 
 export type AssignmentRule = {
   id: string;
-  marketplace_key: "flipkart";
+  marketplace_key: MarketplaceKey;
   product_id: string | null;
   product_code: string | null;
   product_name: string | null;
@@ -51,7 +53,7 @@ export type AssignmentRule = {
 
 export type Batch = {
   id: string;
-  marketplace_key: "flipkart";
+  marketplace_key: MarketplaceKey;
   status: "draft" | "ready" | "cancelled";
   created_by: string;
   order_count: number;
@@ -105,10 +107,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const batchAPI = {
-  eligibleOrders: () => request<{ orders: EligibleOrder[] }>("/batch-eligible-orders?marketplace=flipkart"),
-  create: (orderIDs: string[], idempotencyKey: string) => request<{ batch: Batch; idempotent_replay: boolean }>("/batches", {
+  eligibleOrders: (marketplace: MarketplaceKey) => request<{ orders: EligibleOrder[] }>(`/batch-eligible-orders?marketplace=${marketplace}`),
+  create: (marketplace: MarketplaceKey, orderIDs: string[], idempotencyKey: string) => request<{ batch: Batch; idempotent_replay: boolean }>("/batches", {
     method: "POST",
-    body: JSON.stringify({ marketplace_key: "flipkart", order_ids: orderIDs, idempotency_key: idempotencyKey }),
+    body: JSON.stringify({ marketplace_key: marketplace, order_ids: orderIDs, idempotency_key: idempotencyKey }),
   }),
   get: (id: string) => request<{ batch: Batch }>(`/batches/${id}`),
   ready: (id: string) => request<{ batch: Batch }>(`/batches/${id}/ready`, { method: "POST" }),
@@ -122,10 +124,10 @@ export const batchAPI = {
     method: "POST",
     body: JSON.stringify({ reason, idempotency_key: idempotencyKey }),
   }),
-  assignmentRules: () => request<{ worker_assignment_rules: AssignmentRule[] }>("/worker-assignment-rules?marketplace=flipkart"),
-  replaceAssignmentRules: (rules: Array<{ product_id: string | null; employee_id: string; priority: number }>) => request<{ worker_assignment_rules: AssignmentRule[] }>("/worker-assignment-rules", {
+  assignmentRules: (marketplace: MarketplaceKey) => request<{ worker_assignment_rules: AssignmentRule[] }>(`/worker-assignment-rules?marketplace=${marketplace}`),
+  replaceAssignmentRules: (marketplace: MarketplaceKey, rules: Array<{ product_id: string | null; employee_id: string; priority: number }>) => request<{ worker_assignment_rules: AssignmentRule[] }>("/worker-assignment-rules", {
     method: "PUT",
-    body: JSON.stringify({ marketplace_key: "flipkart", rules }),
+    body: JSON.stringify({ marketplace_key: marketplace, rules }),
   }),
   downloadArtifact: async (artifact: PrintArtifact) => {
     const response = await fetch(`${API_BASE_URL}/api/v1/print-artifacts/${artifact.id}`, { credentials: "include" });

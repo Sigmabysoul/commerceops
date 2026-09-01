@@ -1,4 +1,4 @@
-# Meesho adapter — Phase 10 Batch A
+# Meesho adapter — Phase 10
 
 The isolated Meesho adapter lives under `internal/marketplace/meesho`. It
 receives bounded, real page-numbered text from the shared Poppler extractor and
@@ -37,14 +37,34 @@ PostgreSQL job/lease worker, retry, normalized marketplace tables, source-page
 document relation, permissions, entitlement, audit, and typed frontend result
 view. A Flipkart or Amazon worker cannot claim a Meesho job.
 
-## Batch A limits
+## Batch, printing, inventory, reporting, and returns
 
-Representative private Meesho PDFs were not supplied for Batch A. The adapter
+Resolved Meesho orders use the existing batch system, configurable fallback and
+exact-product worker assignments, Product Master totals, readiness rules, and
+source traceability. `source-page-v1` preserves each complete source label page
+without cropping or overlays. Sorting remains deterministic through the shared
+batch rules. Invoice export is rejected because no deterministic invoice
+association is established. Print and reprint jobs remain fully traceable and
+inventory-neutral.
+
+Only explicit ready-batch outbound confirmation crosses the central Inventory
+boundary. It aggregates canonical products, creates one immutable
+`ecommerce_out` entry per product, and is idempotent per company/batch. The
+shared dashboard derives Meesho order, batch, print, product, outbound, return,
+and cancellation metrics through its marketplace filter. Company-wide stock-in,
+general adjustment, correction, consignment movement, and current-balance
+semantics remain unchanged. The generic Returns domain accepts resolved Meesho
+orders and explicit normalized quantities.
+
+## Evidence-based limits
+
+Representative private Meesho PDFs were not supplied for Phase 10. The adapter
 therefore enables text extraction only and does not infer cross-page
 relationships or require OCR. The repository contains a sanitized structural
 text fixture; maintainers can validate an authorized private PDF without
 committing or logging it by setting `MEESHO_PRIVATE_SAMPLE`.
 
-Batch/printing participation, any evidence-based Meesho page association or
-print geometry, outbound inventory confirmation, reporting, and returns remain
-later Phase 10 batches. Upload and processing are inventory-neutral.
+No Meesho-specific page association, OCR, crop geometry, invoice output, or
+enrichment has been invented. Future changes to those behaviors require
+representative evidence and new sanitized regressions. Upload, processing,
+printing, and reprinting remain inventory-neutral.

@@ -1,7 +1,7 @@
 # Returns and cancellations workflow
 
 Marketplace cancellation and physical-return processing share normalized
-Flipkart/Amazon orders and canonical Product Master items.
+Flipkart/Amazon/Meesho orders and canonical Product Master items.
 
 ```text
 Cancellation recorded

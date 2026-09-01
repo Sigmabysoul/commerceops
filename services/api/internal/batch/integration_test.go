@@ -69,7 +69,7 @@ func setupBatch(t *testing.T) *batchFixture {
 		scanBatchTest(t, db, `INSERT INTO roles(company_id,name) VALUES($1,'Batch Operator') RETURNING id`, []any{company}, &role)
 		execBatchTest(t, db, `INSERT INTO role_permissions(company_id,role_id,permission_key) VALUES($1,$2,'labels.process'),($1,$2,'labels.print'),($1,$2,'labels.reprint'),($1,$2,'employees.manage')`, company, role)
 		execBatchTest(t, db, `INSERT INTO company_user_roles(company_id,user_id,role_id) VALUES($1,$2,$3)`, company, f.userID, role)
-		execBatchTest(t, db, `INSERT INTO module_entitlements(company_id,module_key,enabled) VALUES($1,'flipkart',true),($1,'amazon',true)`, company)
+		execBatchTest(t, db, `INSERT INTO module_entitlements(company_id,module_key,enabled) VALUES($1,'flipkart',true),($1,'amazon',true),($1,'meesho',true)`, company)
 		if company == f.companyA {
 			f.roleA = role
 		}
@@ -79,12 +79,15 @@ func setupBatch(t *testing.T) *batchFixture {
 	scanBatchTest(t, db, `INSERT INTO employees(company_id,display_name) VALUES($1,'Product Worker') RETURNING id`, []any{f.companyA}, &f.productWorkerID)
 	execBatchTest(t, db, `INSERT INTO worker_assignment_rules(company_id,marketplace_key,product_id,employee_id,priority) VALUES($1,'flipkart',NULL,$2,100),($1,'flipkart',$3,$4,10)`, f.companyA, f.defaultWorkerID, f.productID, f.productWorkerID)
 	execBatchTest(t, db, `INSERT INTO worker_assignment_rules(company_id,marketplace_key,product_id,employee_id,priority) VALUES($1,'amazon',NULL,$2,100),($1,'amazon',$3,$4,10)`, f.companyA, f.defaultWorkerID, f.productID, f.productWorkerID)
+	execBatchTest(t, db, `INSERT INTO worker_assignment_rules(company_id,marketplace_key,product_id,employee_id,priority) VALUES($1,'meesho',NULL,$2,100),($1,'meesho',$3,$4,10)`, f.companyA, f.defaultWorkerID, f.productID, f.productWorkerID)
 	f.storage, err = objectstorage.NewLocal(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
 	f.generator = &recordingGenerator{}
-	f.service = NewPrintingService(db, authorization.NewService(db), f.storage, f.generator).RegisterPrintGenerator("amazon", "amazon-a4-enriched-v1", f.generator)
+	f.service = NewPrintingService(db, authorization.NewService(db), f.storage, f.generator).
+		RegisterPrintGenerator("amazon", "amazon-a4-enriched-v1", f.generator).
+		RegisterPrintGenerator("meesho", pdfgenerator.SourcePageGenerationVersion, f.generator)
 	f.principalA = auth.Principal{CompanyID: f.companyA, UserID: f.userID}
 	f.principalB = auth.Principal{CompanyID: f.companyB, UserID: f.userID}
 	t.Cleanup(func() { cleanupBatch(t, f); db.Close() })
@@ -104,6 +107,23 @@ func (f *batchFixture) amazonOrder(t *testing.T, quantity int) string {
 	scanBatchTest(t, f.db, `INSERT INTO marketplace_orders(company_id,marketplace_key,source_file_id,processing_job_id,source_page,marketplace_order_id,awb,status,parser_version) VALUES($1,'amazon',$2,$3,1,'406-9090909-8080808','TRACKAMAZON1','resolved','amazon-associated-v3') RETURNING id`, []any{f.companyA, sourceID, jobID}, &orderID)
 	execBatchTest(t, f.db, `INSERT INTO marketplace_order_documents(company_id,order_id,source_file_id,source_page,document_role,extraction_method) VALUES($1,$2,$3,1,'shipping_label','ocr'),($1,$2,$3,2,'invoice','text')`, f.companyA, orderID, sourceID)
 	execBatchTest(t, f.db, `INSERT INTO marketplace_order_items(company_id,order_id,raw_sku,product_id,quantity,quantity_source,resolution_status) VALUES($1,$2,'AMAZON-SKU',$3,$4,'extracted','resolved')`, f.companyA, orderID, f.productID, quantity)
+	return orderID
+}
+
+func (f *batchFixture) meeshoOrder(t *testing.T, quantity int) string {
+	t.Helper()
+	seed := fmt.Sprintf("meesho-%s-%d", f.companyA, time.Now().UnixNano())
+	hash := sha256.Sum256([]byte(seed))
+	var sourceID, jobID, orderID string
+	scanBatchTest(t, f.db, `INSERT INTO source_files(company_id,marketplace_key,storage_key,original_filename,content_type,size_bytes,sha256,uploaded_by) VALUES($1,'meesho',$2,'meesho.pdf','application/pdf',1,$3,$4) RETURNING id`, []any{f.companyA, seed, hex.EncodeToString(hash[:]), f.userID}, &sourceID)
+	source := []byte("%PDF-meesho-source")
+	if err := f.storage.Put(context.Background(), seed, bytes.NewReader(source), int64(len(source)), "application/pdf"); err != nil {
+		t.Fatal(err)
+	}
+	scanBatchTest(t, f.db, `INSERT INTO processing_jobs(company_id,source_file_id,marketplace_key,status,parser_version,total_pages,processed_pages) VALUES($1,$2,'meesho','processed','meesho-labeled-v1',1,1) RETURNING id`, []any{f.companyA, sourceID}, &jobID)
+	scanBatchTest(t, f.db, `INSERT INTO marketplace_orders(company_id,marketplace_key,source_file_id,processing_job_id,source_page,marketplace_order_id,awb,status,parser_version) VALUES($1,'meesho',$2,$3,1,'100000000009_1','MEESHOAWB90001','resolved','meesho-labeled-v1') RETURNING id`, []any{f.companyA, sourceID, jobID}, &orderID)
+	execBatchTest(t, f.db, `INSERT INTO marketplace_order_documents(company_id,order_id,source_file_id,source_page,document_role,extraction_method) VALUES($1,$2,$3,1,'shipping_label','text')`, f.companyA, orderID, sourceID)
+	execBatchTest(t, f.db, `INSERT INTO marketplace_order_items(company_id,order_id,raw_sku,product_id,quantity,quantity_source,resolution_status) VALUES($1,$2,'MEESHO-SKU',$3,$4,'extracted','resolved')`, f.companyA, orderID, f.productID, quantity)
 	return orderID
 }
 
@@ -395,6 +415,49 @@ func TestBatchFoundationPostgreSQLBehavior(t *testing.T) {
 	scanBatchTest(t, f.db, `SELECT count(*) FROM audit_logs WHERE company_id=$1 AND target_type='batch' AND action IN ('batch.created','batch.ready','batch.cancelled')`, []any{f.companyA}, &auditCount)
 	if auditCount != 8 {
 		t.Fatalf("audit count=%d", auditCount)
+	}
+}
+
+func TestMeeshoUsesSharedBatchPrintingAndAssignments(t *testing.T) {
+	f := setupBatch(t)
+	ctx := context.Background()
+	quantity := 5
+	orderID := f.meeshoOrder(t, quantity)
+
+	eligible, err := f.service.EligibleOrders(ctx, f.principalA, "meesho")
+	if err != nil || len(eligible) != 1 || eligible[0].OrderID != orderID || eligible[0].UnresolvedCount != 0 {
+		t.Fatalf("eligible=%#v err=%v", eligible, err)
+	}
+	created, replay, err := f.service.Create(ctx, f.principalA, CreateInput{MarketplaceKey: "meesho", OrderIDs: []string{orderID}, IdempotencyKey: "meesho-batch"})
+	if err != nil || replay || created.MarketplaceKey != "meesho" || len(created.ProductTotals) != 1 || created.ProductTotals[0].TotalQuantity != quantity {
+		t.Fatalf("created=%#v replay=%v err=%v", created, replay, err)
+	}
+	ready, err := f.service.Ready(ctx, f.principalA, created.ID)
+	if err != nil || ready.Status != "ready" || len(ready.WorkerTotals) != 1 || ready.WorkerTotals[0].EmployeeID != f.productWorkerID {
+		t.Fatalf("ready=%#v err=%v", ready, err)
+	}
+	var inventoryBefore, inventoryAfter int
+	scanBatchTest(t, f.db, `SELECT count(*) FROM inventory_transactions WHERE company_id=$1`, []any{f.companyA}, &inventoryBefore)
+	job, replay, err := f.service.Generate(ctx, f.principalA, created.ID, GenerateInput{IdempotencyKey: "meesho-print"})
+	if err != nil || replay || job.Status != "ready" || job.GenerationVersion != pdfgenerator.SourcePageGenerationVersion || len(job.Artifacts) != 1 {
+		t.Fatalf("print=%#v replay=%v err=%v", job, replay, err)
+	}
+	input := f.generator.calls[len(f.generator.calls)-1]
+	if len(input) != 1 || input[0].Number != 1 || input[0].InvoiceNumber != 0 || input[0].SKU != "MEESHO-SKU" || input[0].Quantity != quantity {
+		t.Fatalf("generator input=%#v", input)
+	}
+	reprint, replay, err := f.service.Reprint(ctx, f.principalA, job.ID, ReprintInput{Reason: "Carrier label damaged", IdempotencyKey: "meesho-reprint"})
+	if err != nil || replay || reprint.GenerationVersion != pdfgenerator.SourcePageGenerationVersion || reprint.SourcePrintJobID == nil || *reprint.SourcePrintJobID != job.ID {
+		t.Fatalf("reprint=%#v replay=%v err=%v", reprint, replay, err)
+	}
+	scanBatchTest(t, f.db, `SELECT count(*) FROM inventory_transactions WHERE company_id=$1`, []any{f.companyA}, &inventoryAfter)
+	if inventoryAfter != inventoryBefore {
+		t.Fatalf("print/reprint changed inventory: before=%d after=%d", inventoryBefore, inventoryAfter)
+	}
+	var traceable bool
+	scanBatchTest(t, f.db, `SELECT i.marketplace_order_id=$1 AND i.source_file_id=$2 AND i.processing_job_id=$3 AND i.source_page=1 FROM print_job_items i WHERE i.company_id=$4 AND i.print_job_id=$5`, []any{orderID, created.Members[0].SourceFileID, created.Members[0].ProcessingJobID, f.companyA, job.ID}, &traceable)
+	if !traceable {
+		t.Fatal("Meesho print traceability was not preserved")
 	}
 }
 

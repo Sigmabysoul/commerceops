@@ -88,8 +88,12 @@ entry per company/consignment/product. Reservations continue to use the Phase 5
 table: cancellation and outbound both close the active reservation, while the
 recorded release reason distinguishes release from outbound consumption.
 
-Phase 10 Batch A migration `000018_meesho_processing` adds only a Meesho-scoped
+Phase 10 migration `000018_meesho_processing` adds only a Meesho-scoped
 partial claim index over existing `processing_jobs`. Meesho source files, jobs,
 normalized orders/items, source-page documents, errors, leases, Product Master
 mappings, and duplicate constraints reuse the generic marketplace schema. No
 Meesho-only business table or inventory schema change is introduced.
+
+Phase 10's remaining batch, print, outbound, reporting, and returns integration
+requires no additional migration: those domains already reference normalized
+marketplace keys and tenant-owned generic relations.

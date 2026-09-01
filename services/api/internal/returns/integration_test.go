@@ -51,7 +51,7 @@ func setup(t *testing.T) *fixture {
 	mustExec(t, db, `INSERT INTO role_permissions(company_id,role_id,permission_key) VALUES($1,$2,'returns.view'),($1,$2,'returns.manage'),($1,$2,'returns.restock'),($1,$2,'labels.process'),($1,$2,'inventory.view'),($1,$2,'inventory.stock_in'),($1,$2,'inventory.dispatch'),($1,$2,'reports.view')`, f.company, f.role)
 	mustExec(t, db, `INSERT INTO company_user_roles(company_id,user_id,role_id) VALUES($1,$2,$3)`, f.company, f.user, f.role)
 	mustExec(t, db, `INSERT INTO module_entitlements(company_id,module_key,enabled) VALUES($1,'returns',true)`, f.company)
-	mustExec(t, db, `INSERT INTO module_entitlements(company_id,module_key,enabled) VALUES($1,'inventory',true),($1,'flipkart',true),($1,'amazon',true)`, f.company)
+	mustExec(t, db, `INSERT INTO module_entitlements(company_id,module_key,enabled) VALUES($1,'inventory',true),($1,'flipkart',true),($1,'amazon',true),($1,'meesho',true)`, f.company)
 	mustScan(t, db, `INSERT INTO products(company_id,internal_code,name) VALUES($1,'RET-1','Return product') RETURNING id`, []any{f.company}, &f.product)
 	mustScan(t, db, `INSERT INTO products(company_id,internal_code,name) VALUES($1,'RET-2','Second return product') RETURNING id`, []any{f.company}, &f.secondProduct)
 	otherProduct := ""
@@ -166,6 +166,40 @@ func TestReturnIntakePartialReceiptAndInventoryNeutrality(t *testing.T) {
 	mustExec(t, f.db, `INSERT INTO company_user_roles(company_id,user_id,role_id) VALUES($1,$2,$3)`, f.otherCompany, f.user, otherRole)
 	if _, err = f.service.GetReturn(ctx, auth.Principal{CompanyID: f.otherCompany, UserID: f.user}, created.ID); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("cross-tenant read=%v", err)
+	}
+}
+
+func TestMeeshoCancellationAndReturnCompatibility(t *testing.T) {
+	f := setup(t)
+	ctx := context.Background()
+	suffix := fmt.Sprint(time.Now().UnixNano())
+	cancelOrder, _ := createOrder(t, f.db, f.company, f.user, f.product, "meesho", "MEESHO-CANCEL-"+suffix, 2, "e")
+	returnOrder, returnItem := createOrder(t, f.db, f.company, f.user, f.product, "meesho", "MEESHO-RETURN-"+suffix, 3, "f")
+
+	cancellation, replay, err := f.service.CreateCancellation(ctx, f.principal, CreateCancellationInput{MarketplaceOrderID: cancelOrder, Reason: "Meesho buyer cancellation", CancelledAt: time.Now(), IdempotencyKey: "meesho-cancel-" + suffix})
+	if err != nil || replay || cancellation.Marketplace != "meesho" || cancellation.OutboundState != "not_outbound" {
+		t.Fatalf("cancellation=%#v replay=%v err=%v", cancellation, replay, err)
+	}
+	created, replay, err := f.service.CreateReturn(ctx, f.principal, CreateReturnInput{MarketplaceOrderID: returnOrder, Reason: "Meesho physical return", Items: []ExpectedItemInput{{MarketplaceOrderItemID: returnItem, ExpectedQuantity: 2}}, IdempotencyKey: "meesho-return-" + suffix})
+	if err != nil || replay || created.Marketplace != "meesho" || created.Status != "expected" || len(created.Items) != 1 || created.Items[0].ExpectedQuantity != 2 {
+		t.Fatalf("return=%#v replay=%v err=%v", created, replay, err)
+	}
+	received, replay, err := f.service.ReceiveReturn(ctx, f.principal, created.ID, ReceiveReturnInput{Items: []ReceivedItemInput{{ReturnItemID: created.Items[0].ID, ReceivedQuantity: 1}}, IdempotencyKey: "meesho-receive-" + suffix})
+	if err != nil || replay || received.Status != "received" || received.Items[0].ReceivedQuantity == nil || *received.Items[0].ReceivedQuantity != 1 {
+		t.Fatalf("received=%#v replay=%v err=%v", received, replay, err)
+	}
+	returns, err := f.service.ListReturns(ctx, f.principal, "received", "meesho")
+	if err != nil || len(returns) != 1 || returns[0].ID != created.ID {
+		t.Fatalf("returns=%#v err=%v", returns, err)
+	}
+	cancellations, err := f.service.ListCancellations(ctx, f.principal, "recorded", "meesho")
+	if err != nil || len(cancellations) != 1 || cancellations[0].ID != cancellation.ID {
+		t.Fatalf("cancellations=%#v err=%v", cancellations, err)
+	}
+	var inventoryTransactions int
+	mustScan(t, f.db, `SELECT count(*) FROM inventory_transactions WHERE company_id=$1`, []any{f.company}, &inventoryTransactions)
+	if inventoryTransactions != 0 {
+		t.Fatalf("Meesho cancellation/receipt changed inventory: %d transactions", inventoryTransactions)
 	}
 }
 

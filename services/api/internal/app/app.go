@@ -51,7 +51,9 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	if err != nil {
 		return err
 	}
-	printingService := batch.NewPrintingService(db, authorizer, storage, pdfgenerator.NewPoppler()).RegisterPrintGenerator("amazon", amazon.PrintGenerationVersion, amazon.NewPrintGenerator())
+	printingService := batch.NewPrintingService(db, authorizer, storage, pdfgenerator.NewPoppler()).
+		RegisterPrintGenerator("amazon", amazon.PrintGenerationVersion, amazon.NewPrintGenerator()).
+		RegisterPrintGenerator("meesho", pdfgenerator.SourcePageGenerationVersion, pdfgenerator.NewSourcePages())
 	batchHTTP := batch.NewHTTPHandler(printingService)
 	marketplaceService, err := marketplace.NewService(db, authorizer, storage, pdfextractor.NewPoppler())
 	if err != nil {

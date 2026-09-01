@@ -412,7 +412,7 @@ paths:
       summary: List processed marketplace orders not already assigned to a batch
       security: [{sessionCookie: []}]
       parameters:
-        - {name: marketplace, in: query, required: true, schema: {type: string, enum: [flipkart, amazon]}}
+        - {name: marketplace, in: query, required: true, schema: {type: string, enum: [flipkart, amazon, meesho]}}
       responses:
         "200": {description: Tenant-scoped eligible normalized orders}
         "403": {$ref: "#/components/responses/Error"}
@@ -422,7 +422,7 @@ paths:
       summary: List tenant worker assignment rules
       security: [{sessionCookie: []}]
       parameters:
-        - {name: marketplace, in: query, required: true, schema: {type: string, enum: [flipkart, amazon]}}
+        - {name: marketplace, in: query, required: true, schema: {type: string, enum: [flipkart, amazon, meesho]}}
       responses:
         "200": {description: Exact-product rules and required marketplace fallback}
         "403": {$ref: "#/components/responses/Error"}
@@ -951,7 +951,7 @@ components:
       additionalProperties: false
       required: [marketplace_key, order_ids, idempotency_key]
       properties:
-        marketplace_key: {type: string, enum: [flipkart, amazon]}
+        marketplace_key: {type: string, enum: [flipkart, amazon, meesho]}
         order_ids:
           type: array
           minItems: 1
@@ -972,7 +972,7 @@ components:
       additionalProperties: false
       required: [marketplace_key, rules]
       properties:
-        marketplace_key: {type: string, enum: [flipkart, amazon]}
+        marketplace_key: {type: string, enum: [flipkart, amazon, meesho]}
         rules:
           type: array
           minItems: 1

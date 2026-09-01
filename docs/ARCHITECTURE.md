@@ -51,7 +51,7 @@ capability only for Amazon. Amazon associates label and invoice pages by an
 exact order ID and persists every contributing page through the generic
 order-document traceability relation.
 
-Phase 10 Batch A adds an isolated Meesho adapter to the same orchestration.
+Phase 10 adds an isolated Meesho adapter to the same orchestration.
 It accepts only explicitly labeled order/sub-order, AWB, seller SKU, and
 positive quantity values from text-extractable pages. Product resolution,
 review state, duplicate protection, traceability, storage, leases, retries,
@@ -66,8 +66,14 @@ domain continues to own authorization, sorting, idempotency, artifact storage,
 auditing, downloads, and reprint traceability. Print generation never calls the
 inventory domain.
 
+Meesho uses the shared `source-page-v1` generator because no representative
+evidence justifies cropping, overlays, or invoice association. It preserves the
+complete selected source page and rejects invoice export. Meesho orders use the
+same batch membership, assignment snapshots, artifacts, reprints, and explicit
+Inventory outbound boundary as the other marketplaces.
+
 The Phase 8 returns domain references normalized marketplace orders and
-canonical Product Master items for shared Flipkart/Amazon cancellation and
+canonical Product Master items for shared Flipkart/Amazon/Meesho cancellation and
 physical-return processing. It owns lifecycle validation, dispositions,
 idempotency, and append-only events, but not balances or ledger writes.
 Cancellation, receipt, and inspection are inventory-neutral. An authorized
