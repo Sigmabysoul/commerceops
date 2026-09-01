@@ -63,6 +63,11 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 		return err
 	}
 	amazonHTTP := marketplace.NewHTTPHandler(amazonService)
+	meeshoService, err := marketplace.NewMeeshoService(db, authorizer, storage, pdfextractor.NewPoppler())
+	if err != nil {
+		return err
+	}
+	meeshoHTTP := marketplace.NewHTTPHandler(meeshoService)
 	mux.HandleFunc("/api/v1/auth/login", authHTTP.Login)
 	mux.Handle("/api/v1/auth/logout", authHTTP.RequireSession(http.HandlerFunc(authHTTP.Logout)))
 	mux.Handle("/api/v1/auth/session", authHTTP.RequireSession(http.HandlerFunc(authHTTP.Session)))
@@ -88,6 +93,8 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	mux.Handle("/api/v1/flipkart/jobs/{job_id}", authHTTP.RequireSession(http.HandlerFunc(marketplaceHTTP.Job)))
 	mux.Handle("/api/v1/amazon/jobs", authHTTP.RequireSession(http.HandlerFunc(amazonHTTP.Jobs)))
 	mux.Handle("/api/v1/amazon/jobs/{job_id}", authHTTP.RequireSession(http.HandlerFunc(amazonHTTP.Job)))
+	mux.Handle("/api/v1/meesho/jobs", authHTTP.RequireSession(http.HandlerFunc(meeshoHTTP.Jobs)))
+	mux.Handle("/api/v1/meesho/jobs/{job_id}", authHTTP.RequireSession(http.HandlerFunc(meeshoHTTP.Job)))
 	mux.Handle("/api/v1/batches", authHTTP.RequireSession(http.HandlerFunc(batchHTTP.Batches)))
 	mux.Handle("/api/v1/batches/{batch_id}", authHTTP.RequireSession(http.HandlerFunc(batchHTTP.Batch)))
 	mux.Handle("/api/v1/batches/{batch_id}/ready", authHTTP.RequireSession(http.HandlerFunc(batchHTTP.Ready)))

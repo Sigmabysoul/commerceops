@@ -51,6 +51,14 @@ capability only for Amazon. Amazon associates label and invoice pages by an
 exact order ID and persists every contributing page through the generic
 order-document traceability relation.
 
+Phase 10 Batch A adds an isolated Meesho adapter to the same orchestration.
+It accepts only explicitly labeled order/sub-order, AWB, seller SKU, and
+positive quantity values from text-extractable pages. Product resolution,
+review state, duplicate protection, traceability, storage, leases, retries,
+authorization, and audits remain generic. Meesho OCR and cross-page association
+are not enabled without representative evidence establishing that they are
+necessary and deterministic.
+
 Shared batch/print jobs route normalized print inputs through a marketplace-keyed
 generator. Flipkart continues to use the shared Poppler crop generator. Amazon's
 adapter owns its A4 validation and SKU/quantity enrichment, while the batch

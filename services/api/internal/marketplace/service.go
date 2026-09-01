@@ -20,6 +20,7 @@ import (
 	"github.com/commerceops/commerceops/services/api/internal/authorization"
 	"github.com/commerceops/commerceops/services/api/internal/marketplace/amazon"
 	"github.com/commerceops/commerceops/services/api/internal/marketplace/flipkart"
+	"github.com/commerceops/commerceops/services/api/internal/marketplace/meesho"
 	"github.com/commerceops/commerceops/services/api/internal/platform/objectstorage"
 	"github.com/commerceops/commerceops/services/api/internal/platform/pdfextractor"
 	"github.com/jackc/pgx/v5"
@@ -124,6 +125,9 @@ func NewService(db *pgxpool.Pool, authorizer *authorization.Service, storage obj
 func NewAmazonService(db *pgxpool.Pool, authorizer *authorization.Service, storage objectstorage.Storage, extractor pdfextractor.Extractor) (*Service, error) {
 	return newProcessingService(db, authorizer, storage, extractor, amazonProcessor())
 }
+func NewMeeshoService(db *pgxpool.Pool, authorizer *authorization.Service, storage objectstorage.Storage, extractor pdfextractor.Extractor) (*Service, error) {
+	return newProcessingService(db, authorizer, storage, extractor, meeshoProcessor())
+}
 func newProcessingService(db *pgxpool.Pool, authorizer *authorization.Service, storage objectstorage.Storage, extractor pdfextractor.Extractor, p processor) (*Service, error) {
 	s, err := newServiceForProcessor(db, authorizer, storage, extractor, p)
 	if err != nil {
@@ -181,6 +185,19 @@ func amazonProcessor() processor {
 				record.Documents = append(record.Documents, normalizedDocument{Page: source.Page, Role: source.Role, ExtractionMethod: source.ExtractionMethod})
 			}
 			out = append(out, record)
+		}
+		return out, nil
+	}}
+}
+func meeshoProcessor() processor {
+	return processor{marketplace: "meesho", parserVersion: meesho.ParserVersion, documentName: "Meesho", auditCountKey: "labels", requireOrderID: true, parse: func(pages []pdfextractor.Page) ([]normalizedRecord, error) {
+		labels, err := meesho.Parse(pages)
+		if err != nil {
+			return nil, err
+		}
+		out := make([]normalizedRecord, 0, len(labels))
+		for _, label := range labels {
+			out = append(out, normalizedRecord{Page: label.Page, AWB: label.AWB, OrderID: label.OrderID, SKU: label.SKU, Quantity: label.Quantity, Documents: []normalizedDocument{{Page: label.Page, Role: "shipping_label", ExtractionMethod: label.ExtractionMethod}}, AssociationMethod: "single_document", Confidence: "high"})
 		}
 		return out, nil
 	}}

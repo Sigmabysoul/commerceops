@@ -1,84 +1,82 @@
 ## Current Phase
 
-Phase 9 — Consignment Management
+Phase 10 — Meesho
 
 ## Current Branch
 
-`phase/09-consignment`
+`phase/10-meesho`
 
 ## Approved Baseline
 
-Phase 8 implementation baseline explicitly advanced by the owner for Phase 9:
+Phase 9 completed baseline explicitly advanced by the owner for Phase 10:
 
-`1cb661a5a13f786ec979fca1381c4849e8089f5e`
+`69fa09c8`
 
 ## Phase Status
 
-`PHASE_9_COMPLETE_AWAITING_EXTERNAL_REVIEW`
+`PHASE_10_BATCH_A_COMPLETE_AWAITING_REVIEW`
 
-Phases 0–7 are approved. Phase 8 was completed at the baseline above, and the
-owner explicitly authorized and requested complete Phase 9 implementation.
+Phases 0–9 are implemented. The owner explicitly authorized Phase 10. Phase 10
+is being delivered in medium cohesive batches; Batch A establishes Meesho
+processing without prematurely adding printing or inventory behavior.
 
-Phase 10 is not authorized.
+Phase 11 is not authorized.
 
-## Phase 9 Goal
+## Phase 10 Goal
 
-Digitize company consignment work from manual/imported SO requirements through
-configurable department preparation, packing, inventory-safe outbound, and
-completion with Product Master, employee, permission, audit, and reporting
-integration.
+Add Meesho as a first-class marketplace while reusing generic secure upload,
+durable processing, Product Master, review, duplicate, traceability, batch,
+printing, inventory, reporting, and returns infrastructure. Marketplace-specific
+document recognition and output rules remain isolated in the Meesho adapter.
 
-## Phase 9 Delivery
+## Batch A Delivery
 
-### Domain and workflow
+### Processing foundation
 
-- [x] tenant-scoped consignment/SO records with manual/import source traceability
-- [x] company-unique order reference and non-globally-unique pouch/file reference
-- [x] configurable departments, lifecycle status, and active employee membership
-- [x] permission-based broad management and employee-backed department work views
-- [x] explicit `created → allocated → picking → ready → packing → packed → outbound → completed` state machine
-- [x] safe pre-outbound cancellation and invalid/backward transition rejection
-- [x] canonical Product Master lines with explicit required, ready, and packed quantities
-- [x] strict `packed ≤ ready ≤ required` bounds and full-completion gates
-- [x] independent line versions for concurrent workers and state expected versions
-- [x] exact idempotency, immutable events, actors/timestamps/notes, and shared audit logging
+- [x] isolated `meesho-labeled-v1` adapter using bounded Poppler page text
+- [x] explicit sub-order/order ID, AWB/tracking, supplier/seller SKU, and positive quantity extraction
+- [x] sub-order precedence and conservative multi-signal shipping-label recognition
+- [x] missing, zero, malformed, or ambiguous fields persisted for review without guessing or quantity defaults
+- [x] exact active Meesho Product Master resolution and safe reprocessing after SKU training
+- [x] source file, source page, extraction method, parser version, job, order, and item traceability
 
-### Inventory and reporting
+### Shared platform integration
 
-- [x] atomic Inventory-owned reservation on allocation without changing On-hand
-- [x] atomic cancellation release without a stock ledger movement
-- [x] atomic outbound reservation consumption and immutable `CONSIGNMENT_OUT`
-- [x] duplicate/concurrent outbound protection with one company/source/product ledger entry
-- [x] pending, completed-range, completion-time, Product Master quantity, department workload, and inventory-movement reporting
-- [x] department-scoped reporting without cross-department quantity/event leakage
-- [x] documented company-wide `consignment_out` semantics under marketplace filters
+- [x] existing PDF validation, object storage, tenant keys, hash deduplication, PostgreSQL leases, workers, permissions, entitlement, and audit infrastructure
+- [x] marketplace-isolated worker claims, duplicate-source behavior, duplicate business-identifier review, and tenant-safe reads/retries
+- [x] inventory-neutral upload and processing
+- [x] `/api/v1/meesho/jobs` upload and tenant-scoped job read/retry endpoints
+- [x] reusable typed marketplace-processing client/view shared with Flipkart plus a Meesho operator panel
+- [x] migration `000018` limited to a Meesho queued-job claim index; no Meesho business tables
 
-### API and UI
+### Regression coverage
 
-- [x] REST contracts for department configuration/membership, board/detail, create, allocate, progress, transition, outbound, and cancellation
-- [x] typed frontend client and readable consignment board/detail workspace
-- [x] multi-product SO entry, department/state/reference filters, progress controls, and confirmed inventory-changing actions
-- [x] consignment summaries, department workload, and product/ledger movement in the existing dashboard
-- [x] OpenAPI 0.9.0 and domain/module/database/workflow documentation
+- [x] sanitized structural Meesho label fixture and parser regressions
+- [x] optional private-PDF regression hook through `MEESHO_PRIVATE_SAMPLE`
+- [x] PostgreSQL coverage for entitlements, tenant isolation, Product Master resolution, retries, source/business duplicates, traceability, marketplace worker isolation, and inventory neutrality
+- [x] migration `000018` up/down coverage
 
-## Phase 9 Verification
+## Deliberately Deferred from Batch A
 
-Phase 9 passed `make verify-full` against a freshly initialized disposable
-PostgreSQL 18.6 database migrated through `000017`, including:
+- Meesho OCR or deterministic cross-page association, pending representative private samples
+- shared batch membership and printable artifact generation
+- outbound confirmation and inventory ledger integration
+- reporting and returns integration
+- Phase 11
 
-- canonical Product Master and tenant-composite database constraints
-- department membership visibility and cross-department reporting isolation
-- complete state transitions, partial-quantity guards, and stale-line conflicts
-- concurrent updates to the same line with exactly one accepted version
-- reservation creation, Available-only allocation effect, and cancellation release
-- fully packed outbound deduction, exact replay, ledger uniqueness, and completion
-- immutable consignment events and shared Consignment/Inventory audit records
-- company-wide consignment movement under a marketplace-filtered dashboard
-- migration `000017` up/down coverage
-- the complete PostgreSQL-backed Go suite, Go vet/build, frontend typecheck,
-  lint, production build, OpenAPI YAML parsing, and `git diff --check`
+## Verification
+
+Batch A passed the complete PostgreSQL-backed verification path against a
+disposable database migrated through `000018`, including Go tests/vet/build,
+frontend typecheck/lint/production build, OpenAPI parsing, migration coverage,
+and `git diff --check`.
+
+The optional private Meesho PDF test was skipped because
+`MEESHO_PRIVATE_SAMPLE` was not supplied. Sanitized parser and full platform
+regressions passed.
 
 ## Next Allowed Task
 
-Externally review and approve Phase 9. Do not begin Phase 10 or Meesho
-automatically.
+Review Phase 10 Batch A. A separately authorized Batch B may add evidence-based
+Meesho association/print support and shared batch participation. Do not begin
+Batch B or Phase 11 automatically.

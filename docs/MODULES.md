@@ -51,14 +51,14 @@ inside one application; it does not imply microservices.
 
 - **Owns:** marketplace upload orchestration, source/job metadata, normalized
   marketplace orders/items, duplicate detection, processing states, review
-  errors, database-backed job leases, and marketplace-specific adapters such
-  as Flipkart.
+  errors, database-backed job leases, and marketplace-specific adapters for
+  Flipkart, Amazon, and Meesho.
 - **Does not own:** canonical product definitions, authentication,
   authorization policy, object persistence mechanics, inventory, batches, or
   printing.
 - **Allowed dependencies:** Product Master resolution, authorization, audit,
   PostgreSQL, object-storage interfaces, and PDF-extraction interfaces.
-- **Forbidden leakage:** Flipkart and Amazon parsing rules must remain in their
+- **Forbidden leakage:** Flipkart, Amazon, and Meesho parsing rules must remain in their
   isolated adapters; marketplace processing must not mutate inventory or
   implement future marketplace adapters outside the active phase.
 

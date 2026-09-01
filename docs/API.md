@@ -285,3 +285,23 @@ Resolved Amazon orders participate in the shared batch, print, outbound
 confirmation, inventory ledger, and reporting APIs. No Amazon-specific stock
 mutation or PDF-download endpoint exists; print and reprint operations remain
 inventory-neutral.
+
+## Meesho processing — Phase 10 Batch A
+
+- `POST /api/v1/meesho/jobs` — multipart PDF upload using `file`; requires the
+  `meesho` entitlement plus `labels.upload` and `labels.process`.
+- `GET /api/v1/meesho/jobs/{job_id}` — reads the tenant-scoped job, normalized
+  order/item records, source-page documents, and review errors.
+- `POST /api/v1/meesho/jobs/{job_id}` — safely retries a terminal Meesho source
+  after Product Master training or parser updates.
+
+Meesho reuses the generic 20 MiB PDF validation, tenant storage keys,
+company/marketplace source deduplication, PostgreSQL leases, response shapes,
+error envelope, and exact Product Master mapping behavior. Batch A accepts
+only explicitly labeled order/sub-order ID, AWB/tracking ID, seller/supplier
+SKU, and positive quantity values. Missing, zero, conflicting, or ambiguous
+values remain review-required; quantity is never defaulted to one.
+
+Batch A is processing-only. Meesho batch membership, printable artifact
+generation, outbound confirmation, reporting, and returns integration remain
+future Phase 10 batches and are not exposed by marketplace-specific APIs.
