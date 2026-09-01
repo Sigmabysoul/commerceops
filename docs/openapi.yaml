@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: CommerceOps API
-  version: 0.8.2
+  version: 0.9.0
 paths:
   /api/v1/health:
     get:
@@ -697,6 +697,130 @@ paths:
         "403": {$ref: "#/components/responses/Error"}
         "404": {$ref: "#/components/responses/Error"}
         "409": {$ref: "#/components/responses/Error"}
+  /api/v1/consignment-departments:
+    get:
+      operationId: listConsignmentDepartments
+      security: [{sessionCookie: []}]
+      responses:
+        "200": {description: Broad or employee-membership-scoped departments}
+        "403": {$ref: "#/components/responses/Error"}
+    post:
+      operationId: createConsignmentDepartment
+      security: [{sessionCookie: []}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/ConsignmentDepartmentCommand"}}}}
+      responses:
+        "201": {description: Configurable tenant department created}
+        "403": {$ref: "#/components/responses/Error"}
+        "409": {$ref: "#/components/responses/Error"}
+  /api/v1/consignment-departments/{department_id}/members:
+    parameters:
+      - {name: department_id, in: path, required: true, schema: {type: string, format: uuid}}
+    put:
+      operationId: replaceConsignmentDepartmentMembers
+      security: [{sessionCookie: []}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/ConsignmentMembershipCommand"}}}}
+      responses:
+        "200": {description: Active employee membership replaced}
+        "403": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+  /api/v1/consignment-departments/{department_id}:
+    parameters:
+      - {name: department_id, in: path, required: true, schema: {type: string, format: uuid}}
+    patch:
+      operationId: updateConsignmentDepartment
+      security: [{sessionCookie: []}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/ConsignmentDepartmentCommand"}}}}
+      responses:
+        "200": {description: Department name or lifecycle status updated}
+        "403": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+        "409": {$ref: "#/components/responses/Error"}
+  /api/v1/consignments:
+    get:
+      operationId: listConsignments
+      security: [{sessionCookie: []}]
+      parameters:
+        - {name: status, in: query, schema: {type: string, enum: [created, allocated, picking, ready, packing, packed, outbound, completed, cancelled]}}
+        - {name: department_id, in: query, schema: {type: string, format: uuid}}
+        - {name: q, in: query, schema: {type: string, maxLength: 200}}
+      responses:
+        "200": {description: Broad or department-scoped consignment board}
+        "403": {$ref: "#/components/responses/Error"}
+    post:
+      operationId: createConsignment
+      security: [{sessionCookie: []}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/CreateConsignment"}}}}
+      responses:
+        "201": {description: Consignment and immutable creation event created}
+        "200": {description: Existing consignment returned for exact replay}
+        "403": {$ref: "#/components/responses/Error"}
+        "409": {$ref: "#/components/responses/Error"}
+  /api/v1/consignments/{consignment_id}:
+    parameters:
+      - {name: consignment_id, in: path, required: true, schema: {type: string, format: uuid}}
+    get:
+      operationId: getConsignment
+      security: [{sessionCookie: []}]
+      responses:
+        "200": {description: Authorized consignment detail, lines, and history}
+        "403": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+  /api/v1/consignments/{consignment_id}/allocate:
+    parameters:
+      - {name: consignment_id, in: path, required: true, schema: {type: string, format: uuid}}
+    post:
+      operationId: allocateConsignment
+      security: [{sessionCookie: []}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/ConsignmentAction"}}}}
+      responses:
+        "201": {description: Requirements reserved and state allocated atomically}
+        "200": {description: Exact replay}
+        "409": {$ref: "#/components/responses/Error"}
+  /api/v1/consignments/{consignment_id}/transition:
+    parameters:
+      - {name: consignment_id, in: path, required: true, schema: {type: string, format: uuid}}
+    post:
+      operationId: transitionConsignment
+      security: [{sessionCookie: []}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/ConsignmentTransition"}}}}
+      responses:
+        "201": {description: Valid state transition recorded}
+        "200": {description: Exact replay}
+        "409": {$ref: "#/components/responses/Error"}
+  /api/v1/consignments/{consignment_id}/lines/{line_id}/progress:
+    parameters:
+      - {name: consignment_id, in: path, required: true, schema: {type: string, format: uuid}}
+      - {name: line_id, in: path, required: true, schema: {type: string, format: uuid}}
+    post:
+      operationId: updateConsignmentLineProgress
+      security: [{sessionCookie: []}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/ConsignmentProgress"}}}}
+      responses:
+        "201": {description: Explicit ready and packed quantities recorded}
+        "200": {description: Exact replay}
+        "409": {$ref: "#/components/responses/Error"}
+  /api/v1/consignments/{consignment_id}/confirm-outbound:
+    parameters:
+      - {name: consignment_id, in: path, required: true, schema: {type: string, format: uuid}}
+    post:
+      operationId: confirmConsignmentOutbound
+      security: [{sessionCookie: []}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/ConsignmentAction"}}}}
+      responses:
+        "201": {description: Reservation consumed and consignment_out ledger recorded atomically}
+        "200": {description: Exact replay without another deduction}
+        "409": {$ref: "#/components/responses/Error"}
+  /api/v1/consignments/{consignment_id}/cancel:
+    parameters:
+      - {name: consignment_id, in: path, required: true, schema: {type: string, format: uuid}}
+    post:
+      operationId: cancelConsignment
+      security: [{sessionCookie: []}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/ConsignmentAction"}}}}
+      responses:
+        "201": {description: Pre-outbound consignment cancelled and reservations released}
+        "200": {description: Exact replay}
+        "409": {$ref: "#/components/responses/Error"}
   /api/v1/reports/dashboard:
     get:
       operationId: getOperationalDashboard
@@ -960,6 +1084,74 @@ components:
       additionalProperties: false
       required: [idempotency_key]
       properties:
+        notes: {type: [string, "null"], minLength: 1, maxLength: 2000}
+        idempotency_key: {type: string, minLength: 1, maxLength: 128}
+    ConsignmentDepartmentCommand:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name: {type: string, minLength: 1, maxLength: 100}
+        status: {type: string, enum: [active, inactive], default: active}
+    ConsignmentMembershipCommand:
+      type: object
+      additionalProperties: false
+      required: [employee_ids]
+      properties:
+        employee_ids:
+          type: array
+          maxItems: 200
+          uniqueItems: true
+          items: {type: string, format: uuid}
+    CreateConsignment:
+      type: object
+      additionalProperties: false
+      required: [order_reference, source_type, lines, idempotency_key]
+      properties:
+        order_reference: {type: string, minLength: 1, maxLength: 200}
+        dealer_reference: {type: [string, "null"], minLength: 1, maxLength: 200}
+        pouch_reference: {type: [string, "null"], minLength: 1, maxLength: 200}
+        source_type: {type: string, enum: [manual, import]}
+        source_reference: {type: [string, "null"], minLength: 1, maxLength: 500}
+        notes: {type: [string, "null"], minLength: 1, maxLength: 2000}
+        lines:
+          type: array
+          minItems: 1
+          maxItems: 200
+          items:
+            type: object
+            additionalProperties: false
+            required: [product_id, department_id, required_quantity]
+            properties:
+              product_id: {type: string, format: uuid}
+              department_id: {type: string, format: uuid}
+              required_quantity: {type: integer, format: int64, minimum: 1}
+        idempotency_key: {type: string, minLength: 1, maxLength: 128}
+    ConsignmentAction:
+      type: object
+      additionalProperties: false
+      required: [expected_version, idempotency_key]
+      properties:
+        expected_version: {type: integer, minimum: 1}
+        notes: {type: [string, "null"], minLength: 1, maxLength: 2000}
+        idempotency_key: {type: string, minLength: 1, maxLength: 128}
+    ConsignmentTransition:
+      type: object
+      additionalProperties: false
+      required: [target_status, expected_version, idempotency_key]
+      properties:
+        target_status: {type: string, enum: [picking, ready, packing, packed, completed]}
+        expected_version: {type: integer, minimum: 1}
+        notes: {type: [string, "null"], minLength: 1, maxLength: 2000}
+        idempotency_key: {type: string, minLength: 1, maxLength: 128}
+    ConsignmentProgress:
+      type: object
+      additionalProperties: false
+      required: [ready_quantity, packed_quantity, expected_version, idempotency_key]
+      properties:
+        ready_quantity: {type: integer, format: int64, minimum: 0}
+        packed_quantity: {type: integer, format: int64, minimum: 0}
+        expected_version: {type: integer, minimum: 1}
         notes: {type: [string, "null"], minLength: 1, maxLength: 2000}
         idempotency_key: {type: string, minLength: 1, maxLength: 128}
     ErrorEnvelope:

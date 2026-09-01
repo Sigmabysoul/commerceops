@@ -58,6 +58,33 @@ SKU resolution trims surrounding whitespace and then performs a case-sensitive e
 
 The OpenAPI source is `docs/openapi.yaml`. It must be updated whenever the public API contract changes.
 
+## Consignment management
+
+Consignment endpoints require the `consignments` entitlement. Broad readers
+use `consignments.view`; managers use `consignments.manage`; department workers
+use `consignments.work` and are server-scoped through their company employee
+membership; stock confirmation uses `consignments.outbound`. No endpoint
+accepts `company_id`.
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| GET, POST | `/api/v1/consignment-departments` | List visible or create configurable departments |
+| PATCH | `/api/v1/consignment-departments/{department_id}` | Rename or activate/deactivate a department |
+| PUT | `/api/v1/consignment-departments/{department_id}/members` | Replace active employee membership |
+| GET, POST | `/api/v1/consignments` | Filter visible work or idempotently create an SO-linked consignment |
+| GET | `/api/v1/consignments/{consignment_id}` | Read visible lines and broad audit history |
+| POST | `/api/v1/consignments/{consignment_id}/allocate` | Reserve canonical product requirements |
+| POST | `/api/v1/consignments/{consignment_id}/transition` | Apply an allowed non-inventory state transition |
+| POST | `/api/v1/consignments/{consignment_id}/lines/{line_id}/progress` | Optimistically update explicit ready/packed quantities |
+| POST | `/api/v1/consignments/{consignment_id}/confirm-outbound` | Deduct the fully packed reservation exactly once |
+| POST | `/api/v1/consignments/{consignment_id}/cancel` | Cancel pre-outbound work and release reservations |
+
+The exact state path is `created → allocated → picking → ready → packing →
+packed → outbound → completed`. Cancellation is allowed only before outbound.
+`ready` and `packed` transitions require every canonical line quantity to be
+complete; missing quantities are never defaulted. Mutations require an
+idempotency key and expected versions where state or line concurrency matters.
+
 ## Batch foundation
 
 Batch endpoints require the selected Flipkart or Amazon entitlement and the

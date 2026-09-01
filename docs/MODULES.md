@@ -100,6 +100,20 @@ inside one application; it does not imply microservices.
   never mutate stock; only an authorized restockable disposition may invoke
   Inventory.
 
+## Consignment (`internal/consignment`)
+
+- **Owns:** tenant consignment/SO traceability, configurable departments and
+  memberships, canonical product requirements, line progress, workflow state,
+  cancellation, idempotency, and append-only consignment history.
+- **Does not own:** Product Master identity, inventory balances or ledger
+  mechanics, role names, marketplace parsing, or reporting counters.
+- **Allowed dependencies:** Product Master IDs, company employees, centralized
+  authorization, audit, PostgreSQL, and Inventory's transaction-scoped
+  reservation/release/outbound boundary.
+- **Forbidden leakage:** consignment code must not update stock tables directly,
+  infer departments from employee names, treat pouch references as globally
+  unique, or complete partially prepared work.
+
 ## Printing (future, locked)
 
 - **Owns:** when approved, print-ready output, print jobs, printer state, and

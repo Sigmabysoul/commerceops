@@ -228,3 +228,24 @@ Update docs and `CURRENT_STATE.md`.
 STOP.
 
 Do not begin Meesho/Phase 10.
+
+## Implemented contract
+
+Phase 9 implements the state machine exactly as documented above with no
+completion exception: all quantities must be ready before `ready`, all must be
+packed before `packed`, and only `packed` may become `outbound`. Configurable
+departments and employee memberships replace example-name constants. The
+authenticated server company, entitlement, permission, and department
+membership govern every read and mutation.
+
+Allocation aggregates canonical Product Master quantities and invokes
+Inventory inside the same transaction. Cancellation releases active holds;
+outbound consumes them and writes `CONSIGNMENT_OUT`. All commands are exact
+idempotent operations, state records use expected versions, line records use
+independent optimistic versions, and immutable events plus shared audit logs
+preserve actors, notes, source traceability, and history.
+
+The board/detail workspace exposes clear department, state, and reference
+filters; explicit quantities; administrative department membership; and
+confirmed inventory-changing controls. Reporting derives pending/completed,
+product, department, timing, and ledger movement without independent counters.

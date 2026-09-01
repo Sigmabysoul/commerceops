@@ -204,7 +204,7 @@ func (s *Service) authorize(ctx context.Context, p auth.Principal, permission st
 	return s.authorizer.RequirePermission(ctx, p, permission)
 }
 func validType(v string) bool {
-	return v == "stock_in" || v == "manual_adjustment" || v == "correction" || v == "ecommerce_out" || v == "return_restock"
+	return v == "stock_in" || v == "manual_adjustment" || v == "correction" || v == "ecommerce_out" || v == "return_restock" || v == "consignment_out"
 }
 func trim(v *string) *string {
 	if v == nil {

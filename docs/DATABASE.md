@@ -76,3 +76,14 @@ events, centralized `return_restock` ledger support, compensating correction
 traceability, and explicit closure actors/timestamps. Returns never maintain a
 second stock balance; Inventory balances and the immutable ledger remain the
 only stock authority.
+
+Phase 9 migration `000017_consignment_management` adds configurable
+tenant-owned departments and employee memberships, consignments, canonical
+Product Master lines, optimistic line versions, and immutable events. Composite
+foreign keys enforce company ownership. Order/SO references are unique inside a
+company; pouch/file references are indexed but deliberately not unique because
+the operating scope does not establish global uniqueness. The migration also
+adds `consignment_out` to the immutable Inventory ledger and permits one such
+entry per company/consignment/product. Reservations continue to use the Phase 5
+table: cancellation and outbound both close the active reservation, while the
+recorded release reason distinguishes release from outbound consumption.

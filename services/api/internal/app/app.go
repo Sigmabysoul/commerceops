@@ -12,6 +12,7 @@ import (
 	"github.com/commerceops/commerceops/services/api/internal/authorization"
 	"github.com/commerceops/commerceops/services/api/internal/batch"
 	"github.com/commerceops/commerceops/services/api/internal/config"
+	"github.com/commerceops/commerceops/services/api/internal/consignment"
 	"github.com/commerceops/commerceops/services/api/internal/core"
 	"github.com/commerceops/commerceops/services/api/internal/health"
 	"github.com/commerceops/commerceops/services/api/internal/inventory"
@@ -45,6 +46,7 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	inventoryHTTP := inventory.NewHTTPHandler(inventoryService)
 	reportingHTTP := reporting.NewHTTPHandler(reporting.NewService(db, authorizer))
 	returnsHTTP := returnsdomain.NewHTTPHandler(returnsdomain.NewService(db, authorizer, inventoryService))
+	consignmentHTTP := consignment.NewHTTPHandler(consignment.NewService(db, authorizer, inventoryService))
 	storage, err := newObjectStorage(ctx, cfg)
 	if err != nil {
 		return err
@@ -115,6 +117,16 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	mux.Handle("/api/v1/returns/{return_id}/restock", authHTTP.RequireSession(http.HandlerFunc(returnsHTTP.Restock)))
 	mux.Handle("/api/v1/returns/{return_id}/restock-corrections", authHTTP.RequireSession(http.HandlerFunc(returnsHTTP.CorrectRestock)))
 	mux.Handle("/api/v1/returns/{return_id}/close", authHTTP.RequireSession(http.HandlerFunc(returnsHTTP.CloseReturn)))
+	mux.Handle("/api/v1/consignment-departments", authHTTP.RequireSession(http.HandlerFunc(consignmentHTTP.Departments)))
+	mux.Handle("/api/v1/consignment-departments/{department_id}", authHTTP.RequireSession(http.HandlerFunc(consignmentHTTP.Department)))
+	mux.Handle("/api/v1/consignment-departments/{department_id}/members", authHTTP.RequireSession(http.HandlerFunc(consignmentHTTP.DepartmentMembers)))
+	mux.Handle("/api/v1/consignments", authHTTP.RequireSession(http.HandlerFunc(consignmentHTTP.Consignments)))
+	mux.Handle("/api/v1/consignments/{consignment_id}", authHTTP.RequireSession(http.HandlerFunc(consignmentHTTP.Consignment)))
+	mux.Handle("/api/v1/consignments/{consignment_id}/allocate", authHTTP.RequireSession(http.HandlerFunc(consignmentHTTP.Allocate)))
+	mux.Handle("/api/v1/consignments/{consignment_id}/transition", authHTTP.RequireSession(http.HandlerFunc(consignmentHTTP.Transition)))
+	mux.Handle("/api/v1/consignments/{consignment_id}/lines/{line_id}/progress", authHTTP.RequireSession(http.HandlerFunc(consignmentHTTP.Progress)))
+	mux.Handle("/api/v1/consignments/{consignment_id}/confirm-outbound", authHTTP.RequireSession(http.HandlerFunc(consignmentHTTP.Outbound)))
+	mux.Handle("/api/v1/consignments/{consignment_id}/cancel", authHTTP.RequireSession(http.HandlerFunc(consignmentHTTP.Cancel)))
 	server := &http.Server{Addr: cfg.HTTPAddr, Handler: httpserver.Middleware(logger, cfg.AllowedOrigins, mux), ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 60 * time.Second}
 
 	errCh := make(chan error, 1)

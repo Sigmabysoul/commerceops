@@ -1,80 +1,84 @@
 ## Current Phase
 
-Phase 8 — Returns and Cancellations
+Phase 9 — Consignment Management
 
 ## Current Branch
 
-`phase/08-returns-cancellations`
+`phase/09-consignment`
 
 ## Approved Baseline
 
-Phase 7 approved baseline:
+Phase 8 implementation baseline explicitly advanced by the owner for Phase 9:
 
-`45a15fdc3fda21ef2c0763b517068e08b0aad4f4`
+`1cb661a5a13f786ec979fca1381c4849e8089f5e`
 
 ## Phase Status
 
-`PHASE_8_COMPLETE_AWAITING_EXTERNAL_REVIEW`
+`PHASE_9_COMPLETE_AWAITING_EXTERNAL_REVIEW`
 
-Phases 0–7 are approved.
+Phases 0–7 are approved. Phase 8 was completed at the baseline above, and the
+owner explicitly authorized and requested complete Phase 9 implementation.
 
-Phase 8 — Returns and Cancellations is authorized.
+Phase 10 is not authorized.
 
-Phase 9 is not authorized.
+## Phase 9 Goal
 
-## Phase 8 Goal
+Digitize company consignment work from manual/imported SO requirements through
+configurable department preparation, packing, inventory-safe outbound, and
+completion with Product Master, employee, permission, audit, and reporting
+integration.
 
-Track marketplace cancellations and physical returns against normalized orders,
-then reconcile inventory only after explicit operational evidence and an
-authorized disposition.
+## Phase 9 Delivery
 
-## Phase 8 Delivery
+### Domain and workflow
 
-### Batch A — Cancellation and physical-return intake foundation
+- [x] tenant-scoped consignment/SO records with manual/import source traceability
+- [x] company-unique order reference and non-globally-unique pouch/file reference
+- [x] configurable departments, lifecycle status, and active employee membership
+- [x] permission-based broad management and employee-backed department work views
+- [x] explicit `created → allocated → picking → ready → packing → packed → outbound → completed` state machine
+- [x] safe pre-outbound cancellation and invalid/backward transition rejection
+- [x] canonical Product Master lines with explicit required, ready, and packed quantities
+- [x] strict `packed ≤ ready ≤ required` bounds and full-completion gates
+- [x] independent line versions for concurrent workers and state expected versions
+- [x] exact idempotency, immutable events, actors/timestamps/notes, and shared audit logging
 
-- [x] tenant-scoped cancellation records linked to resolved marketplace orders
-- [x] authoritative pre/post-outbound snapshot without automatic restock
-- [x] tenant-scoped expected returns linked to normalized order items and Product Master
-- [x] explicit partial expected and received quantities without defaults
-- [x] quantity bounds and concurrent intake locking
-- [x] exact idempotency, append-only return events, and audit traceability
-- [x] returns entitlement and dedicated view/manage/restock permissions
-- [x] shared Flipkart/Amazon domain and API contracts
-- [x] full PostgreSQL-backed Batch A verification
+### Inventory and reporting
 
-### Disposition and inventory integration
+- [x] atomic Inventory-owned reservation on allocation without changing On-hand
+- [x] atomic cancellation release without a stock ledger movement
+- [x] atomic outbound reservation consumption and immutable `CONSIGNMENT_OUT`
+- [x] duplicate/concurrent outbound protection with one company/source/product ledger entry
+- [x] pending, completed-range, completion-time, Product Master quantity, department workload, and inventory-movement reporting
+- [x] department-scoped reporting without cross-department quantity/event leakage
+- [x] documented company-wide `consignment_out` semantics under marketplace filters
 
-- [x] explicit inspection and restockable/damaged/rejected/wrong/missing dispositions
-- [x] centralized, atomic `return_restock` inventory integration
-- [x] bounded immutable compensating restock corrections
-- [x] cancellation-aware batch eligibility, readiness, and outbound confirmation
-- [x] exact and concurrent replay protection with full ledger reconciliation
+### API and UI
 
-### Phase completion
+- [x] REST contracts for department configuration/membership, board/detail, create, allocate, progress, transition, outbound, and cancellation
+- [x] typed frontend client and readable consignment board/detail workspace
+- [x] multi-product SO entry, department/state/reference filters, progress controls, and confirmed inventory-changing actions
+- [x] consignment summaries, department workload, and product/ledger movement in the existing dashboard
+- [x] OpenAPI 0.9.0 and domain/module/database/workflow documentation
 
-- [x] explicit inventory-neutral return and cancellation closure
-- [x] closure actor/timestamp, append-only history, idempotency, and audit
-- [x] expected, received, needs-inspection, completed, and cancellation queues
-- [x] detail actions, Product Master quantities, inventory impact, and history
-- [x] permission-gated return/cancellation reporting and defined cohort return rate
-- [x] Flipkart/Amazon marketplace filtering and tenant isolation
-- [x] final full PostgreSQL-backed verification
+## Phase 9 Verification
 
-## Phase 8 Verification
+Phase 9 passed `make verify-full` against a freshly initialized disposable
+PostgreSQL 18.6 database migrated through `000017`, including:
 
-Phase 8 passed `make verify-full` against a freshly initialized disposable
-PostgreSQL 18.6 database migrated through `000016`, including:
-
-- pre/post-outbound cancellation behavior and dispatch race serialization
-- explicit partial receipt, inspection, restock, correction, and closure
-- exact replay, changed-payload conflict, and concurrent action bounds
-- Flipkart/Amazon association, marketplace filtering, and tenant isolation
-- authorization and module-entitlement denial without reporting leakage
-- gross operational return metrics, cohort rate, and net ledger reconciliation
-- migrations `000014`, `000015`, and `000016` up/down coverage
+- canonical Product Master and tenant-composite database constraints
+- department membership visibility and cross-department reporting isolation
+- complete state transitions, partial-quantity guards, and stale-line conflicts
+- concurrent updates to the same line with exactly one accepted version
+- reservation creation, Available-only allocation effect, and cancellation release
+- fully packed outbound deduction, exact replay, ledger uniqueness, and completion
+- immutable consignment events and shared Consignment/Inventory audit records
+- company-wide consignment movement under a marketplace-filtered dashboard
+- migration `000017` up/down coverage
 - the complete PostgreSQL-backed Go suite, Go vet/build, frontend typecheck,
-  lint, production build, OpenAPI parsing, and `git diff --check`
+  lint, production build, OpenAPI YAML parsing, and `git diff --check`
 
 ## Next Allowed Task
 
-Externally review and approve Phase 8. Do not begin Phase 9 automatically.
+Externally review and approve Phase 9. Do not begin Phase 10 or Meesho
+automatically.

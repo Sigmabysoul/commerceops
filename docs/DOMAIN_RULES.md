@@ -61,3 +61,33 @@ Closing a return or cancellation is a lifecycle operation only. It must append
 actor/time history, must be idempotent, and must never create or reverse an
 inventory transaction. Returns with incomplete receipt, inspection, or an
 unapplied restockable disposition cannot be closed.
+
+RULE CONSIGNMENT-001
+
+Consignment product identity and quantities must use canonical tenant Product
+Master records. Departments are tenant configuration and must not be inferred
+from employee names or hardcoded examples.
+
+RULE CONSIGNMENT-002
+
+Allocation reserves required stock and reduces Available only. On-hand changes
+only when a fully packed consignment is explicitly confirmed outbound through
+Inventory, producing immutable `CONSIGNMENT_OUT` ledger entries.
+
+RULE CONSIGNMENT-003
+
+Ready and packed quantities are explicit and bounded by the required quantity.
+A consignment cannot become ready, packed, outbound, or completed while any
+required line is incomplete.
+
+RULE CONSIGNMENT-004
+
+Pre-outbound cancellation releases active reservations without an inventory
+ledger movement. Outbound and completed consignments cannot be cancelled, and
+replaying outbound confirmation must never deduct stock twice.
+
+RULE CONSIGNMENT-005
+
+Pouch/file references are traceability fields, not globally unique identities,
+unless a future approved workflow establishes and migrates a narrower
+uniqueness scope.

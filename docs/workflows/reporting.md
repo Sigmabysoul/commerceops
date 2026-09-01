@@ -31,6 +31,21 @@ the net ledger effect after corrections. Cohort return rate uses resolved source
 orders created in the selected range and is explicitly not an accounting or
 profitability metric.
 
+Consignment reporting requires the `consignments` entitlement plus broad
+`consignments.view`/`consignments.manage` or scoped `consignments.work` access.
+It derives pending work, range-completed work, Product Master requirements,
+department workload, average completion time, and `consignment_out` movement
+from authoritative records. Department workers see only assigned line totals;
+aggregate outbound movement is omitted for scoped workers because a single
+product reservation can span departments and cannot be divided reliably after
+aggregation.
+
+Consignments are company operations rather than marketplace-owned orders.
+Therefore `consignment_out`, like stock-in and general adjustments, remains in
+inventory movement when a marketplace filter is active. Marketplace filtering
+continues to isolate only ecommerce and return movements whose authoritative
+source records carry a marketplace.
+
 Every query includes the authenticated company ID. `reports.view` gates the
 dashboard. Inventory fields require both the inventory module entitlement and
 `inventory.view`; lacking either produces a useful non-inventory report rather

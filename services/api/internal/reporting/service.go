@@ -49,6 +49,7 @@ type InventorySummary struct {
 	CurrentAvailable int64 `json:"current_available"`
 	StockIn          int64 `json:"stock_in"`
 	StockOut         int64 `json:"stock_out"`
+	ConsignmentOut   int64 `json:"consignment_out"`
 	ReturnRestock    int64 `json:"return_restock"`
 	Adjustments      int64 `json:"adjustments"`
 	NetMovement      int64 `json:"net_movement"`
@@ -76,15 +77,36 @@ type MarketplaceBreakdown struct {
 }
 
 type ProductMovement struct {
-	ProductID     string `json:"product_id"`
-	InternalCode  string `json:"internal_code"`
-	ProductName   string `json:"product_name"`
-	OrderQuantity int64  `json:"order_quantity"`
-	StockIn       int64  `json:"stock_in"`
-	StockOut      int64  `json:"stock_out"`
-	ReturnRestock int64  `json:"return_restock"`
-	Adjustments   int64  `json:"adjustments"`
-	NetMovement   int64  `json:"net_movement"`
+	ProductID      string `json:"product_id"`
+	InternalCode   string `json:"internal_code"`
+	ProductName    string `json:"product_name"`
+	OrderQuantity  int64  `json:"order_quantity"`
+	StockIn        int64  `json:"stock_in"`
+	StockOut       int64  `json:"stock_out"`
+	ConsignmentOut int64  `json:"consignment_out"`
+	ReturnRestock  int64  `json:"return_restock"`
+	Adjustments    int64  `json:"adjustments"`
+	NetMovement    int64  `json:"net_movement"`
+}
+type ConsignmentProductQuantity struct {
+	ProductID        string `json:"product_id"`
+	InternalCode     string `json:"internal_code"`
+	ProductName      string `json:"product_name"`
+	RequiredQuantity int64  `json:"required_quantity"`
+}
+type DepartmentWorkload struct {
+	DepartmentID        string `json:"department_id"`
+	DepartmentName      string `json:"department_name"`
+	PendingConsignments int64  `json:"pending_consignments"`
+	OutstandingQuantity int64  `json:"outstanding_quantity"`
+}
+type ConsignmentSummary struct {
+	Pending                int64                        `json:"pending"`
+	Completed              int64                        `json:"completed"`
+	AverageCompletionHours float64                      `json:"average_completion_hours"`
+	InventoryOut           int64                        `json:"inventory_out"`
+	Products               []ConsignmentProductQuantity `json:"products"`
+	Departments            []DepartmentWorkload         `json:"departments"`
 }
 type ProductQuantity struct {
 	ProductID    string `json:"product_id"`
@@ -103,6 +125,8 @@ type Report struct {
 	Inventory         *InventorySummary      `json:"inventory,omitempty"`
 	ReturnsAccess     bool                   `json:"returns_access"`
 	Returns           *ReturnsSummary        `json:"returns,omitempty"`
+	ConsignmentAccess bool                   `json:"consignment_access"`
+	Consignment       *ConsignmentSummary    `json:"consignment,omitempty"`
 	ProductMovements  []ProductMovement      `json:"product_movements"`
 	MovementTotal     int64                  `json:"product_movement_total"`
 	ProductQuantities []ProductQuantity      `json:"product_quantities"`
@@ -171,6 +195,9 @@ func (s *Service) Dashboard(ctx context.Context, p auth.Principal, f Filter) (Re
 		return Report{}, err
 	}
 	rows.Close()
+	if err = s.loadConsignmentSummary(ctx, p, f, &r); err != nil {
+		return Report{}, err
+	}
 
 	returnsModuleErr := s.authorizer.RequireModule(ctx, p, "returns")
 	returnsPermissionErr := s.authorizer.RequirePermission(ctx, p, "returns.view")
@@ -226,7 +253,7 @@ func (s *Service) Dashboard(ctx context.Context, p auth.Principal, f Filter) (Re
 		if err != nil {
 			return Report{}, err
 		}
-		err = s.db.QueryRow(ctx, `SELECT COALESCE(sum(quantity_delta) FILTER(WHERE transaction_type='stock_in'),0),COALESCE(-sum(quantity_delta) FILTER(WHERE transaction_type='ecommerce_out'),0),COALESCE(sum(quantity_delta) FILTER(WHERE transaction_type='return_restock' OR (transaction_type='correction' AND reference_type='return_restock_correction')),0),COALESCE(sum(quantity_delta) FILTER(WHERE transaction_type='manual_adjustment' OR (transaction_type='correction' AND reference_type IS DISTINCT FROM 'return_restock_correction')),0),COALESCE(sum(quantity_delta),0) FROM inventory_transactions i WHERE i.company_id=$1 AND i.created_at >= $2 AND i.created_at < $3 AND ($4='' OR i.product_id::text=$4) AND ($5='' OR (i.transaction_type='ecommerce_out' AND EXISTS(SELECT 1 FROM batches b WHERE b.company_id=i.company_id AND b.id::text=i.reference_id AND i.reference_type='batch' AND b.marketplace_key=$5)) OR (i.transaction_type='return_restock' AND EXISTS(SELECT 1 FROM return_cases r JOIN marketplace_orders o ON o.company_id=r.company_id AND o.id=r.marketplace_order_id WHERE r.company_id=i.company_id AND r.id::text=i.reference_id AND i.reference_type='return_case' AND o.marketplace_key=$5)) OR (i.transaction_type='correction' AND i.reference_type='return_restock_correction' AND EXISTS(SELECT 1 FROM return_events e JOIN return_cases r ON r.company_id=e.company_id AND r.id=e.return_case_id JOIN marketplace_orders o ON o.company_id=r.company_id AND o.id=r.marketplace_order_id WHERE e.company_id=i.company_id AND e.id::text=i.reference_id AND o.marketplace_key=$5)) OR (i.transaction_type NOT IN ('ecommerce_out','return_restock') AND NOT (i.transaction_type='correction' AND i.reference_type='return_restock_correction')))`, p.CompanyID, f.From, f.To, f.ProductID, f.Marketplace).Scan(&r.Inventory.StockIn, &r.Inventory.StockOut, &r.Inventory.ReturnRestock, &r.Inventory.Adjustments, &r.Inventory.NetMovement)
+		err = s.db.QueryRow(ctx, `SELECT COALESCE(sum(quantity_delta) FILTER(WHERE transaction_type='stock_in'),0),COALESCE(-sum(quantity_delta) FILTER(WHERE transaction_type='ecommerce_out'),0),COALESCE(-sum(quantity_delta) FILTER(WHERE transaction_type='consignment_out'),0),COALESCE(sum(quantity_delta) FILTER(WHERE transaction_type='return_restock' OR (transaction_type='correction' AND reference_type='return_restock_correction')),0),COALESCE(sum(quantity_delta) FILTER(WHERE transaction_type='manual_adjustment' OR (transaction_type='correction' AND reference_type IS DISTINCT FROM 'return_restock_correction')),0),COALESCE(sum(quantity_delta),0) FROM inventory_transactions i WHERE i.company_id=$1 AND i.created_at >= $2 AND i.created_at < $3 AND ($4='' OR i.product_id::text=$4) AND ($5='' OR (i.transaction_type='ecommerce_out' AND EXISTS(SELECT 1 FROM batches b WHERE b.company_id=i.company_id AND b.id::text=i.reference_id AND i.reference_type='batch' AND b.marketplace_key=$5)) OR (i.transaction_type='return_restock' AND EXISTS(SELECT 1 FROM return_cases r JOIN marketplace_orders o ON o.company_id=r.company_id AND o.id=r.marketplace_order_id WHERE r.company_id=i.company_id AND r.id::text=i.reference_id AND i.reference_type='return_case' AND o.marketplace_key=$5)) OR (i.transaction_type='correction' AND i.reference_type='return_restock_correction' AND EXISTS(SELECT 1 FROM return_events e JOIN return_cases r ON r.company_id=e.company_id AND r.id=e.return_case_id JOIN marketplace_orders o ON o.company_id=r.company_id AND o.id=r.marketplace_order_id WHERE e.company_id=i.company_id AND e.id::text=i.reference_id AND o.marketplace_key=$5)) OR (i.transaction_type NOT IN ('ecommerce_out','return_restock') AND NOT (i.transaction_type='correction' AND i.reference_type='return_restock_correction')))`, p.CompanyID, f.From, f.To, f.ProductID, f.Marketplace).Scan(&r.Inventory.StockIn, &r.Inventory.StockOut, &r.Inventory.ConsignmentOut, &r.Inventory.ReturnRestock, &r.Inventory.Adjustments, &r.Inventory.NetMovement)
 		if err != nil {
 			return Report{}, err
 		}
@@ -242,21 +269,85 @@ func (s *Service) Dashboard(ctx context.Context, p auth.Principal, f Filter) (Re
 }
 
 func (s *Service) loadProductMovements(ctx context.Context, p auth.Principal, f Filter, r *Report) error {
-	base := ` FROM products p LEFT JOIN LATERAL (SELECT COALESCE(sum(i.quantity_delta) FILTER(WHERE i.transaction_type='stock_in'),0) stock_in,COALESCE(-sum(i.quantity_delta) FILTER(WHERE i.transaction_type='ecommerce_out'),0) stock_out,COALESCE(sum(i.quantity_delta) FILTER(WHERE i.transaction_type='return_restock' OR (i.transaction_type='correction' AND i.reference_type='return_restock_correction')),0) return_restock,COALESCE(sum(i.quantity_delta) FILTER(WHERE i.transaction_type='manual_adjustment' OR (i.transaction_type='correction' AND i.reference_type IS DISTINCT FROM 'return_restock_correction')),0) adjustments,COALESCE(sum(i.quantity_delta),0) net FROM inventory_transactions i WHERE i.company_id=p.company_id AND i.product_id=p.id AND i.created_at >= $2 AND i.created_at < $3 AND ($4='' OR (i.transaction_type='ecommerce_out' AND EXISTS(SELECT 1 FROM batches b WHERE b.company_id=i.company_id AND b.id::text=i.reference_id AND i.reference_type='batch' AND b.marketplace_key=$4)) OR (i.transaction_type='return_restock' AND EXISTS(SELECT 1 FROM return_cases r JOIN marketplace_orders o ON o.company_id=r.company_id AND o.id=r.marketplace_order_id WHERE r.company_id=i.company_id AND r.id::text=i.reference_id AND i.reference_type='return_case' AND o.marketplace_key=$4)) OR (i.transaction_type='correction' AND i.reference_type='return_restock_correction' AND EXISTS(SELECT 1 FROM return_events e JOIN return_cases r ON r.company_id=e.company_id AND r.id=e.return_case_id JOIN marketplace_orders o ON o.company_id=r.company_id AND o.id=r.marketplace_order_id WHERE e.company_id=i.company_id AND e.id::text=i.reference_id AND o.marketplace_key=$4)) OR (i.transaction_type NOT IN ('ecommerce_out','return_restock') AND NOT (i.transaction_type='correction' AND i.reference_type='return_restock_correction')))) m ON true LEFT JOIN LATERAL (SELECT COALESCE(sum(oi.quantity),0) quantity FROM marketplace_order_items oi JOIN marketplace_orders o ON o.company_id=oi.company_id AND o.id=oi.order_id WHERE oi.company_id=p.company_id AND oi.product_id=p.id AND o.status='resolved' AND o.created_at >= $2 AND o.created_at < $3 AND ($4='' OR o.marketplace_key=$4)) q ON true WHERE p.company_id=$1 AND ($5='' OR p.id::text=$5) AND (m.net<>0 OR q.quantity<>0)`
+	base := ` FROM products p LEFT JOIN LATERAL (SELECT COALESCE(sum(i.quantity_delta) FILTER(WHERE i.transaction_type='stock_in'),0) stock_in,COALESCE(-sum(i.quantity_delta) FILTER(WHERE i.transaction_type='ecommerce_out'),0) stock_out,COALESCE(-sum(i.quantity_delta) FILTER(WHERE i.transaction_type='consignment_out'),0) consignment_out,COALESCE(sum(i.quantity_delta) FILTER(WHERE i.transaction_type='return_restock' OR (i.transaction_type='correction' AND i.reference_type='return_restock_correction')),0) return_restock,COALESCE(sum(i.quantity_delta) FILTER(WHERE i.transaction_type='manual_adjustment' OR (i.transaction_type='correction' AND i.reference_type IS DISTINCT FROM 'return_restock_correction')),0) adjustments,COALESCE(sum(i.quantity_delta),0) net FROM inventory_transactions i WHERE i.company_id=p.company_id AND i.product_id=p.id AND i.created_at >= $2 AND i.created_at < $3 AND ($4='' OR (i.transaction_type='ecommerce_out' AND EXISTS(SELECT 1 FROM batches b WHERE b.company_id=i.company_id AND b.id::text=i.reference_id AND i.reference_type='batch' AND b.marketplace_key=$4)) OR (i.transaction_type='return_restock' AND EXISTS(SELECT 1 FROM return_cases r JOIN marketplace_orders o ON o.company_id=r.company_id AND o.id=r.marketplace_order_id WHERE r.company_id=i.company_id AND r.id::text=i.reference_id AND i.reference_type='return_case' AND o.marketplace_key=$4)) OR (i.transaction_type='correction' AND i.reference_type='return_restock_correction' AND EXISTS(SELECT 1 FROM return_events e JOIN return_cases r ON r.company_id=e.company_id AND r.id=e.return_case_id JOIN marketplace_orders o ON o.company_id=r.company_id AND o.id=r.marketplace_order_id WHERE e.company_id=i.company_id AND e.id::text=i.reference_id AND o.marketplace_key=$4)) OR (i.transaction_type NOT IN ('ecommerce_out','return_restock') AND NOT (i.transaction_type='correction' AND i.reference_type='return_restock_correction')))) m ON true LEFT JOIN LATERAL (SELECT COALESCE(sum(oi.quantity),0) quantity FROM marketplace_order_items oi JOIN marketplace_orders o ON o.company_id=oi.company_id AND o.id=oi.order_id WHERE oi.company_id=p.company_id AND oi.product_id=p.id AND o.status='resolved' AND o.created_at >= $2 AND o.created_at < $3 AND ($4='' OR o.marketplace_key=$4)) q ON true WHERE p.company_id=$1 AND ($5='' OR p.id::text=$5) AND (m.net<>0 OR q.quantity<>0)`
 	if err := s.db.QueryRow(ctx, `SELECT count(*)`+base, p.CompanyID, f.From, f.To, f.Marketplace, f.ProductID).Scan(&r.MovementTotal); err != nil {
 		return err
 	}
-	rows, err := s.db.Query(ctx, `SELECT p.id,p.internal_code,p.name,q.quantity,m.stock_in,m.stock_out,m.return_restock,m.adjustments,m.net`+base+` ORDER BY p.name,p.internal_code,p.id LIMIT $6 OFFSET $7`, p.CompanyID, f.From, f.To, f.Marketplace, f.ProductID, f.Limit, f.Offset)
+	rows, err := s.db.Query(ctx, `SELECT p.id,p.internal_code,p.name,q.quantity,m.stock_in,m.stock_out,m.consignment_out,m.return_restock,m.adjustments,m.net`+base+` ORDER BY p.name,p.internal_code,p.id LIMIT $6 OFFSET $7`, p.CompanyID, f.From, f.To, f.Marketplace, f.ProductID, f.Limit, f.Offset)
 	if err != nil {
 		return err
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var item ProductMovement
-		if err = rows.Scan(&item.ProductID, &item.InternalCode, &item.ProductName, &item.OrderQuantity, &item.StockIn, &item.StockOut, &item.ReturnRestock, &item.Adjustments, &item.NetMovement); err != nil {
+		if err = rows.Scan(&item.ProductID, &item.InternalCode, &item.ProductName, &item.OrderQuantity, &item.StockIn, &item.StockOut, &item.ConsignmentOut, &item.ReturnRestock, &item.Adjustments, &item.NetMovement); err != nil {
 			return err
 		}
 		r.ProductMovements = append(r.ProductMovements, item)
+	}
+	return rows.Err()
+}
+
+func (s *Service) loadConsignmentSummary(ctx context.Context, p auth.Principal, f Filter, r *Report) error {
+	moduleErr := s.authorizer.RequireModule(ctx, p, "consignments")
+	if moduleErr != nil {
+		if errors.Is(moduleErr, authorization.ErrModuleUnavailable) {
+			return nil
+		}
+		return moduleErr
+	}
+	broad := s.authorizer.RequirePermission(ctx, p, "consignments.view") == nil || s.authorizer.RequirePermission(ctx, p, "consignments.manage") == nil
+	if !broad {
+		if err := s.authorizer.RequirePermission(ctx, p, "consignments.work"); err != nil {
+			if errors.Is(err, authorization.ErrPermissionDenied) {
+				return nil
+			}
+			return err
+		}
+	}
+	r.ConsignmentAccess = true
+	r.Consignment = &ConsignmentSummary{Products: []ConsignmentProductQuantity{}, Departments: []DepartmentWorkload{}}
+	access := `($4 OR EXISTS(SELECT 1 FROM consignment_lines al JOIN consignment_department_members dm ON dm.company_id=al.company_id AND dm.department_id=al.department_id JOIN employees e ON e.company_id=dm.company_id AND e.id=dm.employee_id WHERE al.company_id=c.company_id AND al.consignment_id=c.id AND e.user_id=$5))`
+	err := s.db.QueryRow(ctx, `SELECT
+		count(*) FILTER(WHERE c.status NOT IN ('completed','cancelled')),
+		count(*) FILTER(WHERE c.status='completed' AND c.completed_at >= $2 AND c.completed_at < $3),
+		COALESCE(avg(EXTRACT(EPOCH FROM (c.completed_at-c.created_at))/3600) FILTER(WHERE c.status='completed' AND c.completed_at >= $2 AND c.completed_at < $3),0)
+		FROM consignments c WHERE c.company_id=$1 AND `+access, p.CompanyID, f.From, f.To, broad, p.UserID).Scan(&r.Consignment.Pending, &r.Consignment.Completed, &r.Consignment.AverageCompletionHours)
+	if err != nil {
+		return err
+	}
+	err = s.db.QueryRow(ctx, `SELECT COALESCE(-sum(i.quantity_delta),0) FROM inventory_transactions i JOIN consignments c ON c.company_id=i.company_id AND c.id::text=i.reference_id AND i.reference_type='consignment' WHERE i.company_id=$1 AND i.transaction_type='consignment_out' AND i.created_at >= $2 AND i.created_at < $3 AND ($6='' OR i.product_id::text=$6) AND $4 AND `+access, p.CompanyID, f.From, f.To, broad, p.UserID, f.ProductID).Scan(&r.Consignment.InventoryOut)
+	if err != nil {
+		return err
+	}
+	rows, err := s.db.Query(ctx, `SELECT p.id,p.internal_code,p.name,sum(l.required_quantity) FROM consignment_lines l JOIN consignments c ON c.company_id=l.company_id AND c.id=l.consignment_id JOIN products p ON p.company_id=l.company_id AND p.id=l.product_id WHERE l.company_id=$1 AND c.created_at >= $2 AND c.created_at < $3 AND ($6='' OR p.id::text=$6) AND ($4 OR EXISTS(SELECT 1 FROM consignment_department_members dm JOIN employees e ON e.company_id=dm.company_id AND e.id=dm.employee_id WHERE dm.company_id=l.company_id AND dm.department_id=l.department_id AND e.user_id=$5)) GROUP BY p.id,p.internal_code,p.name ORDER BY p.name,p.internal_code,p.id`, p.CompanyID, f.From, f.To, broad, p.UserID, f.ProductID)
+	if err != nil {
+		return err
+	}
+	for rows.Next() {
+		var item ConsignmentProductQuantity
+		if err = rows.Scan(&item.ProductID, &item.InternalCode, &item.ProductName, &item.RequiredQuantity); err != nil {
+			rows.Close()
+			return err
+		}
+		r.Consignment.Products = append(r.Consignment.Products, item)
+	}
+	if err = rows.Err(); err != nil {
+		rows.Close()
+		return err
+	}
+	rows.Close()
+	rows, err = s.db.Query(ctx, `SELECT d.id,d.name,count(DISTINCT c.id),sum(l.required_quantity-l.packed_quantity) FROM consignment_lines l JOIN consignments c ON c.company_id=l.company_id AND c.id=l.consignment_id JOIN consignment_departments d ON d.company_id=l.company_id AND d.id=l.department_id WHERE l.company_id=$1 AND c.status NOT IN ('completed','cancelled') AND ($2 OR EXISTS(SELECT 1 FROM consignment_department_members dm JOIN employees e ON e.company_id=dm.company_id AND e.id=dm.employee_id WHERE dm.company_id=l.company_id AND dm.department_id=l.department_id AND e.user_id=$3)) GROUP BY d.id,d.name ORDER BY d.name,d.id`, p.CompanyID, broad, p.UserID)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var item DepartmentWorkload
+		if err = rows.Scan(&item.DepartmentID, &item.DepartmentName, &item.PendingConsignments, &item.OutstandingQuantity); err != nil {
+			return err
+		}
+		r.Consignment.Departments = append(r.Consignment.Departments, item)
 	}
 	return rows.Err()
 }
