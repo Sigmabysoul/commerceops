@@ -27,6 +27,15 @@ records, return cases/items, append-only return intake events, and granular
 returns permissions. It does not add a return-owned stock counter or mutate the
 inventory ledger.
 
+`000015_return_disposition_inventory` adds inspected/restock-corrected return
+states, per-item restock/correction quantities, immutable disposition and stock
+events, and the centralized `return_restock` inventory ledger type with unique
+tenant/source/product protection.
+
+`000016_return_cancellation_closure` adds explicit closure actor/timestamps,
+append-only cancellation closure events, and the terminal return closure event.
+Closure is lifecycle-only and has no inventory side effect.
+
 ```sh
 make migrate
 ```

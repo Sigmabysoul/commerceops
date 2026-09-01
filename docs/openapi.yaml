@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: CommerceOps API
-  version: 0.8.0
+  version: 0.8.2
 paths:
   /api/v1/health:
     get:
@@ -580,13 +580,27 @@ paths:
         "200": {description: Tenant cancellation detail}
         "403": {$ref: "#/components/responses/Error"}
         "404": {$ref: "#/components/responses/Error"}
+  /api/v1/cancellations/{cancellation_id}/close:
+    parameters:
+      - {name: cancellation_id, in: path, required: true, schema: {type: string, format: uuid}}
+    post:
+      operationId: closeCancellation
+      summary: Idempotently close a cancellation without changing inventory
+      security: [{sessionCookie: []}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/CloseLifecycle"}}}}
+      responses:
+        "201": {description: Cancellation closure recorded}
+        "200": {description: Existing closure returned for exact replay}
+        "403": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+        "409": {$ref: "#/components/responses/Error"}
   /api/v1/returns:
     get:
       operationId: listReturns
       summary: List tenant return cases
       security: [{sessionCookie: []}]
       parameters:
-        - {name: status, in: query, schema: {type: string, enum: [expected, received, inspection_pending, restocked, damaged, rejected, closed]}}
+        - {name: status, in: query, schema: {type: string, enum: [expected, received, inspected, inspection_pending, restocked, restock_corrected, damaged, rejected, closed]}}
         - {name: marketplace, in: query, schema: {type: string, pattern: '^[a-z][a-z0-9_]{0,49}$'}}
       responses:
         "200": {description: Tenant return-case summaries}
@@ -627,6 +641,62 @@ paths:
         "403": {$ref: "#/components/responses/Error"}
         "404": {$ref: "#/components/responses/Error"}
         "409": {$ref: "#/components/responses/Error"}
+  /api/v1/returns/{return_id}/inspect:
+    parameters:
+      - {name: return_id, in: path, required: true, schema: {type: string, format: uuid}}
+    post:
+      operationId: inspectReturn
+      summary: Record an explicit disposition for every received return item
+      security: [{sessionCookie: []}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/InspectReturn"}}}}
+      responses:
+        "201": {description: Return dispositions recorded without changing inventory}
+        "200": {description: Existing inspection returned for exact replay}
+        "403": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+        "409": {$ref: "#/components/responses/Error"}
+  /api/v1/returns/{return_id}/restock:
+    parameters:
+      - {name: return_id, in: path, required: true, schema: {type: string, format: uuid}}
+    post:
+      operationId: restockReturn
+      summary: Atomically accept inspected restockable quantities into centralized inventory
+      security: [{sessionCookie: []}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/RestockReturn"}}}}
+      responses:
+        "201": {description: Return restock ledger transactions recorded}
+        "200": {description: Existing restock returned for exact replay}
+        "403": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+        "409": {$ref: "#/components/responses/Error"}
+  /api/v1/returns/{return_id}/restock-corrections:
+    parameters:
+      - {name: return_id, in: path, required: true, schema: {type: string, format: uuid}}
+    post:
+      operationId: correctReturnRestock
+      summary: Record a bounded compensating inventory correction for an earlier restock
+      security: [{sessionCookie: []}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/CorrectReturnRestock"}}}}
+      responses:
+        "201": {description: Compensating correction recorded without rewriting history}
+        "200": {description: Existing correction returned for exact replay}
+        "403": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+        "409": {$ref: "#/components/responses/Error"}
+  /api/v1/returns/{return_id}/close:
+    parameters:
+      - {name: return_id, in: path, required: true, schema: {type: string, format: uuid}}
+    post:
+      operationId: closeReturn
+      summary: Idempotently close a disposition-complete return without changing inventory
+      security: [{sessionCookie: []}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/CloseLifecycle"}}}}
+      responses:
+        "201": {description: Terminal return closure recorded}
+        "200": {description: Existing closure returned for exact replay}
+        "403": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+        "409": {$ref: "#/components/responses/Error"}
   /api/v1/reports/dashboard:
     get:
       operationId: getOperationalDashboard
@@ -640,7 +710,7 @@ paths:
         - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 200, default: 50}}
         - {name: offset, in: query, schema: {type: integer, minimum: 0, default: 0}}
       responses:
-        "200": {description: Operational summary, marketplace breakdown, and authorized inventory/product movement data}
+        "200": {description: Operational summary, marketplace breakdown, and permission-gated inventory and return/cancellation data}
         "400": {$ref: "#/components/responses/Error"}
         "403": {$ref: "#/components/responses/Error"}
 components:
@@ -840,6 +910,56 @@ components:
             properties:
               return_item_id: {type: string, format: uuid}
               received_quantity: {type: integer, format: int64, minimum: 0}
+        notes: {type: [string, "null"], minLength: 1, maxLength: 2000}
+        idempotency_key: {type: string, minLength: 1, maxLength: 128}
+    InspectReturn:
+      type: object
+      additionalProperties: false
+      required: [items, idempotency_key]
+      properties:
+        items:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items:
+            type: object
+            additionalProperties: false
+            required: [return_item_id, disposition]
+            properties:
+              return_item_id: {type: string, format: uuid}
+              disposition: {type: string, enum: [restockable, damaged, wrong_product, missing, rejected]}
+        notes: {type: [string, "null"], minLength: 1, maxLength: 2000}
+        idempotency_key: {type: string, minLength: 1, maxLength: 128}
+    RestockReturn:
+      type: object
+      additionalProperties: false
+      required: [idempotency_key]
+      properties:
+        notes: {type: [string, "null"], minLength: 1, maxLength: 2000}
+        idempotency_key: {type: string, minLength: 1, maxLength: 128}
+    CorrectReturnRestock:
+      type: object
+      additionalProperties: false
+      required: [items, reason, idempotency_key]
+      properties:
+        items:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items:
+            type: object
+            additionalProperties: false
+            required: [return_item_id, quantity]
+            properties:
+              return_item_id: {type: string, format: uuid}
+              quantity: {type: integer, format: int64, minimum: 1}
+        reason: {type: string, minLength: 1, maxLength: 500}
+        idempotency_key: {type: string, minLength: 1, maxLength: 128}
+    CloseLifecycle:
+      type: object
+      additionalProperties: false
+      required: [idempotency_key]
+      properties:
         notes: {type: [string, "null"], minLength: 1, maxLength: 2000}
         idempotency_key: {type: string, minLength: 1, maxLength: 128}
     ErrorEnvelope:

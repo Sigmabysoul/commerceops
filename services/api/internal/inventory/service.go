@@ -23,6 +23,7 @@ var (
 	ErrInvalidInput      = errors.New("invalid inventory input")
 	ErrConflict          = errors.New("inventory idempotency conflict")
 	ErrInsufficientStock = errors.New("inventory cannot become negative")
+	ErrCancelledOrder    = errors.New("batch contains a cancelled order")
 	uuidRE               = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$`)
 )
 
@@ -203,7 +204,7 @@ func (s *Service) authorize(ctx context.Context, p auth.Principal, permission st
 	return s.authorizer.RequirePermission(ctx, p, permission)
 }
 func validType(v string) bool {
-	return v == "stock_in" || v == "manual_adjustment" || v == "correction" || v == "ecommerce_out"
+	return v == "stock_in" || v == "manual_adjustment" || v == "correction" || v == "ecommerce_out" || v == "return_restock"
 }
 func trim(v *string) *string {
 	if v == nil {

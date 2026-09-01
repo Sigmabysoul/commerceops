@@ -37,3 +37,27 @@ RULE RETURN-003
 
 Expected and received return quantities must be explicit, must remain bounded
 by the normalized order quantity, and must never default to one.
+
+RULE RETURN-004
+
+Only explicitly inspected `restockable` quantities may create a
+`return_restock` inventory transaction. Damaged, rejected, wrong-product, and
+missing quantities must not increase sellable stock.
+
+RULE RETURN-005
+
+An incorrect return restock must be reversed with an immutable compensating
+inventory correction bounded by the original restocked quantity.
+
+RULE CANCELLATION-001
+
+A pre-outbound cancellation must prevent later batch readiness and inventory
+outbound confirmation. A post-outbound cancellation must not silently reverse
+the committed deduction.
+
+RULE RETURN-006
+
+Closing a return or cancellation is a lifecycle operation only. It must append
+actor/time history, must be idempotent, and must never create or reverse an
+inventory transaction. Returns with incomplete receipt, inspection, or an
+unapplied restockable disposition cannot be closed.

@@ -41,9 +41,10 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	authorizer := authorization.NewService(db)
 	coreHTTP := core.NewHTTPHandler(core.NewService(db, authorizer))
 	productHTTP := product.NewHTTPHandler(product.NewService(db, authorizer))
-	inventoryHTTP := inventory.NewHTTPHandler(inventory.NewService(db, authorizer))
+	inventoryService := inventory.NewService(db, authorizer)
+	inventoryHTTP := inventory.NewHTTPHandler(inventoryService)
 	reportingHTTP := reporting.NewHTTPHandler(reporting.NewService(db, authorizer))
-	returnsHTTP := returnsdomain.NewHTTPHandler(returnsdomain.NewService(db, authorizer))
+	returnsHTTP := returnsdomain.NewHTTPHandler(returnsdomain.NewService(db, authorizer, inventoryService))
 	storage, err := newObjectStorage(ctx, cfg)
 	if err != nil {
 		return err
@@ -106,9 +107,14 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	mux.Handle("/api/v1/reports/dashboard", authHTTP.RequireSession(http.HandlerFunc(reportingHTTP.Dashboard)))
 	mux.Handle("/api/v1/cancellations", authHTTP.RequireSession(http.HandlerFunc(returnsHTTP.Cancellations)))
 	mux.Handle("/api/v1/cancellations/{cancellation_id}", authHTTP.RequireSession(http.HandlerFunc(returnsHTTP.Cancellation)))
+	mux.Handle("/api/v1/cancellations/{cancellation_id}/close", authHTTP.RequireSession(http.HandlerFunc(returnsHTTP.CloseCancellation)))
 	mux.Handle("/api/v1/returns", authHTTP.RequireSession(http.HandlerFunc(returnsHTTP.Returns)))
 	mux.Handle("/api/v1/returns/{return_id}", authHTTP.RequireSession(http.HandlerFunc(returnsHTTP.Return)))
 	mux.Handle("/api/v1/returns/{return_id}/receive", authHTTP.RequireSession(http.HandlerFunc(returnsHTTP.Receive)))
+	mux.Handle("/api/v1/returns/{return_id}/inspect", authHTTP.RequireSession(http.HandlerFunc(returnsHTTP.Inspect)))
+	mux.Handle("/api/v1/returns/{return_id}/restock", authHTTP.RequireSession(http.HandlerFunc(returnsHTTP.Restock)))
+	mux.Handle("/api/v1/returns/{return_id}/restock-corrections", authHTTP.RequireSession(http.HandlerFunc(returnsHTTP.CorrectRestock)))
+	mux.Handle("/api/v1/returns/{return_id}/close", authHTTP.RequireSession(http.HandlerFunc(returnsHTTP.CloseReturn)))
 	server := &http.Server{Addr: cfg.HTTPAddr, Handler: httpserver.Middleware(logger, cfg.AllowedOrigins, mux), ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 60 * time.Second}
 
 	errCh := make(chan error, 1)

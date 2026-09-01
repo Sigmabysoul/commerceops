@@ -161,8 +161,9 @@ func (s *Service) EligibleOrders(ctx context.Context, principal auth.Principal, 
 		JOIN processing_jobs pj ON pj.company_id=mo.company_id AND pj.id=mo.processing_job_id
 		LEFT JOIN marketplace_order_items moi ON moi.company_id=mo.company_id AND moi.order_id=mo.id
 		LEFT JOIN batch_members bm ON bm.company_id=mo.company_id AND bm.marketplace_order_id=mo.id
+		LEFT JOIN cancellations c ON c.company_id=mo.company_id AND c.marketplace_order_id=mo.id
 		WHERE mo.company_id=$1 AND mo.marketplace_key=$2 AND pj.status IN ('processed','needs_review')
-		  AND mo.status<>'duplicate' AND bm.marketplace_order_id IS NULL
+		  AND mo.status<>'duplicate' AND bm.marketplace_order_id IS NULL AND c.id IS NULL
 		GROUP BY mo.id ORDER BY mo.created_at,mo.source_page,mo.id LIMIT 500`, principal.CompanyID, marketplace)
 	if err != nil {
 		return nil, err
@@ -218,7 +219,7 @@ func (s *Service) Create(ctx context.Context, principal auth.Principal, input Cr
 		return Batch{}, false, err
 	}
 	var eligibleCount int
-	if err = tx.QueryRow(ctx, `SELECT count(*) FROM marketplace_orders mo JOIN processing_jobs pj ON pj.company_id=mo.company_id AND pj.id=mo.processing_job_id WHERE mo.company_id=$1 AND mo.marketplace_key=$2 AND mo.id=ANY($3::uuid[]) AND pj.status IN ('processed','needs_review') AND mo.status<>'duplicate'`, principal.CompanyID, input.MarketplaceKey, input.OrderIDs).Scan(&eligibleCount); err != nil {
+	if err = tx.QueryRow(ctx, `SELECT count(*) FROM marketplace_orders mo JOIN processing_jobs pj ON pj.company_id=mo.company_id AND pj.id=mo.processing_job_id LEFT JOIN cancellations c ON c.company_id=mo.company_id AND c.marketplace_order_id=mo.id WHERE mo.company_id=$1 AND mo.marketplace_key=$2 AND mo.id=ANY($3::uuid[]) AND pj.status IN ('processed','needs_review') AND mo.status<>'duplicate' AND c.id IS NULL`, principal.CompanyID, input.MarketplaceKey, input.OrderIDs).Scan(&eligibleCount); err != nil {
 		return Batch{}, false, err
 	}
 	if eligibleCount != len(input.OrderIDs) {
@@ -313,6 +314,29 @@ func (s *Service) transition(ctx context.Context, principal auth.Principal, id, 
 		return Batch{}, ErrInvalidState
 	}
 	if target == "ready" {
+		rows, lockErr := tx.Query(ctx, `SELECT mo.id FROM batch_members bm JOIN marketplace_orders mo ON mo.company_id=bm.company_id AND mo.id=bm.marketplace_order_id WHERE bm.company_id=$1 AND bm.batch_id=$2 ORDER BY mo.id FOR UPDATE OF mo`, principal.CompanyID, id)
+		if lockErr != nil {
+			return Batch{}, lockErr
+		}
+		for rows.Next() {
+			var orderID string
+			if lockErr = rows.Scan(&orderID); lockErr != nil {
+				rows.Close()
+				return Batch{}, lockErr
+			}
+		}
+		if lockErr = rows.Err(); lockErr != nil {
+			rows.Close()
+			return Batch{}, lockErr
+		}
+		rows.Close()
+		var cancelled int
+		if err = tx.QueryRow(ctx, `SELECT count(*) FROM batch_members bm JOIN cancellations c ON c.company_id=bm.company_id AND c.marketplace_order_id=bm.marketplace_order_id WHERE bm.company_id=$1 AND bm.batch_id=$2`, principal.CompanyID, id).Scan(&cancelled); err != nil {
+			return Batch{}, err
+		}
+		if cancelled > 0 {
+			return Batch{}, ErrIneligible
+		}
 		var unresolved int
 		if err = tx.QueryRow(ctx, `SELECT count(*) FROM batch_members bm JOIN marketplace_orders mo ON mo.company_id=bm.company_id AND mo.id=bm.marketplace_order_id LEFT JOIN marketplace_order_items moi ON moi.company_id=mo.company_id AND moi.order_id=mo.id WHERE bm.company_id=$1 AND bm.batch_id=$2 AND (mo.status<>'resolved' OR moi.id IS NULL OR moi.product_id IS NULL OR moi.quantity IS NULL OR moi.resolution_status<>'resolved')`, principal.CompanyID, id).Scan(&unresolved); err != nil {
 			return Batch{}, err

@@ -69,3 +69,10 @@ Phase 7 Batch B migration `000013_amazon_document_association` adds the generic
 tenant-scoped `marketplace_order_documents` child relation. It preserves every
 contributing source page, role, source file, and extraction method for normalized
 orders and later shared print-artifact traceability.
+
+Phase 8 migrations `000014` through `000016` add tenant-scoped cancellation and
+physical-return cases, bounded Product Master return items, append-only lifecycle
+events, centralized `return_restock` ledger support, compensating correction
+traceability, and explicit closure actors/timestamps. Returns never maintain a
+second stock balance; Inventory balances and the immutable ledger remain the
+only stock authority.

@@ -60,7 +60,24 @@ inventory domain.
 
 The Phase 8 returns domain references normalized marketplace orders and
 canonical Product Master items for shared Flipkart/Amazon cancellation and
-physical-return intake. It owns lifecycle records and append-only events, but
-not stock. Cancellation and receipt states are inventory-neutral; a later
-explicit restock disposition must cross the centralized inventory boundary
-rather than introducing return-owned counters.
+physical-return processing. It owns lifecycle validation, dispositions,
+idempotency, and append-only events, but not balances or ledger writes.
+Cancellation, receipt, and inspection are inventory-neutral. An authorized
+restock invokes an explicit transaction-scoped Inventory boundary so return
+state, event, immutable `return_restock` ledger entries, balance updates, and
+audits commit atomically. Restock reversal uses compensating `correction`
+entries; history is never rewritten.
+
+Batch eligibility/readiness and Inventory outbound confirmation consult the
+tenant cancellation fact while holding normalized order rows. This serializes
+pre-outbound cancellation against dispatch without moving cancellation
+lifecycle ownership into Batch or Inventory.
+
+Return and cancellation closure remains in the Returns domain and appends
+tenant-scoped lifecycle history and audit records. Closure never calls
+Inventory. The Phase 8 operator workspace is a typed REST client over those
+domain actions; it contains no authoritative transition or stock rules.
+
+Reporting derives permission-gated Phase 8 metrics directly from normalized
+orders, cancellation records, append-only lifecycle events, return items, and
+the Inventory ledger. No return counters or reporting tables are maintained.

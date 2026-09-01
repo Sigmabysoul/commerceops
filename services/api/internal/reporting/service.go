@@ -49,8 +49,22 @@ type InventorySummary struct {
 	CurrentAvailable int64 `json:"current_available"`
 	StockIn          int64 `json:"stock_in"`
 	StockOut         int64 `json:"stock_out"`
+	ReturnRestock    int64 `json:"return_restock"`
 	Adjustments      int64 `json:"adjustments"`
 	NetMovement      int64 `json:"net_movement"`
+}
+
+type ReturnsSummary struct {
+	Cancellations           int64   `json:"cancellations"`
+	ReturnsReceived         int64   `json:"returns_received"`
+	ReceivedQuantity        int64   `json:"received_quantity"`
+	RestockedQuantity       int64   `json:"restocked_quantity"`
+	DamagedQuantity         int64   `json:"damaged_quantity"`
+	ClosedReturns           int64   `json:"closed_returns"`
+	ClosedCancellations     int64   `json:"closed_cancellations"`
+	CohortReturnedOrders    int64   `json:"cohort_returned_orders"`
+	CohortResolvedOrders    int64   `json:"cohort_resolved_orders"`
+	CohortReturnRatePercent float64 `json:"cohort_return_rate_percent"`
 }
 
 type MarketplaceBreakdown struct {
@@ -68,6 +82,7 @@ type ProductMovement struct {
 	OrderQuantity int64  `json:"order_quantity"`
 	StockIn       int64  `json:"stock_in"`
 	StockOut      int64  `json:"stock_out"`
+	ReturnRestock int64  `json:"return_restock"`
 	Adjustments   int64  `json:"adjustments"`
 	NetMovement   int64  `json:"net_movement"`
 }
@@ -86,6 +101,8 @@ type Report struct {
 	Marketplaces      []MarketplaceBreakdown `json:"marketplaces"`
 	InventoryAccess   bool                   `json:"inventory_access"`
 	Inventory         *InventorySummary      `json:"inventory,omitempty"`
+	ReturnsAccess     bool                   `json:"returns_access"`
+	Returns           *ReturnsSummary        `json:"returns,omitempty"`
 	ProductMovements  []ProductMovement      `json:"product_movements"`
 	MovementTotal     int64                  `json:"product_movement_total"`
 	ProductQuantities []ProductQuantity      `json:"product_quantities"`
@@ -155,6 +172,45 @@ func (s *Service) Dashboard(ctx context.Context, p auth.Principal, f Filter) (Re
 	}
 	rows.Close()
 
+	returnsModuleErr := s.authorizer.RequireModule(ctx, p, "returns")
+	returnsPermissionErr := s.authorizer.RequirePermission(ctx, p, "returns.view")
+	if returnsModuleErr == nil && returnsPermissionErr == nil {
+		r.ReturnsAccess = true
+		r.Returns = &ReturnsSummary{}
+		err = s.db.QueryRow(ctx, `
+			SELECT
+			 (SELECT count(*) FROM cancellations c JOIN marketplace_orders o ON o.company_id=c.company_id AND o.id=c.marketplace_order_id WHERE c.company_id=$1 AND c.cancelled_at >= $2 AND c.cancelled_at < $3 AND ($4='' OR o.marketplace_key=$4)),
+			 (SELECT count(*) FROM return_events e JOIN return_cases rc ON rc.company_id=e.company_id AND rc.id=e.return_case_id JOIN marketplace_orders o ON o.company_id=rc.company_id AND o.id=rc.marketplace_order_id WHERE e.company_id=$1 AND e.event_type='received' AND e.created_at >= $2 AND e.created_at < $3 AND ($4='' OR o.marketplace_key=$4)),
+			 (SELECT COALESCE(sum(ri.received_quantity),0) FROM return_events e JOIN return_cases rc ON rc.company_id=e.company_id AND rc.id=e.return_case_id JOIN marketplace_orders o ON o.company_id=rc.company_id AND o.id=rc.marketplace_order_id JOIN return_items ri ON ri.company_id=rc.company_id AND ri.return_case_id=rc.id WHERE e.company_id=$1 AND e.event_type='received' AND e.created_at >= $2 AND e.created_at < $3 AND ($4='' OR o.marketplace_key=$4)),
+			 (SELECT COALESCE(sum(ri.restocked_quantity),0) FROM return_events e JOIN return_cases rc ON rc.company_id=e.company_id AND rc.id=e.return_case_id JOIN marketplace_orders o ON o.company_id=rc.company_id AND o.id=rc.marketplace_order_id JOIN return_items ri ON ri.company_id=rc.company_id AND ri.return_case_id=rc.id WHERE e.company_id=$1 AND e.event_type='restocked' AND e.created_at >= $2 AND e.created_at < $3 AND ($4='' OR o.marketplace_key=$4)),
+			 (SELECT COALESCE(sum(ri.received_quantity),0) FROM return_events e JOIN return_cases rc ON rc.company_id=e.company_id AND rc.id=e.return_case_id JOIN marketplace_orders o ON o.company_id=rc.company_id AND o.id=rc.marketplace_order_id JOIN return_items ri ON ri.company_id=rc.company_id AND ri.return_case_id=rc.id WHERE e.company_id=$1 AND e.event_type='inspected' AND ri.disposition='damaged' AND e.created_at >= $2 AND e.created_at < $3 AND ($4='' OR o.marketplace_key=$4)),
+			 (SELECT count(*) FROM return_events e JOIN return_cases rc ON rc.company_id=e.company_id AND rc.id=e.return_case_id JOIN marketplace_orders o ON o.company_id=rc.company_id AND o.id=rc.marketplace_order_id WHERE e.company_id=$1 AND e.event_type='closed' AND e.created_at >= $2 AND e.created_at < $3 AND ($4='' OR o.marketplace_key=$4)),
+			 (SELECT count(*) FROM cancellation_events e JOIN cancellations c ON c.company_id=e.company_id AND c.id=e.cancellation_id JOIN marketplace_orders o ON o.company_id=c.company_id AND o.id=c.marketplace_order_id WHERE e.company_id=$1 AND e.event_type='closed' AND e.created_at >= $2 AND e.created_at < $3 AND ($4='' OR o.marketplace_key=$4)),
+			 (SELECT count(*) FROM marketplace_orders o WHERE o.company_id=$1 AND o.status='resolved' AND o.created_at >= $2 AND o.created_at < $3 AND ($4='' OR o.marketplace_key=$4) AND EXISTS(SELECT 1 FROM return_cases rc JOIN return_events e ON e.company_id=rc.company_id AND e.return_case_id=rc.id AND e.event_type='received' WHERE rc.company_id=o.company_id AND rc.marketplace_order_id=o.id AND EXISTS(SELECT 1 FROM return_items ri WHERE ri.company_id=rc.company_id AND ri.return_case_id=rc.id AND ri.received_quantity>0))),
+			 (SELECT count(*) FROM marketplace_orders o WHERE o.company_id=$1 AND o.status='resolved' AND o.created_at >= $2 AND o.created_at < $3 AND ($4='' OR o.marketplace_key=$4))`,
+			p.CompanyID, f.From, f.To, f.Marketplace).Scan(
+			&r.Returns.Cancellations,
+			&r.Returns.ReturnsReceived,
+			&r.Returns.ReceivedQuantity,
+			&r.Returns.RestockedQuantity,
+			&r.Returns.DamagedQuantity,
+			&r.Returns.ClosedReturns,
+			&r.Returns.ClosedCancellations,
+			&r.Returns.CohortReturnedOrders,
+			&r.Returns.CohortResolvedOrders,
+		)
+		if err != nil {
+			return Report{}, err
+		}
+		if r.Returns.CohortResolvedOrders > 0 {
+			r.Returns.CohortReturnRatePercent = float64(r.Returns.CohortReturnedOrders) * 100 / float64(r.Returns.CohortResolvedOrders)
+		}
+	} else if !errors.Is(returnsModuleErr, authorization.ErrModuleUnavailable) && returnsModuleErr != nil {
+		return Report{}, returnsModuleErr
+	} else if !errors.Is(returnsPermissionErr, authorization.ErrPermissionDenied) && returnsPermissionErr != nil {
+		return Report{}, returnsPermissionErr
+	}
+
 	moduleErr := s.authorizer.RequireModule(ctx, p, "inventory")
 	permissionErr := s.authorizer.RequirePermission(ctx, p, "inventory.view")
 	if moduleErr == nil && permissionErr == nil {
@@ -170,7 +226,7 @@ func (s *Service) Dashboard(ctx context.Context, p auth.Principal, f Filter) (Re
 		if err != nil {
 			return Report{}, err
 		}
-		err = s.db.QueryRow(ctx, `SELECT COALESCE(sum(quantity_delta) FILTER(WHERE transaction_type='stock_in'),0),COALESCE(-sum(quantity_delta) FILTER(WHERE transaction_type='ecommerce_out'),0),COALESCE(sum(quantity_delta) FILTER(WHERE transaction_type IN('manual_adjustment','correction')),0),COALESCE(sum(quantity_delta),0) FROM inventory_transactions i WHERE i.company_id=$1 AND i.created_at >= $2 AND i.created_at < $3 AND ($4='' OR i.product_id::text=$4) AND (i.transaction_type<>'ecommerce_out' OR $5='' OR EXISTS(SELECT 1 FROM batches b WHERE b.company_id=i.company_id AND b.id::text=i.reference_id AND i.reference_type='batch' AND b.marketplace_key=$5))`, p.CompanyID, f.From, f.To, f.ProductID, f.Marketplace).Scan(&r.Inventory.StockIn, &r.Inventory.StockOut, &r.Inventory.Adjustments, &r.Inventory.NetMovement)
+		err = s.db.QueryRow(ctx, `SELECT COALESCE(sum(quantity_delta) FILTER(WHERE transaction_type='stock_in'),0),COALESCE(-sum(quantity_delta) FILTER(WHERE transaction_type='ecommerce_out'),0),COALESCE(sum(quantity_delta) FILTER(WHERE transaction_type='return_restock' OR (transaction_type='correction' AND reference_type='return_restock_correction')),0),COALESCE(sum(quantity_delta) FILTER(WHERE transaction_type='manual_adjustment' OR (transaction_type='correction' AND reference_type IS DISTINCT FROM 'return_restock_correction')),0),COALESCE(sum(quantity_delta),0) FROM inventory_transactions i WHERE i.company_id=$1 AND i.created_at >= $2 AND i.created_at < $3 AND ($4='' OR i.product_id::text=$4) AND ($5='' OR (i.transaction_type='ecommerce_out' AND EXISTS(SELECT 1 FROM batches b WHERE b.company_id=i.company_id AND b.id::text=i.reference_id AND i.reference_type='batch' AND b.marketplace_key=$5)) OR (i.transaction_type='return_restock' AND EXISTS(SELECT 1 FROM return_cases r JOIN marketplace_orders o ON o.company_id=r.company_id AND o.id=r.marketplace_order_id WHERE r.company_id=i.company_id AND r.id::text=i.reference_id AND i.reference_type='return_case' AND o.marketplace_key=$5)) OR (i.transaction_type='correction' AND i.reference_type='return_restock_correction' AND EXISTS(SELECT 1 FROM return_events e JOIN return_cases r ON r.company_id=e.company_id AND r.id=e.return_case_id JOIN marketplace_orders o ON o.company_id=r.company_id AND o.id=r.marketplace_order_id WHERE e.company_id=i.company_id AND e.id::text=i.reference_id AND o.marketplace_key=$5)) OR (i.transaction_type NOT IN ('ecommerce_out','return_restock') AND NOT (i.transaction_type='correction' AND i.reference_type='return_restock_correction')))`, p.CompanyID, f.From, f.To, f.ProductID, f.Marketplace).Scan(&r.Inventory.StockIn, &r.Inventory.StockOut, &r.Inventory.ReturnRestock, &r.Inventory.Adjustments, &r.Inventory.NetMovement)
 		if err != nil {
 			return Report{}, err
 		}
@@ -186,18 +242,18 @@ func (s *Service) Dashboard(ctx context.Context, p auth.Principal, f Filter) (Re
 }
 
 func (s *Service) loadProductMovements(ctx context.Context, p auth.Principal, f Filter, r *Report) error {
-	base := ` FROM products p LEFT JOIN LATERAL (SELECT COALESCE(sum(i.quantity_delta) FILTER(WHERE i.transaction_type='stock_in'),0) stock_in,COALESCE(-sum(i.quantity_delta) FILTER(WHERE i.transaction_type='ecommerce_out'),0) stock_out,COALESCE(sum(i.quantity_delta) FILTER(WHERE i.transaction_type IN('manual_adjustment','correction')),0) adjustments,COALESCE(sum(i.quantity_delta),0) net FROM inventory_transactions i WHERE i.company_id=p.company_id AND i.product_id=p.id AND i.created_at >= $2 AND i.created_at < $3 AND (i.transaction_type<>'ecommerce_out' OR $4='' OR EXISTS(SELECT 1 FROM batches b WHERE b.company_id=i.company_id AND b.id::text=i.reference_id AND i.reference_type='batch' AND b.marketplace_key=$4))) m ON true LEFT JOIN LATERAL (SELECT COALESCE(sum(oi.quantity),0) quantity FROM marketplace_order_items oi JOIN marketplace_orders o ON o.company_id=oi.company_id AND o.id=oi.order_id WHERE oi.company_id=p.company_id AND oi.product_id=p.id AND o.status='resolved' AND o.created_at >= $2 AND o.created_at < $3 AND ($4='' OR o.marketplace_key=$4)) q ON true WHERE p.company_id=$1 AND ($5='' OR p.id::text=$5) AND (m.net<>0 OR q.quantity<>0)`
+	base := ` FROM products p LEFT JOIN LATERAL (SELECT COALESCE(sum(i.quantity_delta) FILTER(WHERE i.transaction_type='stock_in'),0) stock_in,COALESCE(-sum(i.quantity_delta) FILTER(WHERE i.transaction_type='ecommerce_out'),0) stock_out,COALESCE(sum(i.quantity_delta) FILTER(WHERE i.transaction_type='return_restock' OR (i.transaction_type='correction' AND i.reference_type='return_restock_correction')),0) return_restock,COALESCE(sum(i.quantity_delta) FILTER(WHERE i.transaction_type='manual_adjustment' OR (i.transaction_type='correction' AND i.reference_type IS DISTINCT FROM 'return_restock_correction')),0) adjustments,COALESCE(sum(i.quantity_delta),0) net FROM inventory_transactions i WHERE i.company_id=p.company_id AND i.product_id=p.id AND i.created_at >= $2 AND i.created_at < $3 AND ($4='' OR (i.transaction_type='ecommerce_out' AND EXISTS(SELECT 1 FROM batches b WHERE b.company_id=i.company_id AND b.id::text=i.reference_id AND i.reference_type='batch' AND b.marketplace_key=$4)) OR (i.transaction_type='return_restock' AND EXISTS(SELECT 1 FROM return_cases r JOIN marketplace_orders o ON o.company_id=r.company_id AND o.id=r.marketplace_order_id WHERE r.company_id=i.company_id AND r.id::text=i.reference_id AND i.reference_type='return_case' AND o.marketplace_key=$4)) OR (i.transaction_type='correction' AND i.reference_type='return_restock_correction' AND EXISTS(SELECT 1 FROM return_events e JOIN return_cases r ON r.company_id=e.company_id AND r.id=e.return_case_id JOIN marketplace_orders o ON o.company_id=r.company_id AND o.id=r.marketplace_order_id WHERE e.company_id=i.company_id AND e.id::text=i.reference_id AND o.marketplace_key=$4)) OR (i.transaction_type NOT IN ('ecommerce_out','return_restock') AND NOT (i.transaction_type='correction' AND i.reference_type='return_restock_correction')))) m ON true LEFT JOIN LATERAL (SELECT COALESCE(sum(oi.quantity),0) quantity FROM marketplace_order_items oi JOIN marketplace_orders o ON o.company_id=oi.company_id AND o.id=oi.order_id WHERE oi.company_id=p.company_id AND oi.product_id=p.id AND o.status='resolved' AND o.created_at >= $2 AND o.created_at < $3 AND ($4='' OR o.marketplace_key=$4)) q ON true WHERE p.company_id=$1 AND ($5='' OR p.id::text=$5) AND (m.net<>0 OR q.quantity<>0)`
 	if err := s.db.QueryRow(ctx, `SELECT count(*)`+base, p.CompanyID, f.From, f.To, f.Marketplace, f.ProductID).Scan(&r.MovementTotal); err != nil {
 		return err
 	}
-	rows, err := s.db.Query(ctx, `SELECT p.id,p.internal_code,p.name,q.quantity,m.stock_in,m.stock_out,m.adjustments,m.net`+base+` ORDER BY p.name,p.internal_code,p.id LIMIT $6 OFFSET $7`, p.CompanyID, f.From, f.To, f.Marketplace, f.ProductID, f.Limit, f.Offset)
+	rows, err := s.db.Query(ctx, `SELECT p.id,p.internal_code,p.name,q.quantity,m.stock_in,m.stock_out,m.return_restock,m.adjustments,m.net`+base+` ORDER BY p.name,p.internal_code,p.id LIMIT $6 OFFSET $7`, p.CompanyID, f.From, f.To, f.Marketplace, f.ProductID, f.Limit, f.Offset)
 	if err != nil {
 		return err
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var item ProductMovement
-		if err = rows.Scan(&item.ProductID, &item.InternalCode, &item.ProductName, &item.OrderQuantity, &item.StockIn, &item.StockOut, &item.Adjustments, &item.NetMovement); err != nil {
+		if err = rows.Scan(&item.ProductID, &item.InternalCode, &item.ProductName, &item.OrderQuantity, &item.StockIn, &item.StockOut, &item.ReturnRestock, &item.Adjustments, &item.NetMovement); err != nil {
 			return err
 		}
 		r.ProductMovements = append(r.ProductMovements, item)

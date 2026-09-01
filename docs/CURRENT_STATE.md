@@ -14,7 +14,7 @@ Phase 7 approved baseline:
 
 ## Phase Status
 
-`BATCH_A_COMPLETE_AWAITING_EXTERNAL_REVIEW`
+`PHASE_8_COMPLETE_AWAITING_EXTERNAL_REVIEW`
 
 Phases 0–7 are approved.
 
@@ -28,7 +28,7 @@ Track marketplace cancellations and physical returns against normalized orders,
 then reconcile inventory only after explicit operational evidence and an
 authorized disposition.
 
-## Phase 8 Batch Strategy
+## Phase 8 Delivery
 
 ### Batch A — Cancellation and physical-return intake foundation
 
@@ -40,35 +40,41 @@ authorized disposition.
 - [x] exact idempotency, append-only return events, and audit traceability
 - [x] returns entitlement and dedicated view/manage/restock permissions
 - [x] shared Flipkart/Amazon domain and API contracts
-- [x] full PostgreSQL-backed verification
+- [x] full PostgreSQL-backed Batch A verification
 
-## Phase 8 Batch A Verification
+### Disposition and inventory integration
 
-Batch A passed `make verify-full` against a freshly initialized disposable
-PostgreSQL 18.6 database migrated through `000014`, including:
+- [x] explicit inspection and restockable/damaged/rejected/wrong/missing dispositions
+- [x] centralized, atomic `return_restock` inventory integration
+- [x] bounded immutable compensating restock corrections
+- [x] cancellation-aware batch eligibility, readiness, and outbound confirmation
+- [x] exact and concurrent replay protection with full ledger reconciliation
 
-- Flipkart and Amazon normalized-order association
-- cancellation classification before and after authoritative outbound confirmation
-- exact replay, changed-payload conflict, and duplicate cancellation prevention
-- explicit partial expected and received quantities without quantity defaults
-- cumulative and concurrent return-quantity bounds against the original order
-- cross-tenant read/write isolation and returns entitlement/permission denial
-- append-only event and audit traceability
-- confirmation that cancellation, intake, and receipt create no inventory transaction
-- migration `000014` up/down coverage
+### Phase completion
+
+- [x] explicit inventory-neutral return and cancellation closure
+- [x] closure actor/timestamp, append-only history, idempotency, and audit
+- [x] expected, received, needs-inspection, completed, and cancellation queues
+- [x] detail actions, Product Master quantities, inventory impact, and history
+- [x] permission-gated return/cancellation reporting and defined cohort return rate
+- [x] Flipkart/Amazon marketplace filtering and tenant isolation
+- [x] final full PostgreSQL-backed verification
+
+## Phase 8 Verification
+
+Phase 8 passed `make verify-full` against a freshly initialized disposable
+PostgreSQL 18.6 database migrated through `000016`, including:
+
+- pre/post-outbound cancellation behavior and dispatch race serialization
+- explicit partial receipt, inspection, restock, correction, and closure
+- exact replay, changed-payload conflict, and concurrent action bounds
+- Flipkart/Amazon association, marketplace filtering, and tenant isolation
+- authorization and module-entitlement denial without reporting leakage
+- gross operational return metrics, cohort rate, and net ledger reconciliation
+- migrations `000014`, `000015`, and `000016` up/down coverage
 - the complete PostgreSQL-backed Go suite, Go vet/build, frontend typecheck,
-  lint, production build, and `git diff --check`
-
-### Deferred after Batch A
-
-- cancelled-order dispatch prevention and closure workflow
-- inspection and disposition actions
-- centralized `return_restock` inventory integration and compensating correction
-- frontend queues and return/cancellation detail screens
-- Phase 6 dashboard return/cancellation metrics
-- later Phase 8 batches and Phase 9
+  lint, production build, OpenAPI parsing, and `git diff --check`
 
 ## Next Allowed Task
 
-Complete and externally review Phase 8 Batch A. Do not begin its inventory
-integration, later Phase 8 batches, or Phase 9 automatically.
+Externally review and approve Phase 8. Do not begin Phase 9 automatically.

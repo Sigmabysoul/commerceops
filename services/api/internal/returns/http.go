@@ -52,6 +52,26 @@ func (h *HTTPHandler) Cancellation(w http.ResponseWriter, r *http.Request) {
 	httpserver.WriteJSON(w, http.StatusOK, map[string]any{"cancellation": item})
 }
 
+func (h *HTTPHandler) CloseCancellation(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		methodNotAllowed(w)
+		return
+	}
+	var input CloseInput
+	if !httpserver.DecodeJSON(w, r, &input) {
+		return
+	}
+	item, replayed, err := h.service.CloseCancellation(r.Context(), principal(r), r.PathValue("cancellation_id"), input)
+	if writeError(w, err) {
+		return
+	}
+	status := http.StatusCreated
+	if replayed {
+		status = http.StatusOK
+	}
+	httpserver.WriteJSON(w, status, map[string]any{"cancellation": item, "idempotent_replay": replayed})
+}
+
 func (h *HTTPHandler) Returns(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
@@ -111,6 +131,69 @@ func (h *HTTPHandler) Receive(w http.ResponseWriter, r *http.Request) {
 	httpserver.WriteJSON(w, status, map[string]any{"return": item, "idempotent_replay": replayed})
 }
 
+func (h *HTTPHandler) Inspect(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		methodNotAllowed(w)
+		return
+	}
+	var input InspectReturnInput
+	if !httpserver.DecodeJSON(w, r, &input) {
+		return
+	}
+	item, replayed, err := h.service.InspectReturn(r.Context(), principal(r), r.PathValue("return_id"), input)
+	writeLifecycleResult(w, item, replayed, err)
+}
+
+func (h *HTTPHandler) Restock(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		methodNotAllowed(w)
+		return
+	}
+	var input RestockReturnInput
+	if !httpserver.DecodeJSON(w, r, &input) {
+		return
+	}
+	item, replayed, err := h.service.RestockReturn(r.Context(), principal(r), r.PathValue("return_id"), input)
+	writeLifecycleResult(w, item, replayed, err)
+}
+
+func (h *HTTPHandler) CorrectRestock(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		methodNotAllowed(w)
+		return
+	}
+	var input CorrectRestockInput
+	if !httpserver.DecodeJSON(w, r, &input) {
+		return
+	}
+	item, replayed, err := h.service.CorrectRestock(r.Context(), principal(r), r.PathValue("return_id"), input)
+	writeLifecycleResult(w, item, replayed, err)
+}
+
+func (h *HTTPHandler) CloseReturn(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		methodNotAllowed(w)
+		return
+	}
+	var input CloseInput
+	if !httpserver.DecodeJSON(w, r, &input) {
+		return
+	}
+	item, replayed, err := h.service.CloseReturn(r.Context(), principal(r), r.PathValue("return_id"), input)
+	writeLifecycleResult(w, item, replayed, err)
+}
+
+func writeLifecycleResult(w http.ResponseWriter, item ReturnCase, replayed bool, err error) {
+	if writeError(w, err) {
+		return
+	}
+	status := http.StatusCreated
+	if replayed {
+		status = http.StatusOK
+	}
+	httpserver.WriteJSON(w, status, map[string]any{"return": item, "idempotent_replay": replayed})
+}
+
 func principal(r *http.Request) auth.Principal {
 	value, _ := auth.PrincipalFromContext(r.Context())
 	return value
@@ -137,6 +220,8 @@ func writeError(w http.ResponseWriter, err error) bool {
 		httpserver.WriteError(w, http.StatusConflict, "INVALID_RETURN_STATE", "Return state transition is not allowed")
 	case errors.Is(err, ErrQuantity):
 		httpserver.WriteError(w, http.StatusConflict, "RETURN_QUANTITY_EXCEEDED", "Return quantity exceeds the eligible order quantity")
+	case errors.Is(err, ErrInventoryState):
+		httpserver.WriteError(w, http.StatusConflict, "INVENTORY_CONSTRAINT", "Inventory cannot apply the return movement")
 	default:
 		httpserver.WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Something went wrong")
 	}

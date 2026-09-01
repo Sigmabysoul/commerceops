@@ -14,6 +14,7 @@ import (
 	"github.com/commerceops/commerceops/services/api/internal/audit"
 	"github.com/commerceops/commerceops/services/api/internal/auth"
 	"github.com/commerceops/commerceops/services/api/internal/authorization"
+	"github.com/commerceops/commerceops/services/api/internal/inventory"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -25,29 +26,42 @@ var (
 	ErrConflict       = errors.New("return or cancellation conflict")
 	ErrInvalidState   = errors.New("return state transition is not allowed")
 	ErrQuantity       = errors.New("return quantity exceeds the order quantity")
+	ErrInventoryState = errors.New("inventory cannot apply the return movement")
 	uuidRE            = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$`)
 	marketplaceRE     = regexp.MustCompile(`^[a-z][a-z0-9_]{0,49}$`)
-	validReturnStatus = map[string]bool{"expected": true, "received": true, "inspection_pending": true, "restocked": true, "damaged": true, "rejected": true, "closed": true}
+	validReturnStatus = map[string]bool{"expected": true, "received": true, "inspected": true, "inspection_pending": true, "restocked": true, "restock_corrected": true, "damaged": true, "rejected": true, "closed": true}
 )
 
 type Service struct {
 	db         *pgxpool.Pool
 	authorizer *authorization.Service
+	inventory  *inventory.Service
 	audit      audit.Recorder
 }
 
 type Cancellation struct {
-	ID                 string    `json:"id"`
-	MarketplaceOrderID string    `json:"marketplace_order_id"`
-	Marketplace        string    `json:"marketplace"`
-	ExternalOrderID    *string   `json:"external_order_id"`
-	Status             string    `json:"status"`
-	OutboundState      string    `json:"outbound_state"`
-	Reason             string    `json:"reason"`
-	CancelledAt        time.Time `json:"cancelled_at"`
-	RecordedBy         string    `json:"recorded_by"`
-	CreatedAt          time.Time `json:"created_at"`
-	UpdatedAt          time.Time `json:"updated_at"`
+	ID                 string              `json:"id"`
+	MarketplaceOrderID string              `json:"marketplace_order_id"`
+	Marketplace        string              `json:"marketplace"`
+	ExternalOrderID    *string             `json:"external_order_id"`
+	Status             string              `json:"status"`
+	OutboundState      string              `json:"outbound_state"`
+	Reason             string              `json:"reason"`
+	CancelledAt        time.Time           `json:"cancelled_at"`
+	RecordedBy         string              `json:"recorded_by"`
+	ClosedBy           *string             `json:"closed_by"`
+	ClosedAt           *time.Time          `json:"closed_at"`
+	CreatedAt          time.Time           `json:"created_at"`
+	UpdatedAt          time.Time           `json:"updated_at"`
+	Events             []CancellationEvent `json:"events"`
+}
+
+type CancellationEvent struct {
+	ID          string    `json:"id"`
+	EventType   string    `json:"event_type"`
+	ActorUserID string    `json:"actor_user_id"`
+	Notes       *string   `json:"notes"`
+	CreatedAt   time.Time `json:"created_at"`
 }
 
 type CreateCancellationInput struct {
@@ -58,20 +72,23 @@ type CreateCancellationInput struct {
 }
 
 type ReturnCase struct {
-	ID                 string        `json:"id"`
-	MarketplaceOrderID string        `json:"marketplace_order_id"`
-	Marketplace        string        `json:"marketplace"`
-	ExternalOrderID    *string       `json:"external_order_id"`
-	Status             string        `json:"status"`
-	Reason             string        `json:"reason"`
-	Notes              *string       `json:"notes"`
-	CreatedBy          string        `json:"created_by"`
-	ReceivedBy         *string       `json:"received_by"`
-	ReceivedAt         *time.Time    `json:"received_at"`
-	CreatedAt          time.Time     `json:"created_at"`
-	UpdatedAt          time.Time     `json:"updated_at"`
-	Items              []ReturnItem  `json:"items"`
-	Events             []ReturnEvent `json:"events"`
+	ID                 string            `json:"id"`
+	MarketplaceOrderID string            `json:"marketplace_order_id"`
+	Marketplace        string            `json:"marketplace"`
+	ExternalOrderID    *string           `json:"external_order_id"`
+	Status             string            `json:"status"`
+	Reason             string            `json:"reason"`
+	Notes              *string           `json:"notes"`
+	CreatedBy          string            `json:"created_by"`
+	ReceivedBy         *string           `json:"received_by"`
+	ReceivedAt         *time.Time        `json:"received_at"`
+	ClosedBy           *string           `json:"closed_by"`
+	ClosedAt           *time.Time        `json:"closed_at"`
+	CreatedAt          time.Time         `json:"created_at"`
+	UpdatedAt          time.Time         `json:"updated_at"`
+	Items              []ReturnItem      `json:"items"`
+	Events             []ReturnEvent     `json:"events"`
+	InventoryImpact    []InventoryImpact `json:"inventory_impact"`
 }
 
 type ReturnItem struct {
@@ -83,6 +100,18 @@ type ReturnItem struct {
 	ExpectedQuantity       int64  `json:"expected_quantity"`
 	ReceivedQuantity       *int64 `json:"received_quantity"`
 	Disposition            string `json:"disposition"`
+	RestockedQuantity      int64  `json:"restocked_quantity"`
+	CorrectedQuantity      int64  `json:"corrected_quantity"`
+}
+
+type InventoryImpact struct {
+	TransactionID   string    `json:"transaction_id"`
+	ProductID       string    `json:"product_id"`
+	TransactionType string    `json:"transaction_type"`
+	QuantityDelta   int64     `json:"quantity_delta"`
+	ReferenceType   string    `json:"reference_type"`
+	ReferenceID     string    `json:"reference_id"`
+	CreatedAt       time.Time `json:"created_at"`
 }
 
 type ReturnEvent struct {
@@ -117,8 +146,8 @@ type ReceiveReturnInput struct {
 	IdempotencyKey string              `json:"idempotency_key"`
 }
 
-func NewService(db *pgxpool.Pool, authorizer *authorization.Service) *Service {
-	return &Service{db: db, authorizer: authorizer}
+func NewService(db *pgxpool.Pool, authorizer *authorization.Service, inventoryService *inventory.Service) *Service {
+	return &Service{db: db, authorizer: authorizer, inventory: inventoryService}
 }
 
 func (s *Service) ListCancellations(ctx context.Context, p auth.Principal, status, marketplace string) ([]Cancellation, error) {
@@ -153,7 +182,7 @@ func (s *Service) GetCancellation(ctx context.Context, p auth.Principal, id stri
 	if !uuidRE.MatchString(id) {
 		return Cancellation{}, ErrInvalidInput
 	}
-	return loadCancellation(s.db.QueryRow(ctx, cancellationSelect+` WHERE c.company_id=$1 AND c.id=$2`, p.CompanyID, id))
+	return loadCancellation(ctx, s.db, p.CompanyID, id)
 }
 
 func (s *Service) CreateCancellation(ctx context.Context, p auth.Principal, input CreateCancellationInput) (Cancellation, bool, error) {
@@ -174,7 +203,7 @@ func (s *Service) CreateCancellation(ctx context.Context, p auth.Principal, inpu
 	defer tx.Rollback(ctx) //nolint:errcheck
 	var existing Cancellation
 	var oldHash string
-	err = scanCancellationHash(tx.QueryRow(ctx, `SELECT c.id,c.marketplace_order_id,o.marketplace_key,o.marketplace_order_id,c.status,c.outbound_state,c.reason,c.cancelled_at,c.recorded_by,c.created_at,c.updated_at,c.request_hash FROM cancellations c JOIN marketplace_orders o ON o.company_id=c.company_id AND o.id=c.marketplace_order_id WHERE c.company_id=$1 AND c.idempotency_key=$2`, p.CompanyID, input.IdempotencyKey), &existing, &oldHash)
+	err = scanCancellationHash(tx.QueryRow(ctx, `SELECT c.id,c.marketplace_order_id,o.marketplace_key,o.marketplace_order_id,c.status,c.outbound_state,c.reason,c.cancelled_at,c.recorded_by,c.closed_by,c.closed_at,c.created_at,c.updated_at,c.request_hash FROM cancellations c JOIN marketplace_orders o ON o.company_id=c.company_id AND o.id=c.marketplace_order_id WHERE c.company_id=$1 AND c.idempotency_key=$2`, p.CompanyID, input.IdempotencyKey), &existing, &oldHash)
 	if err == nil {
 		if oldHash != hash {
 			return Cancellation{}, false, ErrConflict
@@ -195,7 +224,7 @@ func (s *Service) CreateCancellation(ctx context.Context, p auth.Principal, inpu
 	if err != nil {
 		return Cancellation{}, false, err
 	}
-	err = scanCancellationHash(tx.QueryRow(ctx, `SELECT c.id,c.marketplace_order_id,o.marketplace_key,o.marketplace_order_id,c.status,c.outbound_state,c.reason,c.cancelled_at,c.recorded_by,c.created_at,c.updated_at,c.request_hash FROM cancellations c JOIN marketplace_orders o ON o.company_id=c.company_id AND o.id=c.marketplace_order_id WHERE c.company_id=$1 AND c.idempotency_key=$2`, p.CompanyID, input.IdempotencyKey), &existing, &oldHash)
+	err = scanCancellationHash(tx.QueryRow(ctx, `SELECT c.id,c.marketplace_order_id,o.marketplace_key,o.marketplace_order_id,c.status,c.outbound_state,c.reason,c.cancelled_at,c.recorded_by,c.closed_by,c.closed_at,c.created_at,c.updated_at,c.request_hash FROM cancellations c JOIN marketplace_orders o ON o.company_id=c.company_id AND o.id=c.marketplace_order_id WHERE c.company_id=$1 AND c.idempotency_key=$2`, p.CompanyID, input.IdempotencyKey), &existing, &oldHash)
 	if err == nil {
 		if oldHash != hash {
 			return Cancellation{}, false, ErrConflict
@@ -225,7 +254,7 @@ func (s *Service) CreateCancellation(ctx context.Context, p auth.Principal, inpu
 	if err = s.audit.Record(ctx, tx, p.CompanyID, p.UserID, "returns.cancellation_recorded", "cancellation", id, map[string]any{"marketplace": marketplace, "marketplace_order_id": input.MarketplaceOrderID, "outbound_state": outboundState}); err != nil {
 		return Cancellation{}, false, err
 	}
-	created, err := loadCancellation(tx.QueryRow(ctx, cancellationSelect+` WHERE c.company_id=$1 AND c.id=$2`, p.CompanyID, id))
+	created, err := loadCancellation(ctx, tx, p.CompanyID, id)
 	if err != nil {
 		return Cancellation{}, false, err
 	}
@@ -513,8 +542,8 @@ func (s *Service) authorize(ctx context.Context, p auth.Principal, permission st
 	return s.authorizer.RequirePermission(ctx, p, permission)
 }
 
-const cancellationSelect = `SELECT c.id,c.marketplace_order_id,o.marketplace_key,o.marketplace_order_id,c.status,c.outbound_state,c.reason,c.cancelled_at,c.recorded_by,c.created_at,c.updated_at FROM cancellations c JOIN marketplace_orders o ON o.company_id=c.company_id AND o.id=c.marketplace_order_id`
-const returnSelect = `SELECT r.id,r.marketplace_order_id,o.marketplace_key,o.marketplace_order_id,r.status,r.reason,r.notes,r.created_by,r.received_by,r.received_at,r.created_at,r.updated_at FROM return_cases r JOIN marketplace_orders o ON o.company_id=r.company_id AND o.id=r.marketplace_order_id`
+const cancellationSelect = `SELECT c.id,c.marketplace_order_id,o.marketplace_key,o.marketplace_order_id,c.status,c.outbound_state,c.reason,c.cancelled_at,c.recorded_by,c.closed_by,c.closed_at,c.created_at,c.updated_at FROM cancellations c JOIN marketplace_orders o ON o.company_id=c.company_id AND o.id=c.marketplace_order_id`
+const returnSelect = `SELECT r.id,r.marketplace_order_id,o.marketplace_key,o.marketplace_order_id,r.status,r.reason,r.notes,r.created_by,r.received_by,r.received_at,r.closed_by,r.closed_at,r.created_at,r.updated_at FROM return_cases r JOIN marketplace_orders o ON o.company_id=r.company_id AND o.id=r.marketplace_order_id`
 
 type scanner interface{ Scan(...any) error }
 type queryer interface {
@@ -523,25 +552,45 @@ type queryer interface {
 }
 
 func scanCancellation(row scanner, item *Cancellation) error {
-	return row.Scan(&item.ID, &item.MarketplaceOrderID, &item.Marketplace, &item.ExternalOrderID, &item.Status, &item.OutboundState, &item.Reason, &item.CancelledAt, &item.RecordedBy, &item.CreatedAt, &item.UpdatedAt)
+	item.Events = make([]CancellationEvent, 0)
+	return row.Scan(&item.ID, &item.MarketplaceOrderID, &item.Marketplace, &item.ExternalOrderID, &item.Status, &item.OutboundState, &item.Reason, &item.CancelledAt, &item.RecordedBy, &item.ClosedBy, &item.ClosedAt, &item.CreatedAt, &item.UpdatedAt)
 }
 
-func loadCancellation(row scanner) (Cancellation, error) {
+func loadCancellation(ctx context.Context, q queryer, companyID, id string) (Cancellation, error) {
 	var item Cancellation
-	if err := scanCancellation(row, &item); err != nil {
+	if err := scanCancellation(q.QueryRow(ctx, cancellationSelect+` WHERE c.company_id=$1 AND c.id=$2`, companyID, id), &item); err != nil {
 		return Cancellation{}, mapDBError(err)
 	}
+	rows, err := q.Query(ctx, `SELECT id,event_type,actor_user_id,notes,created_at FROM cancellation_events WHERE company_id=$1 AND cancellation_id=$2 ORDER BY created_at,id`, companyID, id)
+	if err != nil {
+		return Cancellation{}, err
+	}
+	for rows.Next() {
+		var event CancellationEvent
+		if err = rows.Scan(&event.ID, &event.EventType, &event.ActorUserID, &event.Notes, &event.CreatedAt); err != nil {
+			rows.Close()
+			return Cancellation{}, err
+		}
+		item.Events = append(item.Events, event)
+	}
+	if err = rows.Err(); err != nil {
+		rows.Close()
+		return Cancellation{}, err
+	}
+	rows.Close()
 	return item, nil
 }
 
 func scanCancellationHash(row scanner, item *Cancellation, hash *string) error {
-	return row.Scan(&item.ID, &item.MarketplaceOrderID, &item.Marketplace, &item.ExternalOrderID, &item.Status, &item.OutboundState, &item.Reason, &item.CancelledAt, &item.RecordedBy, &item.CreatedAt, &item.UpdatedAt, hash)
+	item.Events = make([]CancellationEvent, 0)
+	return row.Scan(&item.ID, &item.MarketplaceOrderID, &item.Marketplace, &item.ExternalOrderID, &item.Status, &item.OutboundState, &item.Reason, &item.CancelledAt, &item.RecordedBy, &item.ClosedBy, &item.ClosedAt, &item.CreatedAt, &item.UpdatedAt, hash)
 }
 
 func scanReturn(row scanner, item *ReturnCase) error {
 	item.Items = make([]ReturnItem, 0)
 	item.Events = make([]ReturnEvent, 0)
-	return row.Scan(&item.ID, &item.MarketplaceOrderID, &item.Marketplace, &item.ExternalOrderID, &item.Status, &item.Reason, &item.Notes, &item.CreatedBy, &item.ReceivedBy, &item.ReceivedAt, &item.CreatedAt, &item.UpdatedAt)
+	item.InventoryImpact = make([]InventoryImpact, 0)
+	return row.Scan(&item.ID, &item.MarketplaceOrderID, &item.Marketplace, &item.ExternalOrderID, &item.Status, &item.Reason, &item.Notes, &item.CreatedBy, &item.ReceivedBy, &item.ReceivedAt, &item.ClosedBy, &item.ClosedAt, &item.CreatedAt, &item.UpdatedAt)
 }
 
 func loadReturn(ctx context.Context, q queryer, companyID, id string) (ReturnCase, error) {
@@ -549,13 +598,13 @@ func loadReturn(ctx context.Context, q queryer, companyID, id string) (ReturnCas
 	if err := scanReturn(q.QueryRow(ctx, returnSelect+` WHERE r.company_id=$1 AND r.id=$2`, companyID, id), &item); err != nil {
 		return ReturnCase{}, mapDBError(err)
 	}
-	rows, err := q.Query(ctx, `SELECT ri.id,ri.marketplace_order_item_id,ri.product_id,p.internal_code,p.name,ri.expected_quantity,ri.received_quantity,ri.disposition FROM return_items ri JOIN products p ON p.company_id=ri.company_id AND p.id=ri.product_id WHERE ri.company_id=$1 AND ri.return_case_id=$2 ORDER BY ri.created_at,ri.id`, companyID, id)
+	rows, err := q.Query(ctx, `SELECT ri.id,ri.marketplace_order_item_id,ri.product_id,p.internal_code,p.name,ri.expected_quantity,ri.received_quantity,ri.disposition,ri.restocked_quantity,ri.corrected_quantity FROM return_items ri JOIN products p ON p.company_id=ri.company_id AND p.id=ri.product_id WHERE ri.company_id=$1 AND ri.return_case_id=$2 ORDER BY ri.created_at,ri.id`, companyID, id)
 	if err != nil {
 		return ReturnCase{}, err
 	}
 	for rows.Next() {
 		var child ReturnItem
-		if err = rows.Scan(&child.ID, &child.MarketplaceOrderItemID, &child.ProductID, &child.InternalCode, &child.ProductName, &child.ExpectedQuantity, &child.ReceivedQuantity, &child.Disposition); err != nil {
+		if err = rows.Scan(&child.ID, &child.MarketplaceOrderItemID, &child.ProductID, &child.InternalCode, &child.ProductName, &child.ExpectedQuantity, &child.ReceivedQuantity, &child.Disposition, &child.RestockedQuantity, &child.CorrectedQuantity); err != nil {
 			rows.Close()
 			return ReturnCase{}, err
 		}
@@ -577,6 +626,23 @@ func loadReturn(ctx context.Context, q queryer, companyID, id string) (ReturnCas
 			return ReturnCase{}, err
 		}
 		item.Events = append(item.Events, event)
+	}
+	if err = rows.Err(); err != nil {
+		rows.Close()
+		return ReturnCase{}, err
+	}
+	rows.Close()
+	rows, err = q.Query(ctx, `SELECT i.id,i.product_id,i.transaction_type,i.quantity_delta,i.reference_type,i.reference_id,i.created_at FROM inventory_transactions i WHERE i.company_id=$1 AND ((i.transaction_type='return_restock' AND i.reference_type='return_case' AND i.reference_id=$2) OR (i.transaction_type='correction' AND i.reference_type='return_restock_correction' AND EXISTS(SELECT 1 FROM return_events e WHERE e.company_id=i.company_id AND e.id::text=i.reference_id AND e.return_case_id::text=$2))) ORDER BY i.created_at,i.id`, companyID, id)
+	if err != nil {
+		return ReturnCase{}, err
+	}
+	for rows.Next() {
+		var impact InventoryImpact
+		if err = rows.Scan(&impact.TransactionID, &impact.ProductID, &impact.TransactionType, &impact.QuantityDelta, &impact.ReferenceType, &impact.ReferenceID, &impact.CreatedAt); err != nil {
+			rows.Close()
+			return ReturnCase{}, err
+		}
+		item.InventoryImpact = append(item.InventoryImpact, impact)
 	}
 	if err = rows.Err(); err != nil {
 		rows.Close()

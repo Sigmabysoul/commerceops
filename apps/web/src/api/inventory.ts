@@ -1,7 +1,7 @@
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080";
 
 export type InventoryBalance = { product_id: string; internal_code: string; product_name: string; on_hand: number; reserved: number; available: number; updated_at: string };
-export type InventoryTransaction = { id: string; product_id: string; transaction_type: "stock_in" | "manual_adjustment" | "correction" | "ecommerce_out"; quantity_delta: number; previous_balance: number; resulting_balance: number; reason: string; reference_type: string | null; reference_id: string | null; actor_user_id: string; created_at: string };
+export type InventoryTransaction = { id: string; product_id: string; transaction_type: "stock_in" | "manual_adjustment" | "correction" | "ecommerce_out" | "return_restock"; quantity_delta: number; previous_balance: number; resulting_balance: number; reason: string; reference_type: string | null; reference_id: string | null; actor_user_id: string; created_at: string };
 export type Reservation = { id: string; product_id: string; quantity: number; status: "active" | "released"; reason: string; source_type: string; source_id: string; release_reason: string | null; created_at: string; released_at: string | null };
 type Command = { product_id: string; quantity: number; reason: string; idempotency_key: string };
 

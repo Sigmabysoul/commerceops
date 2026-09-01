@@ -30,8 +30,56 @@ func (s *Service) ConfirmEcommerceOutbound(ctx context.Context, p auth.Principal
 		return nil, false, err
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
+	var batchStatus string
+	if err = tx.QueryRow(ctx, `SELECT status FROM batches WHERE company_id=$1 AND id=$2 FOR UPDATE`, p.CompanyID, batchID).Scan(&batchStatus); err != nil {
+		return nil, false, mapDBError(err)
+	}
+	if batchStatus != "ready" {
+		return nil, false, ErrInvalidInput
+	}
+	rows, err := tx.Query(ctx, `SELECT mo.id FROM batch_members bm JOIN marketplace_orders mo ON mo.company_id=bm.company_id AND mo.id=bm.marketplace_order_id WHERE bm.company_id=$1 AND bm.batch_id=$2 ORDER BY mo.id FOR UPDATE OF mo`, p.CompanyID, batchID)
+	if err != nil {
+		return nil, false, err
+	}
+	for rows.Next() {
+		var orderID string
+		if err = rows.Scan(&orderID); err != nil {
+			rows.Close()
+			return nil, false, err
+		}
+	}
+	if err = rows.Err(); err != nil {
+		rows.Close()
+		return nil, false, err
+	}
+	rows.Close()
+	var existingBatch, existingHash string
+	err = tx.QueryRow(ctx, `SELECT batch_id,request_hash FROM inventory_outbound_events WHERE company_id=$1 AND (batch_id=$2 OR idempotency_key=$3)`, p.CompanyID, batchID, input.IdempotencyKey).Scan(&existingBatch, &existingHash)
+	if err == nil {
+		if existingBatch != batchID || existingHash != requestHash {
+			return nil, false, ErrConflict
+		}
+		items, queryErr := transactionsForReference(ctx, tx, p.CompanyID, "batch", batchID)
+		if queryErr != nil {
+			return nil, false, queryErr
+		}
+		if err = tx.Commit(ctx); err != nil {
+			return nil, false, err
+		}
+		return items, true, nil
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return nil, false, err
+	}
+	var cancelled bool
+	if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM batch_members bm JOIN cancellations c ON c.company_id=bm.company_id AND c.marketplace_order_id=bm.marketplace_order_id WHERE bm.company_id=$1 AND bm.batch_id=$2)`, p.CompanyID, batchID).Scan(&cancelled); err != nil {
+		return nil, false, err
+	}
+	if cancelled {
+		return nil, false, ErrCancelledOrder
+	}
 	var eventID string
-	err = tx.QueryRow(ctx, `INSERT INTO inventory_outbound_events(company_id,batch_id,actor_user_id,idempotency_key,request_hash) SELECT $1,id,$2,$3,$4 FROM batches WHERE company_id=$1 AND id=$5 AND status='ready' ON CONFLICT DO NOTHING RETURNING id`, p.CompanyID, p.UserID, input.IdempotencyKey, requestHash, batchID).Scan(&eventID)
+	err = tx.QueryRow(ctx, `INSERT INTO inventory_outbound_events(company_id,batch_id,actor_user_id,idempotency_key,request_hash) VALUES($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING RETURNING id`, p.CompanyID, batchID, p.UserID, input.IdempotencyKey, requestHash).Scan(&eventID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		var oldBatch, oldHash string
 		if qerr := tx.QueryRow(ctx, `SELECT batch_id,request_hash FROM inventory_outbound_events WHERE company_id=$1 AND (batch_id=$2 OR idempotency_key=$3)`, p.CompanyID, batchID, input.IdempotencyKey).Scan(&oldBatch, &oldHash); qerr != nil {
@@ -52,7 +100,7 @@ func (s *Service) ConfirmEcommerceOutbound(ctx context.Context, p auth.Principal
 	if err != nil {
 		return nil, false, mapDBError(err)
 	}
-	rows, err := tx.Query(ctx, `SELECT moi.product_id,sum(moi.quantity)::bigint FROM batch_members bm JOIN marketplace_order_items moi ON moi.company_id=bm.company_id AND moi.order_id=bm.marketplace_order_id WHERE bm.company_id=$1 AND bm.batch_id=$2 AND moi.product_id IS NOT NULL AND moi.quantity>0 AND moi.resolution_status='resolved' GROUP BY moi.product_id ORDER BY moi.product_id`, p.CompanyID, batchID)
+	rows, err = tx.Query(ctx, `SELECT moi.product_id,sum(moi.quantity)::bigint FROM batch_members bm JOIN marketplace_order_items moi ON moi.company_id=bm.company_id AND moi.order_id=bm.marketplace_order_id WHERE bm.company_id=$1 AND bm.batch_id=$2 AND moi.product_id IS NOT NULL AND moi.quantity>0 AND moi.resolution_status='resolved' GROUP BY moi.product_id ORDER BY moi.product_id`, p.CompanyID, batchID)
 	if err != nil {
 		return nil, false, err
 	}

@@ -14,19 +14,20 @@ import (
 
 	"github.com/commerceops/commerceops/services/api/internal/auth"
 	"github.com/commerceops/commerceops/services/api/internal/authorization"
+	"github.com/commerceops/commerceops/services/api/internal/inventory"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type fixture struct {
-	db                                       *pgxpool.Pool
-	service                                  *Service
-	principal                                auth.Principal
-	company, otherCompany, user, role        string
-	product, flipOrder, flipItem             string
-	amazonOrder, amazonItem, concurrentOrder string
-	concurrentItem, otherOrder               string
+	db                                           *pgxpool.Pool
+	service                                      *Service
+	principal                                    auth.Principal
+	company, otherCompany, user, role            string
+	product, secondProduct, flipOrder, flipItem  string
+	amazonOrder, amazonItem, concurrentOrder     string
+	amazonSecondItem, concurrentItem, otherOrder string
 }
 
 func setup(t *testing.T) *fixture {
@@ -47,14 +48,17 @@ func setup(t *testing.T) *fixture {
 	mustScan(t, db, `INSERT INTO users(email,password_hash) VALUES($1,'test') RETURNING id`, []any{"returns-" + suffix + "@example.test"}, &f.user)
 	mustExec(t, db, `INSERT INTO company_users(company_id,user_id) VALUES($1,$3),($2,$3)`, f.company, f.otherCompany, f.user)
 	mustScan(t, db, `INSERT INTO roles(company_id,name) VALUES($1,'Returns Operator') RETURNING id`, []any{f.company}, &f.role)
-	mustExec(t, db, `INSERT INTO role_permissions(company_id,role_id,permission_key) VALUES($1,$2,'returns.view'),($1,$2,'returns.manage')`, f.company, f.role)
+	mustExec(t, db, `INSERT INTO role_permissions(company_id,role_id,permission_key) VALUES($1,$2,'returns.view'),($1,$2,'returns.manage'),($1,$2,'returns.restock'),($1,$2,'labels.process'),($1,$2,'inventory.view'),($1,$2,'inventory.stock_in'),($1,$2,'inventory.dispatch'),($1,$2,'reports.view')`, f.company, f.role)
 	mustExec(t, db, `INSERT INTO company_user_roles(company_id,user_id,role_id) VALUES($1,$2,$3)`, f.company, f.user, f.role)
 	mustExec(t, db, `INSERT INTO module_entitlements(company_id,module_key,enabled) VALUES($1,'returns',true)`, f.company)
+	mustExec(t, db, `INSERT INTO module_entitlements(company_id,module_key,enabled) VALUES($1,'inventory',true),($1,'flipkart',true),($1,'amazon',true)`, f.company)
 	mustScan(t, db, `INSERT INTO products(company_id,internal_code,name) VALUES($1,'RET-1','Return product') RETURNING id`, []any{f.company}, &f.product)
+	mustScan(t, db, `INSERT INTO products(company_id,internal_code,name) VALUES($1,'RET-2','Second return product') RETURNING id`, []any{f.company}, &f.secondProduct)
 	otherProduct := ""
 	mustScan(t, db, `INSERT INTO products(company_id,internal_code,name) VALUES($1,'RET-B','Other return product') RETURNING id`, []any{f.otherCompany}, &otherProduct)
 	f.flipOrder, f.flipItem = createOrder(t, db, f.company, f.user, f.product, "flipkart", "FK-"+suffix, 4, "a")
 	f.amazonOrder, f.amazonItem = createOrder(t, db, f.company, f.user, f.product, "amazon", "171-1234567-1234567", 5, "b")
+	mustScan(t, db, `INSERT INTO marketplace_order_items(company_id,order_id,raw_sku,product_id,quantity,quantity_source,resolution_status) VALUES($1,$2,'RETURN-SKU-2',$3,2,'extracted','resolved') RETURNING id`, []any{f.company, f.amazonOrder, f.secondProduct}, &f.amazonSecondItem)
 	f.concurrentOrder, f.concurrentItem = createOrder(t, db, f.company, f.user, f.product, "amazon", "171-7654321-7654321", 3, "c")
 	f.otherOrder, _ = createOrder(t, db, f.otherCompany, f.user, otherProduct, "flipkart", "OTHER-"+suffix, 1, "d")
 	var batch string
@@ -62,7 +66,8 @@ func setup(t *testing.T) *fixture {
 	mustExec(t, db, `INSERT INTO batch_members(company_id,batch_id,marketplace_order_id,position) VALUES($1,$2,$3,1)`, f.company, batch, f.amazonOrder)
 	mustExec(t, db, `INSERT INTO inventory_outbound_events(company_id,batch_id,actor_user_id,idempotency_key,request_hash) VALUES($1,$2,$3,$4,$5)`, f.company, batch, f.user, "returns-outbound-event-"+suffix, fmt.Sprintf("%064x", 92))
 	f.principal = auth.Principal{CompanyID: f.company, UserID: f.user}
-	f.service = NewService(db, authorization.NewService(db))
+	authorizer := authorization.NewService(db)
+	f.service = NewService(db, authorizer, inventory.NewService(db, authorizer))
 	t.Cleanup(db.Close)
 	return f
 }
@@ -266,6 +271,9 @@ func TestReturnsMigrationUpDown(t *testing.T) {
 	}
 	sort.Strings(files)
 	for _, file := range files {
+		if filepath.Base(file) > "000014_returns_cancellations_foundation.up.sql" {
+			break
+		}
 		data, readErr := os.ReadFile(file)
 		if readErr != nil {
 			t.Fatal(readErr)
@@ -288,6 +296,122 @@ func TestReturnsMigrationUpDown(t *testing.T) {
 	exists = nil
 	if err = tx.QueryRow(ctx, `SELECT to_regclass($1)`, schema+".return_cases").Scan(&exists); err != nil || exists != nil {
 		t.Fatalf("down=%v err=%v", exists, err)
+	}
+}
+
+func TestReturnDispositionInventoryMigrationUpDown(t *testing.T) {
+	url := os.Getenv("TEST_DATABASE_URL")
+	if url == "" {
+		t.Skip("TEST_DATABASE_URL is not set")
+	}
+	ctx := context.Background()
+	db, err := pgxpool.New(ctx, url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	tx, err := db.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	schema := "p8b_migration_" + fmt.Sprint(time.Now().UnixNano())
+	mustExec(t, tx, `CREATE SCHEMA `+schema)
+	mustExec(t, tx, `SET LOCAL search_path TO `+schema+`,public`)
+	root := filepath.Join("..", "..", "migrations")
+	files, err := filepath.Glob(filepath.Join(root, "*.up.sql"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	sort.Strings(files)
+	for _, file := range files {
+		if filepath.Base(file) > "000015_return_disposition_inventory.up.sql" {
+			break
+		}
+		data, readErr := os.ReadFile(file)
+		if readErr != nil {
+			t.Fatal(readErr)
+		}
+		if _, err = tx.Exec(ctx, string(data)); err != nil {
+			t.Fatalf("apply %s: %v", filepath.Base(file), err)
+		}
+	}
+	var columnCount int
+	if err = tx.QueryRow(ctx, `SELECT count(*) FROM information_schema.columns WHERE table_schema=$1 AND table_name='return_items' AND column_name IN ('restocked_quantity','corrected_quantity')`, schema).Scan(&columnCount); err != nil || columnCount != 2 {
+		t.Fatalf("columns=%d err=%v", columnCount, err)
+	}
+	var exists *string
+	if err = tx.QueryRow(ctx, `SELECT to_regclass($1)`, schema+".inventory_transactions_return_restock_source_idx").Scan(&exists); err != nil || exists == nil {
+		t.Fatalf("index=%v err=%v", exists, err)
+	}
+	down, err := os.ReadFile(filepath.Join(root, "000015_return_disposition_inventory.down.sql"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = tx.Exec(ctx, string(down)); err != nil {
+		t.Fatalf("down: %v", err)
+	}
+	columnCount = 0
+	if err = tx.QueryRow(ctx, `SELECT count(*) FROM information_schema.columns WHERE table_schema=$1 AND table_name='return_items' AND column_name IN ('restocked_quantity','corrected_quantity')`, schema).Scan(&columnCount); err != nil || columnCount != 0 {
+		t.Fatalf("down columns=%d err=%v", columnCount, err)
+	}
+}
+
+func TestReturnCancellationClosureMigrationUpDown(t *testing.T) {
+	url := os.Getenv("TEST_DATABASE_URL")
+	if url == "" {
+		t.Skip("TEST_DATABASE_URL is not set")
+	}
+	ctx := context.Background()
+	db, err := pgxpool.New(ctx, url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	tx, err := db.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	schema := "p8c_migration_" + fmt.Sprint(time.Now().UnixNano())
+	mustExec(t, tx, `CREATE SCHEMA `+schema)
+	mustExec(t, tx, `SET LOCAL search_path TO `+schema+`,public`)
+	root := filepath.Join("..", "..", "migrations")
+	files, err := filepath.Glob(filepath.Join(root, "*.up.sql"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	sort.Strings(files)
+	for _, file := range files {
+		data, readErr := os.ReadFile(file)
+		if readErr != nil {
+			t.Fatal(readErr)
+		}
+		if _, err = tx.Exec(ctx, string(data)); err != nil {
+			t.Fatalf("apply %s: %v", filepath.Base(file), err)
+		}
+	}
+	var exists *string
+	if err = tx.QueryRow(ctx, `SELECT to_regclass($1)`, schema+".cancellation_events").Scan(&exists); err != nil || exists == nil {
+		t.Fatalf("events=%v err=%v", exists, err)
+	}
+	if err = tx.QueryRow(ctx, `SELECT to_regclass($1)`, schema+".return_events_company_type_created_idx").Scan(&exists); err != nil || exists == nil {
+		t.Fatalf("reporting index=%v err=%v", exists, err)
+	}
+	var columnCount int
+	if err = tx.QueryRow(ctx, `SELECT count(*) FROM information_schema.columns WHERE table_schema=$1 AND table_name IN ('return_cases','cancellations') AND column_name IN ('closed_by','closed_at')`, schema).Scan(&columnCount); err != nil || columnCount != 4 {
+		t.Fatalf("closure columns=%d err=%v", columnCount, err)
+	}
+	down, err := os.ReadFile(filepath.Join(root, "000016_return_cancellation_closure.down.sql"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = tx.Exec(ctx, string(down)); err != nil {
+		t.Fatalf("down: %v", err)
+	}
+	exists = nil
+	if err = tx.QueryRow(ctx, `SELECT to_regclass($1)`, schema+".cancellation_events").Scan(&exists); err != nil || exists != nil {
+		t.Fatalf("down events=%v err=%v", exists, err)
 	}
 }
 

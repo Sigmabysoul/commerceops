@@ -154,6 +154,8 @@ func writeError(w http.ResponseWriter, err error) bool {
 		httpserver.WriteError(w, http.StatusConflict, "IDEMPOTENCY_CONFLICT", "Idempotency key conflicts with an existing inventory transaction")
 	case errors.Is(err, ErrInsufficientStock):
 		httpserver.WriteError(w, http.StatusConflict, "INSUFFICIENT_STOCK", "Inventory cannot become negative or fall below reserved stock")
+	case errors.Is(err, ErrCancelledOrder):
+		httpserver.WriteError(w, http.StatusConflict, "CANCELLED_ORDER", "A cancelled order cannot be confirmed outbound")
 	default:
 		httpserver.WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Something went wrong")
 	}

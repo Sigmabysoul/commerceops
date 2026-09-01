@@ -86,6 +86,20 @@ inside one application; it does not imply microservices.
   mutate source records, infer stock from PDFs, or disclose inventory without
   inventory entitlement and permission.
 
+## Returns (`internal/returns`)
+
+- **Owns:** normalized-order cancellation records, expected/received physical
+  returns, inspection disposition, lifecycle closure, idempotency, and
+  append-only return/cancellation history.
+- **Does not own:** marketplace parsing, Product Master identity, inventory
+  balances, ledger mutation mechanics, or reporting counters.
+- **Allowed dependencies:** normalized marketplace orders, canonical Product
+  Master items, authorization, audit, PostgreSQL, and the explicit Inventory
+  return-restock boundary.
+- **Forbidden leakage:** cancellation, receipt, inspection, and closure must
+  never mutate stock; only an authorized restockable disposition may invoke
+  Inventory.
+
 ## Printing (future, locked)
 
 - **Owns:** when approved, print-ready output, print jobs, printer state, and

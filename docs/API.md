@@ -135,10 +135,22 @@ records. The dashboard marketplace selector supports both `flipkart` and
 principal also has the `inventory` entitlement and `inventory.view`; otherwise
 `inventory_access` is false and restricted fields are omitted.
 
+Return/cancellation metrics are returned only when the principal has the
+`returns` entitlement and `returns.view`; otherwise `returns_access` is false
+and the return summary is omitted. The summary derives cancellation occurrence,
+physical receipt, inspected damage, gross restock, and closure metrics from
+their authoritative records. `cohort_return_rate_percent` is the percentage of
+resolved source orders created in the selected range that have any physically
+received return; it is not a profitability or refund-rate metric.
+
 With a marketplace filter, ecommerce stock-out and its contribution to product
 net movement are limited through each ledger transaction's tenant-scoped batch
-reference. Stock-in, manual adjustments, corrections, and current balances stay
-company-wide because they have no marketplace ownership.
+reference. Stock-in, manual adjustments, general corrections, and current
+balances stay company-wide because they have no marketplace ownership.
+
+Return restock and its linked compensating corrections follow the return's
+normalized source-order marketplace. They appear separately as
+`return_restock` movement so displayed categories reconcile with net movement.
 
 ## Inventory ledger
 
@@ -171,26 +183,44 @@ Reservations are source-linked and unique per company/source/product. Creating
 one increases `reserved` without changing `on_hand`; releasing it restores
 availability. Reservation consumption is deferred to the future owning workflow.
 
-## Returns and cancellations — Phase 8 Batch A
+## Returns and cancellations — Phase 8
 
 Returns endpoints require the `returns` module entitlement. Read operations
-require `returns.view`; intake and receipt operations require `returns.manage`.
+require `returns.view`; intake, receipt, and inspection require
+`returns.manage`. Restock and restock correction require `returns.restock` plus
+the `inventory` entitlement.
 Company identity always comes from the authenticated session.
 
 | Method | Path | Purpose |
 | --- | --- | --- |
 | GET, POST | `/api/v1/cancellations` | List or idempotently record a normalized order cancellation |
 | GET | `/api/v1/cancellations/{cancellation_id}` | Read cancellation detail and its outbound snapshot |
+| POST | `/api/v1/cancellations/{cancellation_id}/close` | Idempotently close a cancellation without changing inventory |
 | GET, POST | `/api/v1/returns` | List or idempotently create expected physical returns |
 | GET | `/api/v1/returns/{return_id}` | Read return items and append-only lifecycle history |
 | POST | `/api/v1/returns/{return_id}/receive` | Idempotently record explicit received quantities |
+| POST | `/api/v1/returns/{return_id}/inspect` | Assign an explicit disposition to every received line |
+| POST | `/api/v1/returns/{return_id}/restock` | Atomically restock only inspected/restockable quantities |
+| POST | `/api/v1/returns/{return_id}/restock-corrections` | Record a bounded compensating correction |
+| POST | `/api/v1/returns/{return_id}/close` | Idempotently close a disposition-complete return |
 
 Cancellation creation records whether a central ready-batch outbound event
 already exists. Neither pre-outbound nor post-outbound cancellation changes
 stock. Return intake accepts only resolved normalized order items and explicit
-quantities within the original ordered quantity. Marking a return received also
-does not restock it; inspection and disposition are required in a later Phase 8
-batch.
+quantities within the original ordered quantity. Marking a return received does
+not restock it. Inspection is inventory-neutral; only the explicit restock
+endpoint creates centralized `return_restock` ledger entries. Damaged, rejected,
+wrong-product, and missing lines remain inventory-neutral. Corrections append
+negative `correction` entries and never rewrite the original ledger.
+
+Pre-outbound cancellations are excluded from batch eligibility and creation,
+block draft readiness, and block outbound confirmation. A cancellation recorded
+after an already committed outbound does not reverse stock by itself.
+
+Closure requires `returns.manage`, records actor/time and append-only history,
+and is inventory-neutral. A return can close only after restock/restock
+correction or a terminal non-restockable disposition; expected, received, and
+unrestocked inspected cases cannot be closed.
 
 ## Flipkart processing
 
