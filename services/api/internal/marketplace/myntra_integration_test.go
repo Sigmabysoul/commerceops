@@ -2,6 +2,7 @@ package marketplace
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -66,10 +67,23 @@ func TestMyntraBatchAPostgreSQLIntegration(t *testing.T) {
 	if first.SourcePage != 2 || first.MarketplaceOrderID == nil || *first.MarketplaceOrderID != "7000000001" || first.AWB == nil || *first.AWB != "MYSP1000000001" || first.Items[0].RawSKU == nil || *first.Items[0].RawSKU != "SANITIZED-SKU_01" || first.Items[0].ProductID == nil || first.Items[0].Quantity != nil || first.Items[0].QuantitySource != "missing" {
 		t.Fatalf("first=%#v", first)
 	}
-	for _, evidence := range []string{`"myntra_sku_code":"MYNTRASKU100000001"`, `"store_packet_id":"2000000000001"`, `"order_release_id":"300000000001"`, `"marketplace_status":"PICKED"`} {
-		if !bytesContains(first.Metadata, evidence) {
-			t.Fatalf("metadata %s missing from %s", evidence, first.Metadata)
-		}
+	var metadata struct {
+		MyntraSKUCode     string `json:"myntra_sku_code"`
+		StorePacketID     string `json:"store_packet_id"`
+		OrderReleaseID    string `json:"order_release_id"`
+		MarketplaceStatus string `json:"marketplace_status"`
+		SourceKind        string `json:"source_kind"`
+		Extractor         string `json:"extractor"`
+	}
+	if err = json.Unmarshal(first.Metadata, &metadata); err != nil {
+		t.Fatalf("decode metadata %s: %v", first.Metadata, err)
+	}
+	if metadata.MyntraSKUCode != "MYNTRASKU100000001" ||
+		metadata.StorePacketID != "2000000000001" ||
+		metadata.OrderReleaseID != "300000000001" ||
+		metadata.MarketplaceStatus != "PICKED" ||
+		metadata.SourceKind != "csv" || metadata.Extractor != "csv" {
+		t.Fatalf("metadata=%#v", metadata)
 	}
 	if _, getErr := service.Get(ctx, f.principalB, uploaded.Job.ID); !errors.Is(getErr, ErrNotFound) {
 		t.Fatalf("cross-tenant get=%v", getErr)
@@ -125,16 +139,4 @@ func TestMyntraProcessingMigrationUpDown(t *testing.T) {
 	if err = tx.QueryRow(ctx, `SELECT to_regclass('processing_jobs_myntra_claim_idx')`).Scan(&exists); err != nil || exists == nil {
 		t.Fatalf("up=%v err=%v", exists, err)
 	}
-}
-
-func bytesContains(data []byte, value string) bool {
-	return string(data) != "" && containsString(string(data), value)
-}
-func containsString(value, part string) bool {
-	for i := 0; i+len(part) <= len(value); i++ {
-		if value[i:i+len(part)] == part {
-			return true
-		}
-	}
-	return false
 }
