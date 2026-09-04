@@ -87,13 +87,13 @@ idempotency key and expected versions where state or line concurrency matters.
 
 ## Batch foundation
 
-Batch endpoints require the selected Flipkart, Amazon, Meesho, or Myntra entitlement and the
+Batch endpoints require the selected Flipkart, Amazon, Meesho, Myntra, or Snapdeal entitlement and the
 existing `labels.process` permission. `labels.print` covers generation and downloads, while
 `labels.reprint` separately authorizes source-linked reprints.
 
 | Method | Path | Purpose |
 | --- | --- | --- |
-| GET | `/api/v1/batch-eligible-orders?marketplace={flipkart|amazon|meesho|myntra}` | List completed, non-duplicate normalized orders not already in a batch |
+| GET | `/api/v1/batch-eligible-orders?marketplace={flipkart|amazon|meesho|myntra|snapdeal}` | List completed, non-duplicate normalized orders not already in a batch |
 | GET, POST | `/api/v1/batches` | List batches or idempotently create a draft from one to 500 orders |
 | GET | `/api/v1/batches/{batch_id}` | Read ordered source traceability and Product Master totals |
 | POST | `/api/v1/batches/{batch_id}/ready` | Ready a fully resolved draft |
@@ -143,7 +143,7 @@ Reprints create a separate print job with `source_print_job_id` and
 
 | Method | Path | Purpose |
 | --- | --- | --- |
-| GET | `/api/v1/worker-assignment-rules?marketplace={flipkart|amazon|meesho}` | List exact-product rules and the marketplace fallback worker (`labels.process`) |
+| GET | `/api/v1/worker-assignment-rules?marketplace={flipkart|amazon|meesho|myntra|snapdeal}` | List exact-product rules and the marketplace fallback worker (`labels.process`) |
 | PUT | `/api/v1/worker-assignment-rules` | Atomically replace rules (`employees.manage`) |
 
 Each configuration contains exactly one fallback. Exact Product Master rules
@@ -330,3 +330,18 @@ remain extraction metadata. The observed CSV has no authoritative quantity;
 all rows retain missing quantity and remain blocked from readiness, printing,
 outbound confirmation, and quantity-dependent return intake. No Myntra PDF
 contract or print generator exists in Batch A.
+
+## Snapdeal processing — Phase 12
+
+- `POST /api/v1/snapdeal/jobs` uploads a Snapdeal PDF with the `snapdeal`
+  entitlement and existing label upload/process permissions.
+- `GET /api/v1/snapdeal/jobs/{job_id}` exposes normalized order/item data,
+  exact-suborder document traceability, and review warnings.
+- `POST /api/v1/snapdeal/jobs/{job_id}` retries a terminal source.
+
+The adapter classifies shipping and invoice pages from observed text signals,
+associates only by exact `SUBORDER`, uses invoice `SKU CODE` for Product Master,
+and accepts only one explicit positive quantity across associated evidence.
+Snapdeal batches use the shared print API; output preserves the measured source
+shipping page, enriches a verified blank band with SKU/QTY, and optionally
+exports the exactly associated invoice.

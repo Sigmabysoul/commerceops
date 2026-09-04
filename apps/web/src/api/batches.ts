@@ -1,6 +1,6 @@
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080";
 
-export type MarketplaceKey = "flipkart" | "amazon" | "meesho" | "myntra";
+export type MarketplaceKey = "flipkart" | "amazon" | "meesho" | "myntra" | "snapdeal";
 
 export type EligibleOrder = {
   order_id: string;

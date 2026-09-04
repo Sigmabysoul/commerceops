@@ -203,6 +203,35 @@ func TestMeeshoCancellationAndReturnCompatibility(t *testing.T) {
 	}
 }
 
+func TestSnapdealCancellationAndReturnCompatibility(t *testing.T) {
+	f := setup(t)
+	ctx := context.Background()
+	suffix := fmt.Sprint(time.Now().UnixNano())
+	cancelOrder, _ := createOrder(t, f.db, f.company, f.user, f.product, "snapdeal", "SNAP-CANCEL-"+suffix, 2, "a")
+	returnOrder, returnItem := createOrder(t, f.db, f.company, f.user, f.product, "snapdeal", "SNAP-RETURN-"+suffix, 3, "b")
+	c, replay, err := f.service.CreateCancellation(ctx, f.principal, CreateCancellationInput{MarketplaceOrderID: cancelOrder, Reason: "Snapdeal buyer cancellation", CancelledAt: time.Now(), IdempotencyKey: "snap-cancel-" + suffix})
+	if err != nil || replay || c.Marketplace != "snapdeal" || c.OutboundState != "not_outbound" {
+		t.Fatalf("cancellation=%#v replay=%v err=%v", c, replay, err)
+	}
+	created, replay, err := f.service.CreateReturn(ctx, f.principal, CreateReturnInput{MarketplaceOrderID: returnOrder, Reason: "Snapdeal physical return", Items: []ExpectedItemInput{{MarketplaceOrderItemID: returnItem, ExpectedQuantity: 2}}, IdempotencyKey: "snap-return-" + suffix})
+	if err != nil || replay || created.Marketplace != "snapdeal" || created.Items[0].ExpectedQuantity != 2 {
+		t.Fatalf("return=%#v replay=%v err=%v", created, replay, err)
+	}
+	received, replay, err := f.service.ReceiveReturn(ctx, f.principal, created.ID, ReceiveReturnInput{Items: []ReceivedItemInput{{ReturnItemID: created.Items[0].ID, ReceivedQuantity: 1}}, IdempotencyKey: "snap-receive-" + suffix})
+	if err != nil || replay || received.Status != "received" {
+		t.Fatalf("received=%#v replay=%v err=%v", received, replay, err)
+	}
+	items, err := f.service.ListReturns(ctx, f.principal, "received", "snapdeal")
+	if err != nil || len(items) != 1 || items[0].ID != created.ID {
+		t.Fatalf("returns=%#v err=%v", items, err)
+	}
+	var inventory int
+	mustScan(t, f.db, `SELECT count(*) FROM inventory_transactions WHERE company_id=$1`, []any{f.company}, &inventory)
+	if inventory != 0 {
+		t.Fatalf("return intake changed inventory=%d", inventory)
+	}
+}
+
 func TestReturnAuthorizationAndConcurrentQuantityBound(t *testing.T) {
 	f := setup(t)
 	ctx := context.Background()

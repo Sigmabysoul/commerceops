@@ -11,6 +11,7 @@ import { ReturnsWorkspace } from "@/components/returns-workspace";
 import { ConsignmentWorkspace } from "@/components/consignment-workspace";
 import { MeeshoProcessing } from "@/components/meesho-processing";
 import { MyntraProcessing } from "@/components/myntra-processing";
+import { SnapdealProcessing } from "@/components/snapdeal-processing";
 
 export function CorePlatform() {
   const [user, setUser] = useState<Principal | null>(null);
@@ -59,7 +60,7 @@ export function CorePlatform() {
       <Panel title="Roles"><CreateForm label="Role name" action="Add role" onSubmit={(event) => create(event, "role")} />{roles.map((role) => <RoleEditor key={role.id} role={role} permissions={permissions} onSaved={load} onError={setError} />)}</Panel>
       <Panel title="Module access"><p className="muted">Entitlements control availability, independently of billing.</p><ul>{entitlements.map((item) => <li key={item.module_key}><span>{item.module_key}</span><button disabled={item.module_key === "core"} onClick={() => coreAPI.setEntitlement(item.module_key, !item.enabled).then(load).catch((cause) => setError(message(cause)))}>{item.enabled ? "Enabled" : "Disabled"}</button></li>)}</ul></Panel>
       <Panel title="Recent audit activity"><ul>{audit.map((item) => <li key={item.id}><span>{item.action}<small>{item.target_type} · {new Date(item.occurred_at).toLocaleString()}</small></span></li>)}</ul></Panel>
-    </div><OperationsDashboard /><ConsignmentWorkspace employees={employees} /><ReturnsWorkspace /><ProductMaster /><FlipkartProcessing /><MeeshoProcessing /><MyntraProcessing /><BatchPrinting /><InventoryWorkspace /></main>;
+    </div><OperationsDashboard /><ConsignmentWorkspace employees={employees} /><ReturnsWorkspace /><ProductMaster /><FlipkartProcessing /><MeeshoProcessing /><MyntraProcessing /><SnapdealProcessing /><BatchPrinting /><InventoryWorkspace /></main>;
 }
 
 function Login({ onSubmit, error }: { onSubmit: (event: FormEvent<HTMLFormElement>) => void; error: string }) {

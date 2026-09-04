@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: CommerceOps API
-  version: 0.11.0
+  version: 0.12.0
 paths:
   /api/v1/health:
     get:
@@ -396,6 +396,44 @@ paths:
         "403": {$ref: "#/components/responses/Error"}
         "404": {$ref: "#/components/responses/Error"}
         "409": {$ref: "#/components/responses/Error"}
+  /api/v1/snapdeal/jobs:
+    post:
+      operationId: uploadSnapdealJob
+      summary: Upload a Snapdeal invoice/packslip PDF for durable normalization
+      security: [{sessionCookie: []}]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: {type: string, format: binary}
+      responses:
+        "202": {description: Snapdeal job queued, or existing source job returned}
+        "400": {$ref: "#/components/responses/Error"}
+        "403": {$ref: "#/components/responses/Error"}
+  /api/v1/snapdeal/jobs/{job_id}:
+    parameters:
+      - {name: job_id, in: path, required: true, schema: {type: string, format: uuid}}
+    get:
+      operationId: getSnapdealJob
+      summary: Read Snapdeal normalized orders, associated documents, and review errors
+      security: [{sessionCookie: []}]
+      responses:
+        "200": {description: Tenant-scoped Snapdeal processing details}
+        "403": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+    post:
+      operationId: retrySnapdealJob
+      summary: Clear derived Snapdeal results and queue the source for reprocessing
+      security: [{sessionCookie: []}]
+      responses:
+        "202": {description: Snapdeal job queued for retry}
+        "403": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+        "409": {$ref: "#/components/responses/Error"}
   /api/v1/batches:
     get:
       operationId: listBatches
@@ -452,7 +490,7 @@ paths:
       summary: List processed marketplace orders not already assigned to a batch
       security: [{sessionCookie: []}]
       parameters:
-        - {name: marketplace, in: query, required: true, schema: {type: string, enum: [flipkart, amazon, meesho, myntra]}}
+        - {name: marketplace, in: query, required: true, schema: {type: string, enum: [flipkart, amazon, meesho, myntra, snapdeal]}}
       responses:
         "200": {description: Tenant-scoped eligible normalized orders}
         "403": {$ref: "#/components/responses/Error"}
@@ -462,7 +500,7 @@ paths:
       summary: List tenant worker assignment rules
       security: [{sessionCookie: []}]
       parameters:
-        - {name: marketplace, in: query, required: true, schema: {type: string, enum: [flipkart, amazon, meesho, myntra]}}
+        - {name: marketplace, in: query, required: true, schema: {type: string, enum: [flipkart, amazon, meesho, myntra, snapdeal]}}
       responses:
         "200": {description: Exact-product rules and required marketplace fallback}
         "403": {$ref: "#/components/responses/Error"}
@@ -991,7 +1029,7 @@ components:
       additionalProperties: false
       required: [marketplace_key, order_ids, idempotency_key]
       properties:
-        marketplace_key: {type: string, enum: [flipkart, amazon, meesho, myntra]}
+        marketplace_key: {type: string, enum: [flipkart, amazon, meesho, myntra, snapdeal]}
         order_ids:
           type: array
           minItems: 1
@@ -1012,7 +1050,7 @@ components:
       additionalProperties: false
       required: [marketplace_key, rules]
       properties:
-        marketplace_key: {type: string, enum: [flipkart, amazon, meesho, myntra]}
+        marketplace_key: {type: string, enum: [flipkart, amazon, meesho, myntra, snapdeal]}
         rules:
           type: array
           minItems: 1

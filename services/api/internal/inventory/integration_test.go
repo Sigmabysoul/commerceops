@@ -358,6 +358,36 @@ func TestMeeshoUsesCentralEcommerceOutboundEvent(t *testing.T) {
 	}
 }
 
+func TestSnapdealUsesCentralEcommerceOutboundExactlyOnce(t *testing.T) {
+	f := setup(t)
+	ctx := context.Background()
+	exec(t, f.db, `INSERT INTO module_entitlements(company_id,module_key,enabled) VALUES($1,'snapdeal',true)`, f.company)
+	var source, job, order, batch string
+	scan(t, f.db, `INSERT INTO source_files(company_id,marketplace_key,storage_key,original_filename,content_type,size_bytes,sha256,uploaded_by) VALUES($1,'snapdeal',$2,'snapdeal.pdf','application/pdf',1,$3,$4) RETURNING id`, []any{f.company, "snap-out-" + f.company, "edededededededededededededededededededededededededededededededed", f.user}, &source)
+	scan(t, f.db, `INSERT INTO processing_jobs(company_id,source_file_id,marketplace_key,status,parser_version,total_pages,processed_pages) VALUES($1,$2,'snapdeal','processed','snapdeal-packslip-v1',2,2) RETURNING id`, []any{f.company, source}, &job)
+	scan(t, f.db, `INSERT INTO marketplace_orders(company_id,marketplace_key,source_file_id,processing_job_id,source_page,marketplace_order_id,status,parser_version) VALUES($1,'snapdeal',$2,$3,1,$4,'resolved','snapdeal-packslip-v1') RETURNING id`, []any{f.company, source, job, "SNAP-OUT-" + f.company}, &order)
+	exec(t, f.db, `INSERT INTO marketplace_order_items(company_id,order_id,product_id,quantity,quantity_source,resolution_status) VALUES($1,$2,$3,4,'extracted','resolved')`, f.company, order, f.product)
+	scan(t, f.db, `INSERT INTO batches(company_id,marketplace_key,status,created_by,idempotency_key,request_hash,ready_at) VALUES($1,'snapdeal','ready',$2,$3,$4,now()) RETURNING id`, []any{f.company, f.user, "snap-batch-" + f.company, "efefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefef"}, &batch)
+	exec(t, f.db, `INSERT INTO batch_members(company_id,batch_id,marketplace_order_id,position) VALUES($1,$2,$3,1)`, f.company, batch, order)
+	if _, _, err := f.service.StockIn(ctx, f.principal, CommandInput{ProductID: f.product, Quantity: 6, Reason: "Snapdeal stock", IdempotencyKey: "snap-stock"}); err != nil {
+		t.Fatal(err)
+	}
+	items, replay, err := f.service.ConfirmEcommerceOutbound(ctx, f.principal, batch, OutboundInput{IdempotencyKey: "snap-out"})
+	if err != nil || replay || len(items) != 1 || items[0].QuantityDelta != -4 {
+		t.Fatalf("out=%#v replay=%v err=%v", items, replay, err)
+	}
+	items, replay, err = f.service.ConfirmEcommerceOutbound(ctx, f.principal, batch, OutboundInput{IdempotencyKey: "snap-out"})
+	if err != nil || !replay || len(items) != 1 {
+		t.Fatalf("replay=%#v replay=%v err=%v", items, replay, err)
+	}
+	var events, transactions int
+	scan(t, f.db, `SELECT count(*) FROM inventory_outbound_events WHERE company_id=$1 AND batch_id=$2`, []any{f.company, batch}, &events)
+	scan(t, f.db, `SELECT count(*) FROM inventory_transactions WHERE company_id=$1 AND transaction_type='ecommerce_out' AND reference_id=$2`, []any{f.company, batch}, &transactions)
+	if events != 1 || transactions != 1 {
+		t.Fatalf("events=%d transactions=%d", events, transactions)
+	}
+}
+
 type execer interface {
 	Exec(context.Context, string, ...any) (pgconn.CommandTag, error)
 }

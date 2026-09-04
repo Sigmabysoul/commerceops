@@ -1,23 +1,47 @@
 ## Current Phase
 
-Phase 11 — Myntra, Batch A
+Phase 12 — Snapdeal
 
 ## Current Branch
 
-`phase/11-myntra`
+`phase/12-snapdeal`
 
 ## Approved Baseline
 
-Approved Phase 10 completion baseline:
+Phase 11 remediation baseline:
 
-`6d0634473da832c5fac9a6fad842ddf2c70ccbba`
+`a82939431400c4c39ac73ce316205ab272fe6367`
 
 ## Phase Status
 
-`PHASE_11_BATCH_A_IMPLEMENTED_VERIFICATION_INCOMPLETE`
+`PHASE_12_COMPLETE_AWAITING_EXTERNAL_REVIEW`
 
 Phases 0–10 are implemented and Phase 10 is the approved starting baseline.
 The owner explicitly authorized Phase 11 Myntra Batch A only.
+
+The owner explicitly authorized Phase 12 Snapdeal from the remediated Phase 11
+baseline.
+
+## Phase 12 Delivery
+
+- [x] isolated `snapdeal-packslip-v1` text adapter with shipping/invoice classification
+- [x] exact SUBORDER association without positional guessing
+- [x] invoice SKU CODE Product Master resolution and compact shipping-code evidence
+- [x] explicit cross-page quantity agreement with conflict/review behavior
+- [x] shared secure upload, leases, duplicate protection, traceability, authorization, and audit
+- [x] shared batch, configurable assignment, sorting, artifacts, invoice export, and reprints
+- [x] measured `snapdeal-packslip-enriched-v1` output preserving the full shipping page
+- [x] central Inventory outbound, Returns/cancellations, and marketplace reporting reuse
+- [x] typed frontend processing, batch, reporting, and Returns selectors
+- [x] migration `000020` adds only the Snapdeal claim index
+- [x] no Snapdeal-specific order, batch, inventory, return, or reporting tables
+
+## Phase 12 Evidence Limit
+
+One private two-page production PDF establishes the supported baseline only.
+The courier barcode value is not in its extractable text layer; the print path
+preserves the barcode image, while normalized AWB remains absent rather than
+guessed. Other layouts require new evidence and sanitized regressions.
 
 ## Phase 11 Batch A Delivery
 
@@ -98,5 +122,4 @@ association, extraction, and enrichment behavior remain deferred.
 
 ## Next Allowed Task
 
-Externally review and approve Phase 11 Batch A. Do not begin Snapdeal or Phase
-12 automatically.
+Obtain external review of Phase 12. Do not begin Phase 13 automatically.

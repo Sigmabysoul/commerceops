@@ -22,6 +22,7 @@ import (
 	"github.com/commerceops/commerceops/services/api/internal/marketplace/flipkart"
 	"github.com/commerceops/commerceops/services/api/internal/marketplace/meesho"
 	"github.com/commerceops/commerceops/services/api/internal/marketplace/myntra"
+	"github.com/commerceops/commerceops/services/api/internal/marketplace/snapdeal"
 	"github.com/commerceops/commerceops/services/api/internal/platform/objectstorage"
 	"github.com/commerceops/commerceops/services/api/internal/platform/pdfextractor"
 	"github.com/jackc/pgx/v5"
@@ -76,6 +77,7 @@ type processor struct {
 	parseData                                func([]byte) ([]normalizedRecord, error)
 	contentType, extension                   string
 	requireIdempotency                       bool
+	allowMissingAWB                          bool
 }
 type work struct{ CompanyID, UserID, JobID, StorageKey, WorkerID string }
 type UploadResult struct {
@@ -137,6 +139,9 @@ func NewMeeshoService(db *pgxpool.Pool, authorizer *authorization.Service, stora
 }
 func NewMyntraService(db *pgxpool.Pool, authorizer *authorization.Service, storage objectstorage.Storage) (*Service, error) {
 	return newProcessingService(db, authorizer, storage, nil, myntraProcessor())
+}
+func NewSnapdealService(db *pgxpool.Pool, authorizer *authorization.Service, storage objectstorage.Storage, extractor pdfextractor.Extractor) (*Service, error) {
+	return newProcessingService(db, authorizer, storage, extractor, snapdealProcessor())
 }
 func newProcessingService(db *pgxpool.Pool, authorizer *authorization.Service, storage objectstorage.Storage, extractor pdfextractor.Extractor, p processor) (*Service, error) {
 	s, err := newServiceForProcessor(db, authorizer, storage, extractor, p)
@@ -223,6 +228,23 @@ func myntraProcessor() processor {
 			out = append(out, normalizedRecord{Page: record.Row, AWB: record.TrackingID, OrderID: record.OrderID, SKU: record.SellerSKU, Warnings: record.Warnings, AssociationMethod: "csv_row", Confidence: "high", Metadata: map[string]any{
 				"source_kind": "csv", "source_row": record.Row, "myntra_sku_code": record.MyntraSKU, "store_packet_id": record.StorePacketID, "order_release_id": record.OrderReleaseID, "marketplace_status": record.Status, "packed_on": record.PackedOn, "created_on": record.CreatedOn,
 			}})
+		}
+		return out, nil
+	}}
+}
+func snapdealProcessor() processor {
+	return processor{marketplace: "snapdeal", parserVersion: snapdeal.ParserVersion, documentName: "Snapdeal", auditCountKey: "documents", requireOrderID: true, allowMissingAWB: true, parse: func(pages []pdfextractor.Page) ([]normalizedRecord, error) {
+		documents, err := snapdeal.Parse(pages)
+		if err != nil {
+			return nil, err
+		}
+		out := make([]normalizedRecord, 0, len(documents))
+		for _, d := range documents {
+			record := normalizedRecord{Page: d.Page, AWB: d.AWB, OrderID: d.OrderID, SKU: d.SKU, Quantity: d.Quantity, Warnings: d.Warnings, AssociationMethod: d.AssociationMethod, Confidence: d.Confidence, Metadata: map[string]any{"compact_shipping_sku": d.CompactSKU}}
+			for _, source := range d.Sources {
+				record.Documents = append(record.Documents, normalizedDocument{Page: source.Page, Role: source.Role, ExtractionMethod: source.ExtractionMethod})
+			}
+			out = append(out, record)
 		}
 		return out, nil
 	}}
@@ -648,7 +670,9 @@ func (s *Service) execute(ctx context.Context, w work) error {
 		}
 		var productID *string
 		if label.AWB == "" {
-			status = "needs_review"
+			if !s.processor.allowMissingAWB {
+				status = "needs_review"
+			}
 			warnings = append(warnings, "missing_awb")
 		}
 		if label.OrderID == "" {

@@ -110,7 +110,7 @@ func TestMarketplaceFilterIsolatesEcommerceMovement(t *testing.T) {
 	assertMovement("all marketplaces", all, 34, 73)
 }
 
-func TestMarketplaceDashboardIncludesMeeshoAndIsolatesEcommerceMovement(t *testing.T) {
+func TestMarketplaceDashboardIncludesLaterMarketplacesAndIsolatesEcommerceMovement(t *testing.T) {
 	db := reportingDB(t)
 	ctx := context.Background()
 	suffix := fmt.Sprint(time.Now().UnixNano())
@@ -136,6 +136,7 @@ func TestMarketplaceDashboardIncludesMeeshoAndIsolatesEcommerceMovement(t *testi
 		{key: "amazon", quantity: 4, previousBalance: 11, resultingBalance: 7, hashByte: "a"},
 		{key: "flipkart", quantity: 2, previousBalance: 7, resultingBalance: 5, hashByte: "b"},
 		{key: "meesho", quantity: 3, previousBalance: 5, resultingBalance: 2, hashByte: "d"},
+		{key: "snapdeal", quantity: 1, previousBalance: 2, resultingBalance: 1, hashByte: "e"},
 	}
 	for _, fixture := range fixtures {
 		var source, job, order, batch, printJob string
@@ -174,7 +175,8 @@ func TestMarketplaceDashboardIncludesMeeshoAndIsolatesEcommerceMovement(t *testi
 	assertReport("amazon", 1, 4, 4, 7)
 	assertReport("flipkart", 1, 2, 2, 9)
 	assertReport("meesho", 1, 3, 3, 8)
-	assertReport("", 3, 9, 9, 2)
+	assertReport("snapdeal", 1, 1, 1, 10)
+	assertReport("", 4, 10, 10, 1)
 }
 
 func TestReportingMigrationUpDown(t *testing.T) {

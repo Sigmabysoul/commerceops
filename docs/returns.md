@@ -3,7 +3,7 @@
 The `internal/returns` domain owns cancellation records and physical-return
 lifecycle data. It reuses normalized marketplace orders, canonical Product
 Master items, centralized tenant authorization, module entitlements, audit
-logging, and PostgreSQL transactions. Flipkart, Amazon, Meesho, and evidence-complete Myntra orders share this domain;
+logging, and PostgreSQL transactions. Flipkart, Amazon, Meesho, evidence-complete Myntra, and Snapdeal orders share this domain;
 marketplace-specific return ingestion remains outside it.
 
 ## Cancellation foundation

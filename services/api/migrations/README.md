@@ -40,6 +40,10 @@ Closure is lifecycle-only and has no inventory side effect.
 Myntra durable-claim index. Myntra reuses shared normalized records and adds no
 marketplace-specific business tables.
 
+`000020_snapdeal_processing` adds only the Snapdeal durable-claim index.
+Snapdeal reuses the shared source, normalized order/item/document, batch,
+printing, Inventory, Returns, and reporting tables.
+
 ```sh
 make migrate
 ```

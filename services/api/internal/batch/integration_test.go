@@ -69,7 +69,7 @@ func setupBatch(t *testing.T) *batchFixture {
 		scanBatchTest(t, db, `INSERT INTO roles(company_id,name) VALUES($1,'Batch Operator') RETURNING id`, []any{company}, &role)
 		execBatchTest(t, db, `INSERT INTO role_permissions(company_id,role_id,permission_key) VALUES($1,$2,'labels.process'),($1,$2,'labels.print'),($1,$2,'labels.reprint'),($1,$2,'employees.manage')`, company, role)
 		execBatchTest(t, db, `INSERT INTO company_user_roles(company_id,user_id,role_id) VALUES($1,$2,$3)`, company, f.userID, role)
-		execBatchTest(t, db, `INSERT INTO module_entitlements(company_id,module_key,enabled) VALUES($1,'flipkart',true),($1,'amazon',true),($1,'meesho',true),($1,'myntra',true)`, company)
+		execBatchTest(t, db, `INSERT INTO module_entitlements(company_id,module_key,enabled) VALUES($1,'flipkart',true),($1,'amazon',true),($1,'meesho',true),($1,'myntra',true),($1,'snapdeal',true)`, company)
 		if company == f.companyA {
 			f.roleA = role
 		}
@@ -80,6 +80,7 @@ func setupBatch(t *testing.T) *batchFixture {
 	execBatchTest(t, db, `INSERT INTO worker_assignment_rules(company_id,marketplace_key,product_id,employee_id,priority) VALUES($1,'flipkart',NULL,$2,100),($1,'flipkart',$3,$4,10)`, f.companyA, f.defaultWorkerID, f.productID, f.productWorkerID)
 	execBatchTest(t, db, `INSERT INTO worker_assignment_rules(company_id,marketplace_key,product_id,employee_id,priority) VALUES($1,'amazon',NULL,$2,100),($1,'amazon',$3,$4,10)`, f.companyA, f.defaultWorkerID, f.productID, f.productWorkerID)
 	execBatchTest(t, db, `INSERT INTO worker_assignment_rules(company_id,marketplace_key,product_id,employee_id,priority) VALUES($1,'meesho',NULL,$2,100),($1,'meesho',$3,$4,10)`, f.companyA, f.defaultWorkerID, f.productID, f.productWorkerID)
+	execBatchTest(t, db, `INSERT INTO worker_assignment_rules(company_id,marketplace_key,product_id,employee_id,priority) VALUES($1,'snapdeal',NULL,$2,100),($1,'snapdeal',$3,$4,10)`, f.companyA, f.defaultWorkerID, f.productID, f.productWorkerID)
 	f.storage, err = objectstorage.NewLocal(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -87,7 +88,8 @@ func setupBatch(t *testing.T) *batchFixture {
 	f.generator = &recordingGenerator{}
 	f.service = NewPrintingService(db, authorization.NewService(db), f.storage, f.generator).
 		RegisterPrintGenerator("amazon", "amazon-a4-enriched-v1", f.generator).
-		RegisterPrintGenerator("meesho", pdfgenerator.SourcePageGenerationVersion, f.generator)
+		RegisterPrintGenerator("meesho", pdfgenerator.SourcePageGenerationVersion, f.generator).
+		RegisterPrintGenerator("snapdeal", "snapdeal-packslip-enriched-v1", f.generator)
 	f.principalA = auth.Principal{CompanyID: f.companyA, UserID: f.userID}
 	f.principalB = auth.Principal{CompanyID: f.companyB, UserID: f.userID}
 	t.Cleanup(func() { cleanupBatch(t, f); db.Close() })
@@ -486,6 +488,52 @@ func TestMeeshoUsesSharedBatchPrintingAndAssignments(t *testing.T) {
 	scanBatchTest(t, f.db, `SELECT i.marketplace_order_id=$1 AND i.source_file_id=$2 AND i.processing_job_id=$3 AND i.source_page=1 FROM print_job_items i WHERE i.company_id=$4 AND i.print_job_id=$5`, []any{orderID, created.Members[0].SourceFileID, created.Members[0].ProcessingJobID, f.companyA, job.ID}, &traceable)
 	if !traceable {
 		t.Fatal("Meesho print traceability was not preserved")
+	}
+}
+
+func TestSnapdealUsesSharedBatchPrintingAndInvoiceAssociation(t *testing.T) {
+	f := setupBatch(t)
+	ctx := context.Background()
+	quantity := 2
+	seed := fmt.Sprintf("snapdeal-%s-%d", f.companyA, time.Now().UnixNano())
+	hash := sha256.Sum256([]byte(seed))
+	var source, job, order string
+	scanBatchTest(t, f.db, `INSERT INTO source_files(company_id,marketplace_key,storage_key,original_filename,content_type,size_bytes,sha256,uploaded_by) VALUES($1,'snapdeal',$2,'snapdeal.pdf','application/pdf',1,$3,$4) RETURNING id`, []any{f.companyA, seed, hex.EncodeToString(hash[:]), f.userID}, &source)
+	pdf := []byte("%PDF-snapdeal-source")
+	if err := f.storage.Put(ctx, seed, bytes.NewReader(pdf), int64(len(pdf)), "application/pdf"); err != nil {
+		t.Fatal(err)
+	}
+	scanBatchTest(t, f.db, `INSERT INTO processing_jobs(company_id,source_file_id,marketplace_key,status,parser_version,total_pages,processed_pages) VALUES($1,$2,'snapdeal','processed','snapdeal-packslip-v1',2,2) RETURNING id`, []any{f.companyA, source}, &job)
+	scanBatchTest(t, f.db, `INSERT INTO marketplace_orders(company_id,marketplace_key,source_file_id,processing_job_id,source_page,marketplace_order_id,status,parser_version) VALUES($1,'snapdeal',$2,$3,1,'88000000999','resolved','snapdeal-packslip-v1') RETURNING id`, []any{f.companyA, source, job}, &order)
+	execBatchTest(t, f.db, `INSERT INTO marketplace_order_documents(company_id,order_id,source_file_id,source_page,document_role,extraction_method) VALUES($1,$2,$3,1,'shipping_label','text'),($1,$2,$3,2,'invoice','text')`, f.companyA, order, source)
+	execBatchTest(t, f.db, `INSERT INTO marketplace_order_items(company_id,order_id,raw_sku,product_id,quantity,quantity_source,resolution_status) VALUES($1,$2,'9_SAFE-SKU',$3,$4,'extracted','resolved')`, f.companyA, order, f.productID, quantity)
+	eligible, err := f.service.EligibleOrders(ctx, f.principalA, "snapdeal")
+	if err != nil || len(eligible) != 1 {
+		t.Fatalf("eligible=%#v err=%v", eligible, err)
+	}
+	batch, _, err := f.service.Create(ctx, f.principalA, CreateInput{MarketplaceKey: "snapdeal", OrderIDs: []string{order}, IdempotencyKey: "snapdeal-batch"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = f.service.Ready(ctx, f.principalA, batch.ID); err != nil {
+		t.Fatal(err)
+	}
+	var before, after int
+	scanBatchTest(t, f.db, `SELECT count(*) FROM inventory_transactions WHERE company_id=$1`, []any{f.companyA}, &before)
+	printJob, replay, err := f.service.Generate(ctx, f.principalA, batch.ID, GenerateInput{ExportInvoices: true, IdempotencyKey: "snapdeal-print"})
+	if err != nil || replay || printJob.GenerationVersion != "snapdeal-packslip-enriched-v1" || len(printJob.Artifacts) != 2 {
+		t.Fatalf("print=%#v replay=%v err=%v", printJob, replay, err)
+	}
+	input := f.generator.calls[len(f.generator.calls)-1]
+	if len(input) != 1 || input[0].Number != 1 || input[0].InvoiceNumber != 2 || input[0].SKU != "9_SAFE-SKU" || input[0].Quantity != quantity {
+		t.Fatalf("input=%#v", input)
+	}
+	if _, _, err = f.service.Reprint(ctx, f.principalA, printJob.ID, ReprintInput{Reason: "Damaged label", IdempotencyKey: "snapdeal-reprint"}); err != nil {
+		t.Fatal(err)
+	}
+	scanBatchTest(t, f.db, `SELECT count(*) FROM inventory_transactions WHERE company_id=$1`, []any{f.companyA}, &after)
+	if after != before {
+		t.Fatalf("print changed inventory %d -> %d", before, after)
 	}
 }
 

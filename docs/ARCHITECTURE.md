@@ -67,6 +67,14 @@ evidence metadata. Because the real CSV has no authoritative quantity, every
 row remains review-required and cannot become print-ready or outbound-ready.
 No PDF interpretation or print generator is registered for Myntra.
 
+Phase 12 adds an isolated Snapdeal adapter over the representative two-page
+packslip/invoice structure. Textual page signals classify roles and exact
+SUBORDER association supplies invoice SKU and cross-checked explicit quantity.
+The specialized print generator preserves the measured 297.637×419.512 pt
+shipping page and places SKU/QTY only in the verified lower whitespace band.
+The sample's courier barcode value is not present in its PDF text layer, so it
+is preserved visually but not guessed into normalized AWB data.
+
 Shared batch/print jobs route normalized print inputs through a marketplace-keyed
 generator. Flipkart continues to use the shared Poppler crop generator. Amazon's
 adapter owns its A4 validation and SKU/quantity enrichment, while the batch
@@ -81,7 +89,7 @@ same batch membership, assignment snapshots, artifacts, reprints, and explicit
 Inventory outbound boundary as the other marketplaces.
 
 The Phase 8 returns domain references normalized marketplace orders and
-canonical Product Master items for shared Flipkart/Amazon/Meesho/Myntra cancellation and
+canonical Product Master items for shared Flipkart/Amazon/Meesho/Myntra/Snapdeal cancellation and
 physical-return processing. It owns lifecycle validation, dispositions,
 idempotency, and append-only events, but not balances or ledger writes.
 Cancellation, receipt, and inspection are inventory-neutral. An authorized

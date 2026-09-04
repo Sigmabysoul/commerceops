@@ -18,6 +18,7 @@ import (
 	"github.com/commerceops/commerceops/services/api/internal/inventory"
 	"github.com/commerceops/commerceops/services/api/internal/marketplace"
 	"github.com/commerceops/commerceops/services/api/internal/marketplace/amazon"
+	"github.com/commerceops/commerceops/services/api/internal/marketplace/snapdeal"
 	"github.com/commerceops/commerceops/services/api/internal/platform/database"
 	"github.com/commerceops/commerceops/services/api/internal/platform/httpserver"
 	"github.com/commerceops/commerceops/services/api/internal/platform/objectstorage"
@@ -53,7 +54,8 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	}
 	printingService := batch.NewPrintingService(db, authorizer, storage, pdfgenerator.NewPoppler()).
 		RegisterPrintGenerator("amazon", amazon.PrintGenerationVersion, amazon.NewPrintGenerator()).
-		RegisterPrintGenerator("meesho", pdfgenerator.SourcePageGenerationVersion, pdfgenerator.NewSourcePages())
+		RegisterPrintGenerator("meesho", pdfgenerator.SourcePageGenerationVersion, pdfgenerator.NewSourcePages()).
+		RegisterPrintGenerator("snapdeal", snapdeal.PrintGenerationVersion, snapdeal.NewPrintGenerator())
 	batchHTTP := batch.NewHTTPHandler(printingService)
 	marketplaceService, err := marketplace.NewService(db, authorizer, storage, pdfextractor.NewPoppler())
 	if err != nil {
@@ -75,6 +77,11 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 		return err
 	}
 	myntraHTTP := marketplace.NewHTTPHandler(myntraService)
+	snapdealService, err := marketplace.NewSnapdealService(db, authorizer, storage, pdfextractor.NewPoppler())
+	if err != nil {
+		return err
+	}
+	snapdealHTTP := marketplace.NewHTTPHandler(snapdealService)
 	mux.HandleFunc("/api/v1/auth/login", authHTTP.Login)
 	mux.Handle("/api/v1/auth/logout", authHTTP.RequireSession(http.HandlerFunc(authHTTP.Logout)))
 	mux.Handle("/api/v1/auth/session", authHTTP.RequireSession(http.HandlerFunc(authHTTP.Session)))
@@ -104,6 +111,8 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	mux.Handle("/api/v1/meesho/jobs/{job_id}", authHTTP.RequireSession(http.HandlerFunc(meeshoHTTP.Job)))
 	mux.Handle("/api/v1/myntra/jobs", authHTTP.RequireSession(http.HandlerFunc(myntraHTTP.Jobs)))
 	mux.Handle("/api/v1/myntra/jobs/{job_id}", authHTTP.RequireSession(http.HandlerFunc(myntraHTTP.Job)))
+	mux.Handle("/api/v1/snapdeal/jobs", authHTTP.RequireSession(http.HandlerFunc(snapdealHTTP.Jobs)))
+	mux.Handle("/api/v1/snapdeal/jobs/{job_id}", authHTTP.RequireSession(http.HandlerFunc(snapdealHTTP.Job)))
 	mux.Handle("/api/v1/batches", authHTTP.RequireSession(http.HandlerFunc(batchHTTP.Batches)))
 	mux.Handle("/api/v1/batches/{batch_id}", authHTTP.RequireSession(http.HandlerFunc(batchHTTP.Batch)))
 	mux.Handle("/api/v1/batches/{batch_id}/ready", authHTTP.RequireSession(http.HandlerFunc(batchHTTP.Ready)))
