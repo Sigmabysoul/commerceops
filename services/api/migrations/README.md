@@ -36,6 +36,10 @@ tenant/source/product protection.
 append-only cancellation closure events, and the terminal return closure event.
 Closure is lifecycle-only and has no inventory side effect.
 
+`000019_myntra_csv_processing` adds generic upload-idempotency evidence and the
+Myntra durable-claim index. Myntra reuses shared normalized records and adds no
+marketplace-specific business tables.
+
 ```sh
 make migrate
 ```

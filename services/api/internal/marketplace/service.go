@@ -21,6 +21,7 @@ import (
 	"github.com/commerceops/commerceops/services/api/internal/marketplace/amazon"
 	"github.com/commerceops/commerceops/services/api/internal/marketplace/flipkart"
 	"github.com/commerceops/commerceops/services/api/internal/marketplace/meesho"
+	"github.com/commerceops/commerceops/services/api/internal/marketplace/myntra"
 	"github.com/commerceops/commerceops/services/api/internal/platform/objectstorage"
 	"github.com/commerceops/commerceops/services/api/internal/platform/pdfextractor"
 	"github.com/jackc/pgx/v5"
@@ -34,10 +35,11 @@ const (
 )
 
 var (
-	ErrInvalidFile = errors.New("invalid PDF file")
-	ErrNotFound    = errors.New("processing job not found")
-	ErrJobActive   = errors.New("processing job is already active")
-	ErrLeaseLost   = errors.New("processing job lease is no longer owned")
+	ErrInvalidFile         = errors.New("invalid source file")
+	ErrNotFound            = errors.New("processing job not found")
+	ErrJobActive           = errors.New("processing job is already active")
+	ErrLeaseLost           = errors.New("processing job lease is no longer owned")
+	ErrIdempotencyConflict = errors.New("idempotency key was already used with different content")
 )
 
 type Service struct {
@@ -60,6 +62,7 @@ type normalizedRecord struct {
 	Warnings          []string
 	AssociationMethod string
 	Confidence        string
+	Metadata          map[string]any
 }
 type normalizedDocument struct {
 	Page                   int
@@ -70,6 +73,9 @@ type processor struct {
 	auditCountKey                            string
 	requireOrderID                           bool
 	parse                                    func([]pdfextractor.Page) ([]normalizedRecord, error)
+	parseData                                func([]byte) ([]normalizedRecord, error)
+	contentType, extension                   string
+	requireIdempotency                       bool
 }
 type work struct{ CompanyID, UserID, JobID, StorageKey, WorkerID string }
 type UploadResult struct {
@@ -100,13 +106,14 @@ type Item struct {
 	Warnings         json.RawMessage `json:"warnings"`
 }
 type Order struct {
-	ID                 string     `json:"id"`
-	SourcePage         int        `json:"source_page"`
-	MarketplaceOrderID *string    `json:"marketplace_order_id"`
-	AWB                *string    `json:"awb"`
-	Status             string     `json:"status"`
-	Items              []Item     `json:"items"`
-	Documents          []Document `json:"documents"`
+	ID                 string          `json:"id"`
+	SourcePage         int             `json:"source_page"`
+	MarketplaceOrderID *string         `json:"marketplace_order_id"`
+	AWB                *string         `json:"awb"`
+	Status             string          `json:"status"`
+	Items              []Item          `json:"items"`
+	Documents          []Document      `json:"documents"`
+	Metadata           json.RawMessage `json:"metadata"`
 }
 type Document struct {
 	SourcePage       int    `json:"source_page"`
@@ -127,6 +134,9 @@ func NewAmazonService(db *pgxpool.Pool, authorizer *authorization.Service, stora
 }
 func NewMeeshoService(db *pgxpool.Pool, authorizer *authorization.Service, storage objectstorage.Storage, extractor pdfextractor.Extractor) (*Service, error) {
 	return newProcessingService(db, authorizer, storage, extractor, meeshoProcessor())
+}
+func NewMyntraService(db *pgxpool.Pool, authorizer *authorization.Service, storage objectstorage.Storage) (*Service, error) {
+	return newProcessingService(db, authorizer, storage, nil, myntraProcessor())
 }
 func newProcessingService(db *pgxpool.Pool, authorizer *authorization.Service, storage objectstorage.Storage, extractor pdfextractor.Extractor, p processor) (*Service, error) {
 	s, err := newServiceForProcessor(db, authorizer, storage, extractor, p)
@@ -202,6 +212,21 @@ func meeshoProcessor() processor {
 		return out, nil
 	}}
 }
+func myntraProcessor() processor {
+	return processor{marketplace: "myntra", parserVersion: myntra.ParserVersion, documentName: "Myntra CSV", auditCountKey: "rows", requireOrderID: true, contentType: "text/csv", extension: ".csv", requireIdempotency: true, parseData: func(data []byte) ([]normalizedRecord, error) {
+		records, err := myntra.Parse(data)
+		if err != nil {
+			return nil, err
+		}
+		out := make([]normalizedRecord, 0, len(records))
+		for _, record := range records {
+			out = append(out, normalizedRecord{Page: record.Row, AWB: record.TrackingID, OrderID: record.OrderID, SKU: record.SellerSKU, Warnings: record.Warnings, AssociationMethod: "csv_row", Confidence: "high", Metadata: map[string]any{
+				"source_kind": "csv", "source_row": record.Row, "myntra_sku_code": record.MyntraSKU, "store_packet_id": record.StorePacketID, "order_release_id": record.OrderReleaseID, "marketplace_status": record.Status, "packed_on": record.PackedOn, "created_on": record.CreatedOn,
+			}})
+		}
+		return out, nil
+	}}
+}
 func (s *Service) signal() {
 	select {
 	case s.wake <- struct{}{}:
@@ -210,6 +235,9 @@ func (s *Service) signal() {
 }
 
 func (s *Service) Upload(ctx context.Context, p auth.Principal, filename string, data []byte) (UploadResult, error) {
+	return s.UploadWithIdempotency(ctx, p, filename, data, "")
+}
+func (s *Service) UploadWithIdempotency(ctx context.Context, p auth.Principal, filename string, data []byte, idempotencyKey string) (UploadResult, error) {
 	if err := s.authorizer.RequireModule(ctx, p, s.processor.marketplace); err != nil {
 		return UploadResult{}, err
 	}
@@ -219,11 +247,30 @@ func (s *Service) Upload(ctx context.Context, p auth.Principal, filename string,
 	if err := s.authorizer.RequirePermission(ctx, p, "labels.process"); err != nil {
 		return UploadResult{}, err
 	}
-	if len(data) == 0 || len(data) > MaxUploadBytes || !bytes.HasPrefix(data, []byte("%PDF-")) {
+	idempotencyKey = strings.TrimSpace(idempotencyKey)
+	if s.processor.requireIdempotency && (idempotencyKey == "" || len(idempotencyKey) > 128) {
+		return UploadResult{}, ErrInvalidFile
+	}
+	isPDF := s.processor.parseData == nil
+	if len(data) == 0 || len(data) > MaxUploadBytes || (isPDF && !bytes.HasPrefix(data, []byte("%PDF-"))) || (!isPDF && !strings.EqualFold(filepath.Ext(filename), s.processor.extension)) {
 		return UploadResult{}, ErrInvalidFile
 	}
 	hashBytes := sha256.Sum256(data)
 	hash := hex.EncodeToString(hashBytes[:])
+	if idempotencyKey != "" {
+		var existing Job
+		var existingHash string
+		err := s.db.QueryRow(ctx, `SELECT j.id,j.status,j.parser_version,j.total_pages,j.processed_pages,j.created_at,j.updated_at,f.sha256 FROM processing_jobs j JOIN source_files f ON f.company_id=j.company_id AND f.id=j.source_file_id WHERE j.company_id=$1 AND j.marketplace_key=$2 AND j.upload_idempotency_key=$3`, p.CompanyID, s.processor.marketplace, idempotencyKey).Scan(&existing.ID, &existing.Status, &existing.ParserVersion, &existing.TotalPages, &existing.ProcessedPages, &existing.CreatedAt, &existing.UpdatedAt, &existingHash)
+		if err == nil {
+			if existingHash != hash {
+				return UploadResult{}, ErrIdempotencyConflict
+			}
+			return UploadResult{Job: existing, DuplicateSource: true}, nil
+		}
+		if !errors.Is(err, pgx.ErrNoRows) {
+			return UploadResult{}, err
+		}
+	}
 	if existing, err := s.findDuplicate(ctx, p.CompanyID, hash); err == nil {
 		return UploadResult{Job: existing, DuplicateSource: true}, nil
 	} else if !errors.Is(err, ErrNotFound) {
@@ -233,8 +280,12 @@ func (s *Service) Upload(ctx context.Context, p auth.Principal, filename string,
 	if err != nil {
 		return UploadResult{}, err
 	}
-	storageKey := path.Join(p.CompanyID, sourceID+".pdf")
-	if err = s.storage.Put(ctx, storageKey, bytes.NewReader(data), int64(len(data)), "application/pdf"); err != nil {
+	extension, contentType := ".pdf", "application/pdf"
+	if !isPDF {
+		extension, contentType = s.processor.extension, s.processor.contentType
+	}
+	storageKey := path.Join(p.CompanyID, sourceID+extension)
+	if err = s.storage.Put(ctx, storageKey, bytes.NewReader(data), int64(len(data)), contentType); err != nil {
 		return UploadResult{}, err
 	}
 	keep := false
@@ -251,7 +302,7 @@ func (s *Service) Upload(ctx context.Context, p auth.Principal, filename string,
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
 	var inserted string
-	err = tx.QueryRow(ctx, `INSERT INTO source_files(id,company_id,marketplace_key,storage_key,original_filename,content_type,size_bytes,sha256,uploaded_by) VALUES($1,$2,$3,$4,$5,'application/pdf',$6,$7,$8) ON CONFLICT(company_id,marketplace_key,sha256) DO NOTHING RETURNING id`, sourceID, p.CompanyID, s.processor.marketplace, storageKey, safeFilename(filename), len(data), hash, p.UserID).Scan(&inserted)
+	err = tx.QueryRow(ctx, `INSERT INTO source_files(id,company_id,marketplace_key,storage_key,original_filename,content_type,size_bytes,sha256,uploaded_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT(company_id,marketplace_key,sha256) DO NOTHING RETURNING id`, sourceID, p.CompanyID, s.processor.marketplace, storageKey, safeFilename(filename), contentType, len(data), hash, p.UserID).Scan(&inserted)
 	if errors.Is(err, pgx.ErrNoRows) {
 		_ = tx.Rollback(ctx)
 		existing, findErr := s.findDuplicate(ctx, p.CompanyID, hash)
@@ -264,7 +315,11 @@ func (s *Service) Upload(ctx context.Context, p auth.Principal, filename string,
 		return UploadResult{}, err
 	}
 	var job Job
-	err = tx.QueryRow(ctx, `INSERT INTO processing_jobs(company_id,source_file_id,marketplace_key,status,parser_version) VALUES($1,$2,$3,'queued',$4) RETURNING id,status,parser_version,total_pages,processed_pages,created_at,updated_at`, p.CompanyID, sourceID, s.processor.marketplace, s.processor.parserVersion).Scan(&job.ID, &job.Status, &job.ParserVersion, &job.TotalPages, &job.ProcessedPages, &job.CreatedAt, &job.UpdatedAt)
+	uploadRequestHash := ""
+	if idempotencyKey != "" {
+		uploadRequestHash = hash
+	}
+	err = tx.QueryRow(ctx, `INSERT INTO processing_jobs(company_id,source_file_id,marketplace_key,status,parser_version,upload_idempotency_key,upload_request_hash) VALUES($1,$2,$3,'queued',$4,NULLIF($5,''),NULLIF($6,'')) RETURNING id,status,parser_version,total_pages,processed_pages,created_at,updated_at`, p.CompanyID, sourceID, s.processor.marketplace, s.processor.parserVersion, idempotencyKey, uploadRequestHash).Scan(&job.ID, &job.Status, &job.ParserVersion, &job.TotalPages, &job.ProcessedPages, &job.CreatedAt, &job.UpdatedAt)
 	if err != nil {
 		return UploadResult{}, err
 	}
@@ -302,7 +357,7 @@ func (s *Service) Get(ctx context.Context, p auth.Principal, id string) (JobDeta
 	if err != nil {
 		return JobDetails{}, err
 	}
-	rows, err := s.db.Query(ctx, `SELECT id,source_page,marketplace_order_id,awb,status FROM marketplace_orders WHERE company_id=$1 AND processing_job_id=$2 AND marketplace_key=$3 ORDER BY source_page,id`, p.CompanyID, id, s.processor.marketplace)
+	rows, err := s.db.Query(ctx, `SELECT id,source_page,marketplace_order_id,awb,status,extraction_metadata FROM marketplace_orders WHERE company_id=$1 AND processing_job_id=$2 AND marketplace_key=$3 ORDER BY source_page,id`, p.CompanyID, id, s.processor.marketplace)
 	if err != nil {
 		return JobDetails{}, err
 	}
@@ -310,7 +365,7 @@ func (s *Service) Get(ctx context.Context, p auth.Principal, id string) (JobDeta
 	out.Orders = []Order{}
 	for rows.Next() {
 		var o Order
-		if err = rows.Scan(&o.ID, &o.SourcePage, &o.MarketplaceOrderID, &o.AWB, &o.Status); err != nil {
+		if err = rows.Scan(&o.ID, &o.SourcePage, &o.MarketplaceOrderID, &o.AWB, &o.Status, &o.Metadata); err != nil {
 			return JobDetails{}, err
 		}
 		ir, queryErr := s.db.Query(ctx, `SELECT raw_sku,product_id,quantity,quantity_source,resolution_status,warnings FROM marketplace_order_items WHERE company_id=$1 AND order_id=$2`, p.CompanyID, o.ID)
@@ -553,11 +608,20 @@ func (s *Service) execute(ctx context.Context, w work) error {
 	if len(data) > MaxUploadBytes {
 		return ErrInvalidFile
 	}
-	pages, err := s.extractor.Extract(ctx, data)
-	if err != nil {
-		return fmt.Errorf("PDF extraction failed: %w", err)
+	var labels []normalizedRecord
+	totalUnits := 0
+	if s.processor.parseData != nil {
+		labels, err = s.processor.parseData(data)
+		totalUnits = len(labels)
+	} else {
+		var pages []pdfextractor.Page
+		pages, err = s.extractor.Extract(ctx, data)
+		if err != nil {
+			return fmt.Errorf("PDF extraction failed: %w", err)
+		}
+		totalUnits = len(pages)
+		labels, err = s.processor.parse(pages)
 	}
-	labels, err := s.processor.parse(pages)
 	if err != nil {
 		return fmt.Errorf("%s parse failed: %w", s.processor.documentName, err)
 	}
@@ -632,7 +696,14 @@ func (s *Service) execute(ctx context.Context, w work) error {
 		if status != "resolved" {
 			needsReview = true
 		}
-		metadata, _ := json.Marshal(map[string]any{"extractor": "poppler", "association_method": label.AssociationMethod, "association_confidence": label.Confidence, "fields_detected": map[string]bool{"awb": label.AWB != "", "order_id": label.OrderID != "", "sku": label.SKU != "", "quantity": label.Quantity != nil}})
+		metadataValues := map[string]any{"extractor": "poppler", "association_method": label.AssociationMethod, "association_confidence": label.Confidence, "fields_detected": map[string]bool{"awb": label.AWB != "", "order_id": label.OrderID != "", "sku": label.SKU != "", "quantity": label.Quantity != nil}}
+		for key, value := range label.Metadata {
+			metadataValues[key] = value
+		}
+		if s.processor.parseData != nil {
+			metadataValues["extractor"] = "csv"
+		}
+		metadata, _ := json.Marshal(metadataValues)
 		var orderID string
 		if err = tx.QueryRow(ctx, `INSERT INTO marketplace_orders(company_id,marketplace_key,source_file_id,processing_job_id,source_page,marketplace_order_id,awb,status,parser_version,extraction_metadata) VALUES($1,$2,$3,$4,$5,NULLIF($6,''),NULLIF($7,''),$8,$9,$10) RETURNING id`, w.CompanyID, s.processor.marketplace, sourceID, w.JobID, label.Page, label.OrderID, label.AWB, status, s.processor.parserVersion, metadata).Scan(&orderID); err != nil {
 			return err
@@ -668,14 +739,14 @@ func (s *Service) execute(ctx context.Context, w work) error {
 	if needsReview {
 		finalStatus = "needs_review"
 	}
-	result, err := tx.Exec(ctx, `UPDATE processing_jobs SET status=$1,total_pages=$2,processed_pages=$2,completed_at=now(),worker_id=NULL,lease_expires_at=NULL,updated_at=now() WHERE company_id=$3 AND id=$4 AND marketplace_key=$6 AND status='processing' AND worker_id=$5`, finalStatus, len(pages), w.CompanyID, w.JobID, w.WorkerID, s.processor.marketplace)
+	result, err := tx.Exec(ctx, `UPDATE processing_jobs SET status=$1,total_pages=$2,processed_pages=$2,completed_at=now(),worker_id=NULL,lease_expires_at=NULL,updated_at=now() WHERE company_id=$3 AND id=$4 AND marketplace_key=$6 AND status='processing' AND worker_id=$5`, finalStatus, totalUnits, w.CompanyID, w.JobID, w.WorkerID, s.processor.marketplace)
 	if err != nil {
 		return err
 	}
 	if result.RowsAffected() != 1 {
 		return ErrLeaseLost
 	}
-	if err = s.audit.Record(ctx, tx, w.CompanyID, w.UserID, s.processor.marketplace+".processing_completed", "processing_job", w.JobID, map[string]any{"status": finalStatus, "pages": len(pages), s.processor.auditCountKey: len(labels)}); err != nil {
+	if err = s.audit.Record(ctx, tx, w.CompanyID, w.UserID, s.processor.marketplace+".processing_completed", "processing_job", w.JobID, map[string]any{"status": finalStatus, "source_units": totalUnits, s.processor.auditCountKey: len(labels)}); err != nil {
 		return err
 	}
 	if err = tx.Commit(ctx); err != nil {

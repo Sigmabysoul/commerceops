@@ -1,25 +1,36 @@
 ## Current Phase
 
-Phase 10 — Meesho
+Phase 11 — Myntra, Batch A
 
 ## Current Branch
 
-`phase/10-meesho`
+`phase/11-myntra`
 
 ## Approved Baseline
 
-Phase 10 Batch A processing foundation:
+Approved Phase 10 completion baseline:
 
-`17b85018dec8983be98f1a1b8a6cb44bdae39088`
+`6d0634473da832c5fac9a6fad842ddf2c70ccbba`
 
 ## Phase Status
 
-`PHASE_10_COMPLETE_AWAITING_EXTERNAL_REVIEW`
+`PHASE_11_BATCH_A_IMPLEMENTED_VERIFICATION_INCOMPLETE`
 
-Phases 0–9 are implemented. The owner explicitly authorized completion of all
-remaining Phase 10 work from the approved Batch A foundation.
+Phases 0–10 are implemented and Phase 10 is the approved starting baseline.
+The owner explicitly authorized Phase 11 Myntra Batch A only.
 
-Phase 11 is not authorized.
+## Phase 11 Batch A Delivery
+
+- [x] bounded UTF-8 Myntra packed-orders CSV import through shared source/job orchestration
+- [x] `Order id` and `Tracking_id` normalized as order/AWB identifiers
+- [x] `Seller_sku_code` used for exact Myntra Product Master mapping
+- [x] Myntra SKU, packet/release IDs, status, and timestamps preserved as evidence metadata
+- [x] missing quantity retained without a default; all current Myntra rows remain review-required
+- [x] tenant/module/permission enforcement, source deduplication, upload idempotency, leases, retry, and audit reuse
+- [x] batch/reporting/returns selectors recognize Myntra while readiness and quantity-dependent workflows remain blocked
+- [x] no Myntra-specific order, inventory, returns, batch, reporting, or printing tables
+- [x] no PDF parser, cropper, invoice association, OCR, overlay, or print generator
+- [x] migration `000019` adds generic upload idempotency evidence and the Myntra claim index
 
 ## Phase 10 Delivery
 
@@ -79,7 +90,13 @@ Private Meesho production-PDF validation was skipped because
 `MEESHO_PRIVATE_SAMPLE` was not supplied. Sanitized and platform regressions
 passed.
 
+## Phase 11 Evidence Limit
+
+No representative Myntra label PDF was supplied. Batch A therefore implements
+only the real packed-orders CSV contract. Quantity and all PDF layout,
+association, extraction, and enrichment behavior remain deferred.
+
 ## Next Allowed Task
 
-Externally review and approve Phase 10. Do not begin Phase 11 or Myntra
-automatically.
+Externally review and approve Phase 11 Batch A. Do not begin Snapdeal or Phase
+12 automatically.

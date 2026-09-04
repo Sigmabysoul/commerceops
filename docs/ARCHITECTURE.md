@@ -59,6 +59,14 @@ authorization, and audits remain generic. Meesho OCR and cross-page association
 are not enabled without representative evidence establishing that they are
 necessary and deterministic.
 
+Phase 11 Batch A adds an isolated Myntra packed-orders CSV adapter to that same
+source-file, durable-job, normalization, Product Master, audit, and tenant
+boundary. The seller SKU is the exact Product Master lookup key; Myntra SKU,
+packet/release references, marketplace status, and observed timestamps remain
+evidence metadata. Because the real CSV has no authoritative quantity, every
+row remains review-required and cannot become print-ready or outbound-ready.
+No PDF interpretation or print generator is registered for Myntra.
+
 Shared batch/print jobs route normalized print inputs through a marketplace-keyed
 generator. Flipkart continues to use the shared Poppler crop generator. Amazon's
 adapter owns its A4 validation and SKU/quantity enrichment, while the batch
@@ -73,7 +81,7 @@ same batch membership, assignment snapshots, artifacts, reprints, and explicit
 Inventory outbound boundary as the other marketplaces.
 
 The Phase 8 returns domain references normalized marketplace orders and
-canonical Product Master items for shared Flipkart/Amazon/Meesho cancellation and
+canonical Product Master items for shared Flipkart/Amazon/Meesho/Myntra cancellation and
 physical-return processing. It owns lifecycle validation, dispositions,
 idempotency, and append-only events, but not balances or ledger writes.
 Cancellation, receipt, and inspection are inventory-neutral. An authorized

@@ -427,7 +427,7 @@ func normalizeCreateInput(input *CreateInput) bool {
 }
 
 func supportedMarketplace(marketplace string) bool {
-	return marketplace == "flipkart" || marketplace == "amazon" || marketplace == "meesho"
+	return marketplace == "flipkart" || marketplace == "amazon" || marketplace == "meesho" || marketplace == "myntra"
 }
 
 func hashRequest(input CreateInput) (string, error) {

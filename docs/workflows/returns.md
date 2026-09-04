@@ -1,7 +1,8 @@
 # Returns and cancellations workflow
 
 Marketplace cancellation and physical-return processing share normalized
-Flipkart/Amazon/Meesho orders and canonical Product Master items.
+Flipkart/Amazon/Meesho/Myntra orders and canonical Product Master items. Myntra
+CSV rows remain ineligible until explicit quantity evidence exists.
 
 ```text
 Cancellation recorded

@@ -69,7 +69,7 @@ func setupBatch(t *testing.T) *batchFixture {
 		scanBatchTest(t, db, `INSERT INTO roles(company_id,name) VALUES($1,'Batch Operator') RETURNING id`, []any{company}, &role)
 		execBatchTest(t, db, `INSERT INTO role_permissions(company_id,role_id,permission_key) VALUES($1,$2,'labels.process'),($1,$2,'labels.print'),($1,$2,'labels.reprint'),($1,$2,'employees.manage')`, company, role)
 		execBatchTest(t, db, `INSERT INTO company_user_roles(company_id,user_id,role_id) VALUES($1,$2,$3)`, company, f.userID, role)
-		execBatchTest(t, db, `INSERT INTO module_entitlements(company_id,module_key,enabled) VALUES($1,'flipkart',true),($1,'amazon',true),($1,'meesho',true)`, company)
+		execBatchTest(t, db, `INSERT INTO module_entitlements(company_id,module_key,enabled) VALUES($1,'flipkart',true),($1,'amazon',true),($1,'meesho',true),($1,'myntra',true)`, company)
 		if company == f.companyA {
 			f.roleA = role
 		}
@@ -92,6 +92,34 @@ func setupBatch(t *testing.T) *batchFixture {
 	f.principalB = auth.Principal{CompanyID: f.companyB, UserID: f.userID}
 	t.Cleanup(func() { cleanupBatch(t, f); db.Close() })
 	return f
+}
+
+func TestMyntraMissingQuantityCannotBecomeReady(t *testing.T) {
+	f := setupBatch(t)
+	ctx := context.Background()
+	seed := fmt.Sprintf("myntra-%s-%d", f.companyA, time.Now().UnixNano())
+	hash := sha256.Sum256([]byte(seed))
+	var sourceID, jobID, orderID string
+	scanBatchTest(t, f.db, `INSERT INTO source_files(company_id,marketplace_key,storage_key,original_filename,content_type,size_bytes,sha256,uploaded_by) VALUES($1,'myntra',$2,'orders.csv','text/csv',1,$3,$4) RETURNING id`, []any{f.companyA, seed, hex.EncodeToString(hash[:]), f.userID}, &sourceID)
+	scanBatchTest(t, f.db, `INSERT INTO processing_jobs(company_id,source_file_id,marketplace_key,status,parser_version,total_pages,processed_pages) VALUES($1,$2,'myntra','needs_review','myntra-packed-orders-csv-v1',1,1) RETURNING id`, []any{f.companyA, sourceID}, &jobID)
+	scanBatchTest(t, f.db, `INSERT INTO marketplace_orders(company_id,marketplace_key,source_file_id,processing_job_id,source_page,marketplace_order_id,awb,status,parser_version) VALUES($1,'myntra',$2,$3,2,'7000000099','MYSP1000000099','needs_review','myntra-packed-orders-csv-v1') RETURNING id`, []any{f.companyA, sourceID, jobID}, &orderID)
+	execBatchTest(t, f.db, `INSERT INTO marketplace_order_items(company_id,order_id,raw_sku,product_id,quantity,quantity_source,resolution_status) VALUES($1,$2,'SANITIZED-SKU',$3,NULL,'missing','resolved')`, f.companyA, orderID, f.productID)
+	eligible, err := f.service.EligibleOrders(ctx, f.principalA, "myntra")
+	if err != nil || len(eligible) != 1 || eligible[0].UnresolvedCount == 0 {
+		t.Fatalf("eligible=%#v err=%v", eligible, err)
+	}
+	created, _, err := f.service.Create(ctx, f.principalA, CreateInput{MarketplaceKey: "myntra", OrderIDs: []string{orderID}, IdempotencyKey: "myntra-missing-quantity"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = f.service.Ready(ctx, f.principalA, created.ID); !errors.Is(err, ErrUnresolved) {
+		t.Fatalf("ready error=%v", err)
+	}
+	var events int
+	scanBatchTest(t, f.db, `SELECT count(*) FROM inventory_outbound_events WHERE company_id=$1 AND batch_id=$2`, []any{f.companyA, created.ID}, &events)
+	if events != 0 {
+		t.Fatalf("outbound events=%d", events)
+	}
 }
 
 func (f *batchFixture) amazonOrder(t *testing.T, quantity int) string {

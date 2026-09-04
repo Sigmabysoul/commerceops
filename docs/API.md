@@ -87,13 +87,13 @@ idempotency key and expected versions where state or line concurrency matters.
 
 ## Batch foundation
 
-Batch endpoints require the selected Flipkart, Amazon, or Meesho entitlement and the
+Batch endpoints require the selected Flipkart, Amazon, Meesho, or Myntra entitlement and the
 existing `labels.process` permission. `labels.print` covers generation and downloads, while
 `labels.reprint` separately authorizes source-linked reprints.
 
 | Method | Path | Purpose |
 | --- | --- | --- |
-| GET | `/api/v1/batch-eligible-orders?marketplace={flipkart|amazon|meesho}` | List completed, non-duplicate normalized orders not already in a batch |
+| GET | `/api/v1/batch-eligible-orders?marketplace={flipkart|amazon|meesho|myntra}` | List completed, non-duplicate normalized orders not already in a batch |
 | GET, POST | `/api/v1/batches` | List batches or idempotently create a draft from one to 500 orders |
 | GET | `/api/v1/batches/{batch_id}` | Read ordered source traceability and Product Master totals |
 | POST | `/api/v1/batches/{batch_id}/ready` | Ready a fully resolved draft |
@@ -198,7 +198,7 @@ accept a company ID or raw marketplace SKU.
 | POST | `/api/v1/inventory/stock-in` | `inventory.stock_in` | Record positive stock-in |
 | POST | `/api/v1/inventory/adjustments` | `inventory.adjust` | Record a nonzero reasoned manual delta |
 | POST | `/api/v1/inventory/corrections` | `inventory.adjust` | Record a compensating correction |
-| POST | `/api/v1/inventory/batches/{batch_id}/confirm-outbound` | `inventory.dispatch` | Atomically deduct a ready Flipkart, Amazon, or Meesho batch's Product Master totals once |
+| POST | `/api/v1/inventory/batches/{batch_id}/confirm-outbound` | `inventory.dispatch` | Atomically deduct a ready marketplace batch's Product Master totals once; Myntra imports cannot reach ready without explicit quantity evidence |
 | GET, POST | `/api/v1/inventory/reservations` | `inventory.view` / `inventory.adjust` | List reservations or reserve available stock for a source |
 | POST | `/api/v1/inventory/reservations/{reservation_id}/release` | `inventory.adjust` | Idempotently release an active reservation with a reason |
 
@@ -312,3 +312,21 @@ Resolved Meesho orders participate in the shared batch, worker-assignment,
 source-page print artifact, reprint, outbound confirmation, reporting, and
 returns workflows. Printing/reprinting are inventory-neutral; only explicit
 ready-batch outbound confirmation creates idempotent `ecommerce_out` entries.
+
+## Myntra CSV processing — Phase 11 Batch A
+
+- `POST /api/v1/myntra/jobs` accepts a UTF-8 packed-orders CSV plus a required
+  multipart `idempotency_key`; it requires the `myntra` entitlement and existing
+  `labels.upload` and `labels.process` permissions.
+- `GET /api/v1/myntra/jobs/{job_id}` returns tenant-scoped normalized rows,
+  Product Master resolution, review reasons, and preserved Myntra evidence.
+- `POST /api/v1/myntra/jobs/{job_id}` retries a terminal import against current
+  Product Master mappings.
+
+The exact active `myntra` mapping key is `Seller_sku_code`. `Order id` maps to
+the shared marketplace order ID and `Tracking_id` maps to AWB. Myntra SKU code,
+Store Packet ID, Order_release_id, marketplace status, Packed On, and Created On
+remain extraction metadata. The observed CSV has no authoritative quantity;
+all rows retain missing quantity and remain blocked from readiness, printing,
+outbound confirmation, and quantity-dependent return intake. No Myntra PDF
+contract or print generator exists in Batch A.
