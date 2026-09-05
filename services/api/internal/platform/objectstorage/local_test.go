@@ -1,3 +1,4 @@
+// This file tests the local object-storage adapter against the shared storage expectations in the object-storage infrastructure layer.
 package objectstorage
 
 import (

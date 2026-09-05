@@ -1,3 +1,4 @@
+// This file verifies marketplace print composition and guards its document-level contract in the Amazon marketplace adapter.
 package amazon
 
 import (

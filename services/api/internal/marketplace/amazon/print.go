@@ -1,3 +1,4 @@
+// This file builds marketplace-specific printable output while keeping layout knowledge inside the adapter in the Amazon marketplace adapter.
 package amazon
 
 import (

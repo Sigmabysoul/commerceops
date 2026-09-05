@@ -1,3 +1,4 @@
+// This file verifies JSON contracts semantically so serialization formatting cannot make tests brittle in the marketplace orchestration package.
 package marketplace
 
 import (

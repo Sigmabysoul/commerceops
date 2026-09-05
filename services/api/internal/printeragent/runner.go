@@ -1,3 +1,4 @@
+// This file polls for work and drives the printer-agent state machine, retries, and acknowledgements in the local printer-agent package.
 package printeragent
 
 import (

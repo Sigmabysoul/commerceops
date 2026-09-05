@@ -1,3 +1,4 @@
+// This file covers password hashing and verification behavior at the authentication boundary in the authentication package.
 package auth
 
 import (

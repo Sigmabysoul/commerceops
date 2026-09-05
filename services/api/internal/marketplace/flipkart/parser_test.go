@@ -1,3 +1,4 @@
+// This file exercises parser normalization, validation, and malformed-input edge cases in the Flipkart marketplace adapter.
 package flipkart
 
 import (

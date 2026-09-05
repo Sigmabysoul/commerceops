@@ -1,3 +1,4 @@
+// This file implements the object-storage contract with an S3-compatible remote service in the object-storage infrastructure layer.
 package objectstorage
 
 import (

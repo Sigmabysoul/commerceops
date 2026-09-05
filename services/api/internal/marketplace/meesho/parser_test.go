@@ -1,3 +1,4 @@
+// This file exercises parser normalization, validation, and malformed-input edge cases in the Meesho marketplace adapter.
 package meesho
 
 import (

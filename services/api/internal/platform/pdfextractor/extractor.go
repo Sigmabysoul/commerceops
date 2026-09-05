@@ -1,3 +1,4 @@
+// This file defines the PDF text-extraction contract consumed by marketplace processors in the PDF text-extraction infrastructure layer.
 package pdfextractor
 
 import "context"

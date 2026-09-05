@@ -1,3 +1,4 @@
+// This file centralizes JSON success and error responses so handlers expose a consistent contract in the shared HTTP infrastructure layer.
 package httpserver
 
 import (

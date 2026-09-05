@@ -1,3 +1,4 @@
+// This file groups the responsibilities named by the file so related domain logic stays discoverable in the health-check package.
 package health
 
 import (

@@ -1,3 +1,4 @@
+// This file applies outbound stock deductions transactionally and idempotently in the inventory package.
 package inventory
 
 import (

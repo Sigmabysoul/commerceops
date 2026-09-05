@@ -1,3 +1,4 @@
+// This file adapts Poppler command-line tools to this package's PDF interface in the PDF generation infrastructure layer.
 package pdfgenerator
 
 import (

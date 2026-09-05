@@ -1,3 +1,4 @@
+// This file calculates return closure outcomes while preserving inventory and audit invariants in the returns package.
 package returns
 
 import (

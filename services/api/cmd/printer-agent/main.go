@@ -1,3 +1,4 @@
+// This file wires dependencies and starts the process; begin here to see how its components fit together in the printer-agent executable.
 package main
 
 import (

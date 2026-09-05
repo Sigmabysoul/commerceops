@@ -1,3 +1,4 @@
+// This file covers configuration defaults, validation, and environment parsing in the configuration package.
 package config
 
 import (

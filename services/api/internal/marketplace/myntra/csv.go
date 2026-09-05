@@ -1,3 +1,4 @@
+// This file parses Myntra CSV exports and preserves marketplace identifiers needed downstream in the Myntra marketplace adapter.
 package myntra
 
 import (

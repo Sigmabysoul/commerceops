@@ -1,3 +1,4 @@
+// This file defines PDF generation types and the interface used by printing workflows in the PDF generation infrastructure layer.
 package pdfgenerator
 
 import (

@@ -1,3 +1,4 @@
+// This file records immutable audit events so important operations remain traceable in the audit package.
 package audit
 
 import (

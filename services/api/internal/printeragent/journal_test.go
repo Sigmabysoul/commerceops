@@ -1,3 +1,4 @@
+// This file tests durable idempotency records and recovery from malformed journal data in the local printer-agent package.
 package printeragent
 
 import (

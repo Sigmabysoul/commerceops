@@ -1,3 +1,4 @@
+// This file covers health endpoint status and response behavior without starting the full server in the health-check package.
 package health
 
 import (

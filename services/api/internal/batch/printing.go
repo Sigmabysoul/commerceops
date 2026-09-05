@@ -1,3 +1,4 @@
+// This file connects batch workflows to printing without moving print policy into HTTP handlers in the batch package.
 package batch
 
 import (

@@ -1,3 +1,4 @@
+// This file turns marketplace-owned input into validated normalized records used by the domain layer in the Flipkart marketplace adapter.
 package flipkart
 
 import (

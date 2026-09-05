@@ -1,3 +1,4 @@
+// This file tests source-page selection and PDF composition edge cases in the PDF generation infrastructure layer.
 package pdfgenerator_test
 
 import (

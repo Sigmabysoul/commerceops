@@ -1,3 +1,4 @@
+// This file contains focused regression tests for the behavior owned by this package in the inventory package.
 package inventory
 
 import (

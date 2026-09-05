@@ -1,3 +1,4 @@
+// This file adapts CUPS commands to the printer-agent backend interface in the local printer-agent package.
 package printeragent
 
 import (

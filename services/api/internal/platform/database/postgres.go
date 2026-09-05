@@ -1,3 +1,4 @@
+// This file opens PostgreSQL connections and applies the repository's connection-safety defaults in the PostgreSQL infrastructure layer.
 package database
 
 import (

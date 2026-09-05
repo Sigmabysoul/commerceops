@@ -1,3 +1,4 @@
+// This file tests storage selection and configuration at the application-composition boundary in the application composition layer.
 package app
 
 import (

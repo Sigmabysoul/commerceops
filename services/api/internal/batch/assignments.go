@@ -1,3 +1,4 @@
+// This file owns worker-assignment transitions and the rules that protect them in the batch package.
 package batch
 
 import (

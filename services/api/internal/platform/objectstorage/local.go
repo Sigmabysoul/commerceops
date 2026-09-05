@@ -1,3 +1,4 @@
+// This file implements object storage on the local filesystem for development and tests in the object-storage infrastructure layer.
 package objectstorage
 
 import (

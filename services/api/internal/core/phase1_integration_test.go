@@ -1,3 +1,4 @@
+// This file contains PostgreSQL-backed tests for cross-layer behavior, tenant isolation, and domain invariants in the core company and user package.
 package core
 
 import (

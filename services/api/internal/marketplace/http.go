@@ -1,3 +1,4 @@
+// This file implements the REST boundary: decoding input, calling services, and encoding consistent responses in the marketplace orchestration package.
 package marketplace
 
 import (

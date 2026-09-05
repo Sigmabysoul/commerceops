@@ -1,3 +1,4 @@
+// This file manages stock reservations separately from physical inventory movements in the inventory package.
 package inventory
 
 import (

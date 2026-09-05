@@ -1,3 +1,4 @@
+// This file posts auditable inventory movements created by consignment workflows in the inventory package.
 package inventory
 
 import (

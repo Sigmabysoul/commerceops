@@ -1,3 +1,4 @@
+// This file tests S3 request construction and error handling without putting storage details in domain code in the object-storage infrastructure layer.
 package objectstorage
 
 import (

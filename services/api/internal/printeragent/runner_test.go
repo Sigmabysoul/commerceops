@@ -1,3 +1,4 @@
+// This file tests printer-agent polling, retry, cancellation, and acknowledgement behavior in the local printer-agent package.
 package printeragent
 
 import (

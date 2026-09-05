@@ -1,3 +1,4 @@
+// This file selects and combines source PDF pages without leaking PDF mechanics into domain code in the PDF generation infrastructure layer.
 package pdfgenerator
 
 import (

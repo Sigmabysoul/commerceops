@@ -1,3 +1,4 @@
+// This file defines request-context helpers that carry trusted server-side identity through call chains in the printing package.
 package printing
 
 import "context"

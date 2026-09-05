@@ -1,3 +1,4 @@
+// This file checks assumptions made about representative marketplace fixture documents in the Flipkart marketplace adapter.
 package flipkart
 
 import (

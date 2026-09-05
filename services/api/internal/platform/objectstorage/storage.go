@@ -1,3 +1,4 @@
+// This file defines the storage interface that keeps business packages independent of a concrete backend in the object-storage infrastructure layer.
 package objectstorage
 
 import (

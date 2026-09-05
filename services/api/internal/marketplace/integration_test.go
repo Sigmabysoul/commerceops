@@ -1,3 +1,4 @@
+// This file contains focused regression tests for the behavior owned by this package in the marketplace orchestration package.
 package marketplace
 
 import (

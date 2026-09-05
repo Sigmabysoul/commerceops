@@ -1,3 +1,4 @@
+// This file implements the REST boundary: decoding input, calling services, and encoding consistent responses in the core company and user package.
 package core
 
 import (

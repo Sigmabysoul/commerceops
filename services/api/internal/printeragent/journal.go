@@ -1,3 +1,4 @@
+// This file persists completed job identifiers so agent restarts do not print the same job twice in the local printer-agent package.
 package printeragent
 
 import (

@@ -1,3 +1,4 @@
+// This file tests the Poppler adapter's command behavior and failure reporting in the PDF generation infrastructure layer.
 package pdfgenerator_test
 
 import (

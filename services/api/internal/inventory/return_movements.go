@@ -1,3 +1,4 @@
+// This file posts auditable stock movements when returned items re-enter inventory in the inventory package.
 package inventory
 
 import (

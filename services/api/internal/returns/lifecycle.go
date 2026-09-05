@@ -1,3 +1,4 @@
+// This file implements allowed return-state transitions and their domain side effects in the returns package.
 package returns
 
 import (

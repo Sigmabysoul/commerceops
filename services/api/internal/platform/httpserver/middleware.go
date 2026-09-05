@@ -1,3 +1,4 @@
+// This file provides shared request middleware for concerns that apply across HTTP modules in the shared HTTP infrastructure layer.
 package httpserver
 
 import (

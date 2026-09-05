@@ -1,3 +1,4 @@
+// This file assembles domain services, infrastructure adapters, and HTTP routes into the running application in the application composition layer.
 package app
 
 import (

@@ -1,3 +1,4 @@
+// This file coordinates the package's business rules and persistence operations behind a reusable API in the Product Master package.
 package product
 
 import (

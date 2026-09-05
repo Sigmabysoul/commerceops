@@ -1,3 +1,4 @@
+// This file exercises parser normalization, validation, and malformed-input edge cases in the Amazon marketplace adapter.
 package amazon
 
 import (

@@ -1,3 +1,4 @@
+// This file loads and validates environment configuration before the application starts in the configuration package.
 package config
 
 import (

@@ -1,3 +1,4 @@
+// This file checks optional private fixtures without making them a source-code dependency in the Meesho marketplace adapter.
 package meesho
 
 import (
