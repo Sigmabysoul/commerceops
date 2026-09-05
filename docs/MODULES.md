@@ -114,16 +114,20 @@ inside one application; it does not imply microservices.
   infer departments from employee names, treat pouch references as globally
   unique, or complete partially prepared work.
 
-## Printing (`internal/batch` and `internal/platform/pdfgenerator`)
+## Printing (`internal/printing`, `internal/printeragent`, `internal/batch`, and `internal/platform/pdfgenerator`)
 
-- **Owns:** print-ready output, print jobs, artifact traceability, and
-  traceable reprints.
+- **Owns:** print-ready output, artifact traceability, reusable library PDFs,
+  registered printers/agents, canonical physical jobs, delivery leases, and
+  traceable retries/reprints.
 - **Does not own:** source order parsing, Product Master, stock deductions, or
   authorization infrastructure.
-- **Allowed dependencies:** normalized labels/orders, authorized actors, object
-  storage, and approved batch relationships.
+- **Allowed dependencies:** normalized labels/orders, authorized actors,
+  Product Master references, object storage, approved batch relationships, and
+  the local agent's narrow OS-printer backend.
 - **Forbidden leakage:** reprinting must never imply inventory movement, and
   marketplace geometry must not be guessed without representative evidence.
+  Browser and agent input must never become a command, local path, storage key,
+  or unrestricted print option.
 
 ## Audit (`internal/audit`)
 

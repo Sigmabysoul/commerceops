@@ -53,7 +53,7 @@ backend-test:
 	cd services/api && go test ./... -count=1
 
 backend-build:
-	cd services/api && go build ./cmd/server
+	cd services/api && go build ./cmd/server ./cmd/printer-agent
 
 frontend-typecheck:
 	cd apps/web && pnpm typecheck

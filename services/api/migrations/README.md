@@ -44,6 +44,10 @@ marketplace-specific business tables.
 Snapdeal reuses the shared source, normalized order/item/document, batch,
 printing, Inventory, Returns, and reporting tables.
 
+`000021_printing_platform` adds tenant agents and hashed credentials, registered
+printers, reusable PDF metadata, canonical physical jobs, append-only delivery
+events, and dedicated permissions. It does not change Inventory schema.
+
 ```sh
 make migrate
 ```

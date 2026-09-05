@@ -1,26 +1,57 @@
 ## Current Phase
 
-Phase 12 — Snapdeal
+Phase 13 — Printing Platform and Printer Agent
 
 ## Current Branch
 
-`phase/12-snapdeal`
+`phase/13-printing-automation`
 
 ## Approved Baseline
 
-Phase 11 remediation baseline:
+Phase 12 baseline:
 
-`a82939431400c4c39ac73ce316205ab272fe6367`
+`6b2732f164424a3392357cb4376e6cad0a9ba3b3`
 
 ## Phase Status
 
-`PHASE_12_COMPLETE_AWAITING_EXTERNAL_REVIEW`
+`PHASE_13_COMPLETE_AWAITING_EXTERNAL_REVIEW`
 
 Phases 0–10 are implemented and Phase 10 is the approved starting baseline.
 The owner explicitly authorized Phase 11 Myntra Batch A only.
 
 The owner explicitly authorized Phase 12 Snapdeal from the remediated Phase 11
 baseline.
+
+The owner explicitly authorized Phase 13 after Phase 12 completion.
+
+## Phase 13 Delivery
+
+- [x] pre-code schema, protocol, threat model, platform, UX, API, and test design
+- [x] tenant printer-agent registry with hashed one-time revocable credentials
+- [x] friendly registered printers with heartbeat presence and enable controls
+- [x] canonical physical print jobs with semantic idempotency and append-only events
+- [x] atomic agent claims, guarded downloads, lease reporting, and explicit retry
+- [x] durable local journal preventing reconnect duplicate submission
+- [x] fixed-argument Linux/CUPS backend behind a future Windows interface
+- [x] validated tenant Print Library PDFs using server-owned object-storage keys
+- [x] mobile-first installable Quick Print UI with favorites, categories, search,
+  recent history, default printer/copies, bounds, and large-copy confirmation
+- [x] existing marketplace artifacts enter the same physical queue
+- [x] dedicated permissions, tenant isolation, audits, concurrency coverage, and
+  verified Inventory neutrality
+- [x] no scheduled or automatic job creation introduced
+
+## Phase 13 Verification
+
+Phase 13 passed `make verify-full` against a fresh disposable PostgreSQL 18
+database migrated through `000021`. PostgreSQL-backed coverage includes tenant
+and permission isolation, credential hashing/revocation, printer presence,
+validated library PDFs, metadata updates, quick-print copy guardrails,
+idempotency conflicts/replays, concurrent claims, hash-authorized downloads,
+state reporting, lease expiry, explicit retry, existing batch artifacts,
+append-only events/audit, reconnect journaling, migration up/down, and Inventory
+neutrality. Go vet/tests, server and agent builds, frontend typecheck/lint/build,
+OpenAPI parsing, and repository checks passed.
 
 ## Phase 12 Delivery
 
@@ -122,4 +153,4 @@ association, extraction, and enrichment behavior remain deferred.
 
 ## Next Allowed Task
 
-Obtain external review of Phase 12. Do not begin Phase 13 automatically.
+Obtain external review of Phase 13. Do not begin Phase 14 automatically.

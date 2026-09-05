@@ -4,8 +4,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AssignmentRule, Batch, EligibleOrder, MarketplaceKey, PrintArtifact, PrintJob, batchAPI } from "@/api/batches";
 import { Employee, coreAPI } from "@/api/core";
 import { Product, productAPI } from "@/api/products";
+import { Printer, printingAPI } from "@/api/printing";
 
-type Operation = "creating" | "readying" | "generating" | "downloading" | "assigning" | "reprinting" | null;
+type Operation = "creating" | "readying" | "generating" | "downloading" | "assigning" | "reprinting" | "queueing" | null;
 
 export function BatchPrinting() {
   const [marketplace, setMarketplace] = useState<MarketplaceKey>("flipkart");
@@ -25,6 +26,8 @@ export function BatchPrinting() {
   const [assignmentRules, setAssignmentRules] = useState<AssignmentRule[]>([]);
   const [defaultWorker, setDefaultWorker] = useState("");
   const [productWorkers, setProductWorkers] = useState<Record<string, string>>({});
+  const [printers, setPrinters] = useState<Printer[]>([]);
+  const [physicalPrinter, setPhysicalPrinter] = useState("");
   const createRequest = useRef<IdempotentRequest | null>(null);
   const printRequest = useRef<IdempotentRequest | null>(null);
   const reprintRequest = useRef<IdempotentRequest | null>(null);
@@ -52,6 +55,7 @@ export function BatchPrinting() {
   }, [marketplace]);
 
   useEffect(() => { loadAssignments().catch((cause) => setError(message(cause))); }, [loadAssignments]);
+  useEffect(() => { printingAPI.printers().then((result) => { const online = result.printers.filter((printer) => printer.enabled && printer.status === "online"); setPrinters(online); setPhysicalPrinter((current) => current || online[0]?.id || ""); }).catch(() => undefined); }, []);
 
   const loadPrintJobs = useCallback(async (batchID: string) => {
     setPrintJobs((await batchAPI.printJobs(batchID)).print_jobs);
@@ -133,6 +137,14 @@ export function BatchPrinting() {
     finally { setOperation(null); }
   }
 
+  async function queuePhysicalPrint(artifact: PrintArtifact) {
+    if (!physicalPrinter) return;
+    setOperation("queueing"); setError("");
+    try { await printingAPI.queueArtifact(artifact.id, physicalPrinter, 1, crypto.randomUUID()); }
+    catch (cause) { setError(message(cause)); }
+    finally { setOperation(null); }
+  }
+
   function toggle(id: string) {
     setSelected((current) => current.includes(id) ? current.filter((value) => value !== id) : [...current, id]);
   }
@@ -169,7 +181,7 @@ export function BatchPrinting() {
     {printJob && <section className="panel print-result"><div className="status-line"><div><h2>Print output</h2><p className="muted">Generation {printJob.generation_version}</p></div><span className={`status status-${printJob.status}`}>{printJob.status}</span></div>
       {printJob.status === "generating" && <div className="progress" role="progressbar" aria-label="Generating printable PDFs"><span /></div>}
       {printJob.status === "failed" && <p className="error" role="alert">{printJob.error_message ?? "PDF generation failed."}</p>}
-      {printJob.status === "ready" && <><dl className="summary-metrics"><div><dt>Pages</dt><dd>{printJob.artifacts.find((artifact) => artifact.kind === "labels")?.page_count ?? 0}</dd></div><div><dt>Label order</dt><dd>{printJob.sort_labels ? "Sorted" : "Original"}</dd></div><div><dt>Files</dt><dd>{printJob.artifacts.length}</dd></div></dl><div className="artifact-list">{printJob.artifacts.map((artifact) => <article key={artifact.id}><div><strong>{artifact.kind === "labels" ? "Shipping labels PDF" : "Invoices PDF"}</strong><small>{artifact.page_count} pages · {formatBytes(artifact.size_bytes)}</small></div><button disabled={operation !== null} onClick={() => download(artifact)}>Download</button></article>)}</div></>}
+      {printJob.status === "ready" && <><dl className="summary-metrics"><div><dt>Pages</dt><dd>{printJob.artifacts.find((artifact) => artifact.kind === "labels")?.page_count ?? 0}</dd></div><div><dt>Label order</dt><dd>{printJob.sort_labels ? "Sorted" : "Original"}</dd></div><div><dt>Files</dt><dd>{printJob.artifacts.length}</dd></div></dl>{printers.length > 0 && <label>Physical printer<select value={physicalPrinter} onChange={(event) => setPhysicalPrinter(event.target.value)}>{printers.map((printer) => <option key={printer.id} value={printer.id}>{printer.friendly_name}</option>)}</select></label>}<div className="artifact-list">{printJob.artifacts.map((artifact) => <article key={artifact.id}><div><strong>{artifact.kind === "labels" ? "Shipping labels PDF" : "Invoices PDF"}</strong><small>{artifact.page_count} pages · {formatBytes(artifact.size_bytes)}</small></div><div className="inline"><button disabled={operation !== null} onClick={() => download(artifact)}>Download</button><button disabled={operation !== null || !physicalPrinter} onClick={() => queuePhysicalPrint(artifact)}>{operation === "queueing" ? "Queueing…" : "Queue print"}</button></div></article>)}</div></>}
     </section>}
     {batch?.status === "ready" && printJobs.length > 0 && <section className="panel print-history"><div className="status-line"><div><h2>Print history</h2><p className="muted">Every regeneration remains linked to its source print job.</p></div><span className="status">{printJobs.length} jobs</span></div><label className="reprint-reason">Reprint reason<input value={reprintReason} maxLength={500} placeholder="For example: damaged paper" onChange={(event) => setReprintReason(event.target.value)} /></label><div className="artifact-list">{printJobs.map((job) => <article key={job.id}><div><strong>{job.source_print_job_id ? "Reprint" : "Original print"}</strong><small>{new Date(job.created_at).toLocaleString()} · {job.status}{job.reprint_reason ? ` · ${job.reprint_reason}` : ""}</small></div><button disabled={job.status !== "ready" || !reprintReason.trim() || operation !== null} onClick={() => reprint(job)}>{operation === "reprinting" ? "Reprinting…" : "Reprint"}</button></article>)}</div></section>}
   </section>;

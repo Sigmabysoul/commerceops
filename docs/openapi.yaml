@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: CommerceOps API
-  version: 0.12.0
+  version: 0.13.0
 paths:
   /api/v1/health:
     get:
@@ -953,11 +953,143 @@ paths:
         "200": {description: Operational summary, marketplace breakdown, and permission-gated inventory and return/cancellation data}
         "400": {$ref: "#/components/responses/Error"}
         "403": {$ref: "#/components/responses/Error"}
+  /api/v1/printer-agents:
+    get:
+      operationId: listPrinterAgents
+      security: [{sessionCookie: []}]
+      responses:
+        "200": {description: Tenant agents with derived online, offline, or revoked status}
+    post:
+      operationId: createPrinterAgent
+      summary: Register a tenant device and issue its credential once
+      security: [{sessionCookie: []}]
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [friendly_name, platform], properties: {friendly_name: {type: string, maxLength: 120}, platform: {type: string, enum: [linux_cups]}}}}}}
+      responses:
+        "201": {description: Agent registered; credential is returned only in this response}
+        "403": {$ref: "#/components/responses/Error"}
+  /api/v1/printer-agents/{agent_id}:
+    parameters: [{name: agent_id, in: path, required: true, schema: {type: string, format: uuid}}]
+    delete:
+      operationId: revokePrinterAgent
+      security: [{sessionCookie: []}]
+      responses:
+        "204": {description: Agent and all credentials revoked}
+        "404": {$ref: "#/components/responses/Error"}
+  /api/v1/printers:
+    get:
+      operationId: listRegisteredPrinters
+      security: [{sessionCookie: []}]
+      responses:
+        "200": {description: Tenant printers with derived online status}
+        "403": {$ref: "#/components/responses/Error"}
+  /api/v1/printers/{printer_id}:
+    parameters: [{name: printer_id, in: path, required: true, schema: {type: string, format: uuid}}]
+    put:
+      operationId: updateRegisteredPrinter
+      security: [{sessionCookie: []}]
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [friendly_name, enabled], properties: {friendly_name: {type: string, maxLength: 120}, location: {type: [string, "null"], maxLength: 255}, enabled: {type: boolean}}}}}}
+      responses:
+        "200": {description: Friendly name, location, and enabled state updated}
+  /api/v1/print-library-assets:
+    get:
+      operationId: listPrintLibraryAssets
+      security: [{sessionCookie: []}]
+      parameters:
+        - {name: search, in: query, schema: {type: string}}
+        - {name: category, in: query, schema: {type: string}}
+      responses:
+        "200": {description: Active tenant print-library assets, favorites first}
+    post:
+      operationId: uploadPrintLibraryAsset
+      security: [{sessionCookie: []}]
+      requestBody: {required: true, content: {multipart/form-data: {schema: {type: object, required: [file, name, category, default_copies], properties: {file: {type: string, format: binary}, name: {type: string}, category: {type: string}, description: {type: string}, default_printer_id: {type: string, format: uuid}, default_copies: {type: integer, minimum: 1, maximum: 100}, product_id: {type: string, format: uuid}, favorite: {type: boolean}}}}}}
+      responses:
+        "201": {description: Validated PDF stored under a server-generated tenant key}
+  /api/v1/print-library-assets/{asset_id}:
+    parameters: [{name: asset_id, in: path, required: true, schema: {type: string, format: uuid}}]
+    put:
+      operationId: updatePrintLibraryAsset
+      security: [{sessionCookie: []}]
+      responses:
+        "200": {description: Reusable metadata updated while PDF content remains immutable}
+    delete:
+      operationId: archivePrintLibraryAsset
+      security: [{sessionCookie: []}]
+      responses:
+        "204": {description: Asset archived without deleting history}
+  /api/v1/printer-jobs:
+    get:
+      operationId: listPhysicalPrinterJobs
+      security: [{sessionCookie: []}]
+      responses:
+        "200": {description: Recent tenant physical print jobs}
+    post:
+      operationId: quickPrint
+      security: [{sessionCookie: []}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/QuickPrint"}}}}
+      responses:
+        "201": {description: Physical print job queued}
+        "200": {description: Existing semantic idempotent replay returned}
+  /api/v1/print-artifacts/{artifact_id}/printer-jobs:
+    parameters: [{name: artifact_id, in: path, required: true, schema: {type: string, format: uuid}}]
+    post:
+      operationId: queueGeneratedArtifact
+      security: [{sessionCookie: []}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/QueueArtifactPrint"}}}}
+      responses:
+        "201": {description: Existing marketplace artifact queued to a registered printer}
+  /api/v1/printer-jobs/{printer_job_id}/cancel:
+    parameters: [{name: printer_job_id, in: path, required: true, schema: {type: string, format: uuid}}]
+    post:
+      operationId: cancelPhysicalPrinterJob
+      security: [{sessionCookie: []}]
+      responses:
+        "200": {description: Queued job cancelled}
+  /api/v1/printer-jobs/{printer_job_id}/retry:
+    parameters: [{name: printer_job_id, in: path, required: true, schema: {type: string, format: uuid}}]
+    post:
+      operationId: retryPhysicalPrinterJob
+      security: [{sessionCookie: []}]
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [idempotency_key], properties: {idempotency_key: {type: string, maxLength: 128}}}}}}
+      responses:
+        "201": {description: Explicit audited retry queued as a new job}
+  /api/v1/printer-agent/heartbeat:
+    post:
+      operationId: printerAgentHeartbeat
+      security: [{agentBearer: []}]
+      responses:
+        "200": {description: Agent and discovered printer presence reconciled}
+  /api/v1/printer-agent/jobs/claim:
+    post:
+      operationId: claimPhysicalPrinterJob
+      security: [{agentBearer: []}]
+      responses:
+        "200": {description: One atomically leased job}
+        "204": {description: No eligible work}
+  /api/v1/printer-agent/jobs/{printer_job_id}/artifact:
+    parameters: [{name: printer_job_id, in: path, required: true, schema: {type: string, format: uuid}}]
+    get:
+      operationId: downloadAgentArtifact
+      security: [{agentBearer: []}]
+      parameters: [{name: X-Print-Lease, in: header, required: true, schema: {type: string}}]
+      responses:
+        "200": {description: Lease-authorized immutable PDF}
+  /api/v1/printer-agent/jobs/{printer_job_id}/status:
+    parameters: [{name: printer_job_id, in: path, required: true, schema: {type: string, format: uuid}}]
+    post:
+      operationId: reportPhysicalPrinterJobStatus
+      security: [{agentBearer: []}]
+      responses:
+        "200": {description: Guarded idempotent lifecycle report accepted}
 components:
   securitySchemes:
     sessionCookie:
       type: apiKey
       in: cookie
+    agentBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: opaque-agent-credential
       name: commerceops_session
   parameters:
     EmployeeID: {name: employee_id, in: path, required: true, schema: {type: string, format: uuid}}
@@ -975,6 +1107,24 @@ components:
         application/json:
           schema: {$ref: "#/components/schemas/ErrorEnvelope"}
   schemas:
+    QuickPrint:
+      type: object
+      additionalProperties: false
+      required: [asset_id, printer_id, copies, large_quantity_confirmed, idempotency_key]
+      properties:
+        asset_id: {type: string, format: uuid}
+        printer_id: {type: string, format: uuid}
+        copies: {type: integer, minimum: 1, maximum: 100}
+        large_quantity_confirmed: {type: boolean, description: Must be true above 20 copies}
+        idempotency_key: {type: string, minLength: 1, maxLength: 128}
+    QueueArtifactPrint:
+      type: object
+      additionalProperties: false
+      required: [printer_id, copies, idempotency_key]
+      properties:
+        printer_id: {type: string, format: uuid}
+        copies: {type: integer, minimum: 1, maximum: 100}
+        idempotency_key: {type: string, minLength: 1, maxLength: 128}
     Health:
       type: object
       additionalProperties: false

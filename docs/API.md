@@ -58,6 +58,27 @@ SKU resolution trims surrounding whitespace and then performs a case-sensitive e
 
 The OpenAPI source is `docs/openapi.yaml`. It must be updated whenever the public API contract changes.
 
+## Printing platform
+
+Marketplace `print_jobs` continue to generate immutable PDFs. Physical delivery
+uses the separate canonical `printer_jobs` queue, so regeneration and hardware
+delivery remain distinct, traceable actions.
+
+| Method | Path | Permission | Purpose |
+| --- | --- | --- | --- |
+| POST, DELETE | `/api/v1/printer-agents[/{agent_id}]` | `printers.manage` | Issue a one-time credential or revoke the device |
+| GET, PUT | `/api/v1/printers[/{printer_id}]` | `printers.view/manage` | List, rename, locate, enable, or disable printers |
+| GET, POST, DELETE | `/api/v1/print-library-assets[/{asset_id}]` | `print_library.view/manage` | Browse, upload, or archive reusable PDFs |
+| GET, POST | `/api/v1/printer-jobs` | `printing.print` | List jobs or request mobile quick print |
+| POST | `/api/v1/print-artifacts/{artifact_id}/printer-jobs` | `printing.print` | Queue an existing marketplace artifact |
+| POST | `/api/v1/printer-jobs/{id}/cancel` | `printing.print` | Cancel an unclaimed job |
+| POST | `/api/v1/printer-jobs/{id}/retry` | `printing.reprint` | Explicitly retry a failed job |
+
+Agent routes use a separate bearer credential. Heartbeat reconciles OS
+printers, claim leases one job atomically, downloads require that lease, and
+state reports are guarded and idempotent. Agent requests accept no executable,
+local path, storage key, shell fragment, or arbitrary print option.
+
 ## Consignment management
 
 Consignment endpoints require the `consignments` entitlement. Broad readers

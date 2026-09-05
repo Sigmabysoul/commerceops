@@ -66,3 +66,30 @@ source pages without cropping, scaling, overlays, or marketplace-specific PDF
 storage. Invoice export is rejected because no representative evidence defines
 a safe association. Generation and reprinting never call Inventory; only the
 separate ready-batch outbound confirmation may deduct stock.
+
+## Phase 13 physical delivery
+
+PDF generation and hardware delivery are deliberately separate:
+
+```text
+marketplace generator or Print Library
+  → immutable PDF artifact
+  → tenant printer job
+  → authenticated agent claim
+  → hash-verified download
+  → durable local submission journal
+  → fixed CUPS adapter
+  → completed or failed report
+```
+
+Operators select friendly CommerceOps names. Agent heartbeat owns OS-printer
+discovery; browser input cannot provide an OS identifier, command, path, or CUPS
+option. Concurrent agents claim with row locking and skip locked jobs.
+
+The journal gives at-most-once OS submission across reconnects. A crash at the
+exact journal/CUPS boundary requires operator reconciliation rather than risking
+an automatic duplicate. Any retry is a new audited job.
+
+Quick Print allows 1–100 copies and requires confirmation above 20. Uploading,
+generating, queueing, claiming, printing, failure, cancellation, and retry never
+call Inventory. Phase 13 creates no schedule or automatic trigger.

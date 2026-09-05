@@ -12,6 +12,8 @@ import { ConsignmentWorkspace } from "@/components/consignment-workspace";
 import { MeeshoProcessing } from "@/components/meesho-processing";
 import { MyntraProcessing } from "@/components/myntra-processing";
 import { SnapdealProcessing } from "@/components/snapdeal-processing";
+import { QuickPrint } from "@/components/quick-print";
+import { PWARegistration } from "@/components/pwa-registration";
 
 export function CorePlatform() {
   const [user, setUser] = useState<Principal | null>(null);
@@ -54,13 +56,13 @@ export function CorePlatform() {
   }
 
   if (!user) return <Login onSubmit={login} error={error} />;
-  return <main className="shell"><header><div><p className="eyebrow">CommerceOps · Core Platform</p><h1>{company?.name ?? "Company administration"}</h1><p>{user.email} · tenant {user.company_id}</p></div><button onClick={() => coreAPI.logout().then(() => setUser(null))}>Log out</button></header>
+  return <main className="shell"><PWARegistration /><header><div><p className="eyebrow">CommerceOps · Core Platform</p><h1>{company?.name ?? "Company administration"}</h1><p>{user.email} · tenant {user.company_id}</p></div><button onClick={() => coreAPI.logout().then(() => setUser(null))}>Log out</button></header>
     {error && <p className="error" role="alert">{error}</p>}<div className="grid">
       <Panel title="Employees"><CreateForm label="Employee name" action="Add employee" onSubmit={(event) => create(event, "employee")} /><ul>{employees.map((item) => <li key={item.id}><span>{item.display_name}</span><small>{item.status}</small></li>)}</ul></Panel>
       <Panel title="Roles"><CreateForm label="Role name" action="Add role" onSubmit={(event) => create(event, "role")} />{roles.map((role) => <RoleEditor key={role.id} role={role} permissions={permissions} onSaved={load} onError={setError} />)}</Panel>
       <Panel title="Module access"><p className="muted">Entitlements control availability, independently of billing.</p><ul>{entitlements.map((item) => <li key={item.module_key}><span>{item.module_key}</span><button disabled={item.module_key === "core"} onClick={() => coreAPI.setEntitlement(item.module_key, !item.enabled).then(load).catch((cause) => setError(message(cause)))}>{item.enabled ? "Enabled" : "Disabled"}</button></li>)}</ul></Panel>
       <Panel title="Recent audit activity"><ul>{audit.map((item) => <li key={item.id}><span>{item.action}<small>{item.target_type} · {new Date(item.occurred_at).toLocaleString()}</small></span></li>)}</ul></Panel>
-    </div><OperationsDashboard /><ConsignmentWorkspace employees={employees} /><ReturnsWorkspace /><ProductMaster /><FlipkartProcessing /><MeeshoProcessing /><MyntraProcessing /><SnapdealProcessing /><BatchPrinting /><InventoryWorkspace /></main>;
+    </div><QuickPrint /><OperationsDashboard /><ConsignmentWorkspace employees={employees} /><ReturnsWorkspace /><ProductMaster /><FlipkartProcessing /><MeeshoProcessing /><MyntraProcessing /><SnapdealProcessing /><BatchPrinting /><InventoryWorkspace /></main>;
 }
 
 function Login({ onSubmit, error }: { onSubmit: (event: FormEvent<HTMLFormElement>) => void; error: string }) {

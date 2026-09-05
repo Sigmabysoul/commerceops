@@ -24,6 +24,7 @@ import (
 	"github.com/commerceops/commerceops/services/api/internal/platform/objectstorage"
 	"github.com/commerceops/commerceops/services/api/internal/platform/pdfextractor"
 	"github.com/commerceops/commerceops/services/api/internal/platform/pdfgenerator"
+	"github.com/commerceops/commerceops/services/api/internal/printing"
 	"github.com/commerceops/commerceops/services/api/internal/product"
 	"github.com/commerceops/commerceops/services/api/internal/reporting"
 	returnsdomain "github.com/commerceops/commerceops/services/api/internal/returns"
@@ -52,6 +53,7 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	if err != nil {
 		return err
 	}
+	printingHTTP := printing.NewHTTPHandler(printing.NewService(db, authorizer, storage))
 	printingService := batch.NewPrintingService(db, authorizer, storage, pdfgenerator.NewPoppler()).
 		RegisterPrintGenerator("amazon", amazon.PrintGenerationVersion, amazon.NewPrintGenerator()).
 		RegisterPrintGenerator("meesho", pdfgenerator.SourcePageGenerationVersion, pdfgenerator.NewSourcePages()).
@@ -123,6 +125,20 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	mux.Handle("/api/v1/print-jobs/{print_job_id}", authHTTP.RequireSession(http.HandlerFunc(batchHTTP.PrintJob)))
 	mux.Handle("/api/v1/print-jobs/{print_job_id}/reprints", authHTTP.RequireSession(http.HandlerFunc(batchHTTP.Reprints)))
 	mux.Handle("/api/v1/print-artifacts/{artifact_id}", authHTTP.RequireSession(http.HandlerFunc(batchHTTP.Artifact)))
+	mux.Handle("/api/v1/printer-agents", authHTTP.RequireSession(http.HandlerFunc(printingHTTP.Agents)))
+	mux.Handle("/api/v1/printer-agents/{agent_id}", authHTTP.RequireSession(http.HandlerFunc(printingHTTP.Agent)))
+	mux.Handle("/api/v1/printers", authHTTP.RequireSession(http.HandlerFunc(printingHTTP.Printers)))
+	mux.Handle("/api/v1/printers/{printer_id}", authHTTP.RequireSession(http.HandlerFunc(printingHTTP.Printer)))
+	mux.Handle("/api/v1/print-library-assets", authHTTP.RequireSession(http.HandlerFunc(printingHTTP.Assets)))
+	mux.Handle("/api/v1/print-library-assets/{asset_id}", authHTTP.RequireSession(http.HandlerFunc(printingHTTP.Asset)))
+	mux.Handle("/api/v1/printer-jobs", authHTTP.RequireSession(http.HandlerFunc(printingHTTP.Jobs)))
+	mux.Handle("/api/v1/print-artifacts/{artifact_id}/printer-jobs", authHTTP.RequireSession(http.HandlerFunc(printingHTTP.ArtifactJobs)))
+	mux.Handle("/api/v1/printer-jobs/{printer_job_id}/cancel", authHTTP.RequireSession(http.HandlerFunc(printingHTTP.Cancel)))
+	mux.Handle("/api/v1/printer-jobs/{printer_job_id}/retry", authHTTP.RequireSession(http.HandlerFunc(printingHTTP.Retry)))
+	mux.Handle("/api/v1/printer-agent/heartbeat", printingHTTP.RequireAgent(http.HandlerFunc(printingHTTP.AgentHeartbeat)))
+	mux.Handle("/api/v1/printer-agent/jobs/claim", printingHTTP.RequireAgent(http.HandlerFunc(printingHTTP.AgentClaim)))
+	mux.Handle("/api/v1/printer-agent/jobs/{printer_job_id}/artifact", printingHTTP.RequireAgent(http.HandlerFunc(printingHTTP.AgentArtifact)))
+	mux.Handle("/api/v1/printer-agent/jobs/{printer_job_id}/status", printingHTTP.RequireAgent(http.HandlerFunc(printingHTTP.AgentReport)))
 	mux.Handle("/api/v1/inventory", authHTTP.RequireSession(http.HandlerFunc(inventoryHTTP.Balances)))
 	mux.Handle("/api/v1/inventory/transactions", authHTTP.RequireSession(http.HandlerFunc(inventoryHTTP.Transactions)))
 	mux.Handle("/api/v1/inventory/stock-in", authHTTP.RequireSession(http.HandlerFunc(inventoryHTTP.StockIn)))

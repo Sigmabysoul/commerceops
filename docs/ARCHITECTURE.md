@@ -82,6 +82,14 @@ domain continues to own authorization, sorting, idempotency, artifact storage,
 auditing, downloads, and reprint traceability. Print generation never calls the
 inventory domain.
 
+Phase 13 adds `internal/printing` as the owner of physical delivery. Existing
+`print_jobs` remain immutable PDF-generation records; each hardware action is a
+canonical `printer_job` referencing a generated artifact or Print Library PDF.
+Agents poll using hashed, revocable credentials and atomically lease work for
+their registered printers. The local agent verifies hashes and durably journals
+the submission boundary before a narrow CUPS adapter invokes fixed arguments
+without a shell. Neither server Printing nor the agent imports Inventory.
+
 Meesho uses the shared `source-page-v1` generator because no representative
 evidence justifies cropping, overlays, or invoice association. It preserves the
 complete selected source page and rejects invoice export. Meesho orders use the

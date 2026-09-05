@@ -6,6 +6,22 @@ RULE INV-002
 
 Reprinting an ecommerce label must not deduct inventory.
 
+RULE PRINT-001
+
+Generating, queueing, printing, cancelling, failing, or retrying a print job is
+inventory-neutral. Physical printing must never create an inventory transaction.
+
+RULE PRINT-002
+
+An agent may submit only a server-authorized immutable PDF to a printer that it
+reported and the tenant registered. Agent APIs must never expose arbitrary
+commands, paths, storage keys, or printer options.
+
+RULE PRINT-003
+
+Automatic reconnect recovery must not resubmit a job that crossed the durable
+local submission boundary. Ambiguous failures require an explicit audited retry.
+
 RULE TENANT-001
 
 Every business-owned database operation must be scoped

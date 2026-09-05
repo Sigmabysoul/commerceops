@@ -21,3 +21,15 @@
 - Security and administrative mutations produce company-scoped audit records containing actor, action, target, metadata, and timestamp.
 - Product and SKU mapping APIs derive company scope exclusively from the validated session principal and enforce `products.view` or `products.manage` in the backend.
 - SKU resolution is exact and case-sensitive after trimming surrounding whitespace. Unknown, inactive, differently-cased, or marketplace-mismatched identifiers remain explicitly unresolved.
+- Printer-agent credentials are independent 256-bit opaque bearer secrets,
+  displayed once, stored only as SHA-256 hashes, scoped to one tenant/device,
+  and revocable with the agent. Production transport must terminate TLS.
+- Agent artifact downloads require the authenticated owning agent and the
+  matching unexpired job lease. Storage keys and document contents never appear
+  in agent job JSON, browser responses, logs, or audit metadata.
+- Physical print requests contain a registered printer UUID, immutable artifact
+  reference, and bounded copies only. They cannot supply an executable, local
+  path, OS printer identifier, shell fragment, or arbitrary CUPS options.
+- Print Library PDFs are size/signature/structure validated, hash-addressed in
+  metadata, and stored under server-generated tenant keys. Agent downloads are
+  verified against both persisted size and SHA-256 before local submission.

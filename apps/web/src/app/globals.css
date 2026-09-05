@@ -106,6 +106,8 @@ th { color: #68716a; font-size: .8rem; text-transform: uppercase; }
 .reprint-reason { max-width: 30rem; margin: 1rem 0; }
 .artifact-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .8rem; }
 .artifact-list article { display: flex; justify-content: space-between; align-items: center; gap: 1rem; padding: 1rem; border: 1px solid #edf0ed; border-radius: .6rem; }
+.quick-print > .grid button { min-height: 6rem; display: grid; place-content: center; gap: .4rem; font-size: 1.15rem; text-align: center; }
+@media (max-width: 700px) { .quick-print > .grid { grid-template-columns: 1fr 1fr; } .quick-print button { min-height: 3rem; } }
 .progress { height: .5rem; margin: 1rem 0; overflow: hidden; border-radius: 999px; background: #e8ece9; }
 .progress span { display: block; width: 40%; height: 100%; border-radius: inherit; background: #32734a; animation: progress 1.2s ease-in-out infinite alternate; }
 @keyframes progress { to { transform: translateX(150%); } }

@@ -7,6 +7,7 @@
 services/api/bin/
 services/api/server
 services/api/coverage.out
+services/api/printer-agent-journal.jsonl
 .cache/
 .pnpm-store/
 
