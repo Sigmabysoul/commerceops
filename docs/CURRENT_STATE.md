@@ -1,20 +1,20 @@
 ## Current Phase
 
-Phase 13 — Printing Platform and Printer Agent
+Phase 14 — Printing Automation
 
 ## Current Branch
 
-`phase/13-printing-automation`
+`phase/14-printing-automation`
 
 ## Approved Baseline
 
-Phase 12 baseline:
+Phase 13 baseline:
 
-`6b2732f164424a3392357cb4376e6cad0a9ba3b3`
+`41ae0191f7b4b3a807995b8d8cb064772e34e568`
 
 ## Phase Status
 
-`PHASE_13_COMPLETE_AWAITING_EXTERNAL_REVIEW`
+`PHASE_14_DESIGN_COMPLETE_IMPLEMENTATION_PENDING`
 
 Phases 0–10 are implemented and Phase 10 is the approved starting baseline.
 The owner explicitly authorized Phase 11 Myntra Batch A only.
@@ -23,6 +23,19 @@ The owner explicitly authorized Phase 12 Snapdeal from the remediated Phase 11
 baseline.
 
 The owner explicitly authorized Phase 13 after Phase 12 completion.
+
+The owner explicitly authorized Phase 14 after Phase 13 completion.
+
+## Phase 14 Start
+
+- [x] dedicated Phase 14 branch
+- [x] bounded trigger set confirmed from the approved phase specification
+- [x] schema, timezone/DST, scheduler, event, safety, UX, reporting, and test design
+- [ ] migration and Automation domain implementation
+- [ ] authoritative Batch and Consignment event integration
+- [ ] scheduler lifecycle and API wiring
+- [ ] responsive Automation workspace and derived reporting
+- [ ] complete PostgreSQL-backed verification
 
 ## Phase 13 Delivery
 
@@ -153,4 +166,4 @@ association, extraction, and enrichment behavior remain deferred.
 
 ## Next Allowed Task
 
-Obtain external review of Phase 13. Do not begin Phase 14 automatically.
+Implement and verify only the approved Phase 14 Printing Automation scope.
