@@ -6,10 +6,32 @@ import { Consignment, ConsignmentDepartment, ConsignmentLine, consignmentAPI } f
 import { Product, productAPI } from "@/api/products";
 
 export function ConsignmentWorkspace({ employees }: { employees: Employee[] }) {
-  const [items, setItems] = useState<Consignment[]>([]); const [departments, setDepartments] = useState<ConsignmentDepartment[]>([]); const [products, setProducts] = useState<Product[]>([]);
-  const [selected, setSelected] = useState<Consignment | null>(null); const [status, setStatus] = useState(""); const [department, setDepartment] = useState(""); const [query, setQuery] = useState(""); const [error, setError] = useState("");
+  const [items, setItems] = useState<Consignment[]>([]);
+  const [departments, setDepartments] = useState<ConsignmentDepartment[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [selected, setSelected] = useState<Consignment | null>(null);
+  const [status, setStatus] = useState("");
+  const [department, setDepartment] = useState("");
+  const [query, setQuery] = useState("");
+  const [error, setError] = useState("");
   const [lineCount, setLineCount] = useState(1);
-  const load = useCallback(async () => { const [c, d, p] = await Promise.all([consignmentAPI.list(status, department, query), consignmentAPI.departments(), productAPI.products()]); setItems(c.consignments); setDepartments(d.departments); setProducts(p.products.filter((x) => x.status === "active")); if (selected) setSelected(c.consignments.find((x) => x.id === selected.id) ?? null); }, [status, department, query, selected?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const load = useCallback(async () => {
+    const [consignments, departmentList, productList] = await Promise.all([
+      consignmentAPI.list(status, department, query),
+      consignmentAPI.departments(),
+      productAPI.products(),
+    ]);
+
+    setItems(consignments.consignments);
+    setDepartments(departmentList.departments);
+    setProducts(productList.products.filter((product) => product.status === "active"));
+    setSelected((current) =>
+      current
+        ? consignments.consignments.find((consignment) => consignment.id === current.id) ?? null
+        : null,
+    );
+  }, [status, department, query]);
   useEffect(() => { load().catch((cause) => setError(message(cause))); }, [load]);
   async function perform(call: () => Promise<{ consignment: Consignment }>) { setError(""); try { const result = await call(); setSelected(result.consignment); await load(); } catch (cause) { setError(message(cause)); } }
   async function create(event: FormEvent<HTMLFormElement>) { event.preventDefault(); const form = event.currentTarget; const data = new FormData(form); const lines = Array.from({length: lineCount}, (_, index) => ({ product_id: String(data.get(`product_id_${index}`)), department_id: String(data.get(`department_id_${index}`)), required_quantity: Number(data.get(`quantity_${index}`)) })); try { const result = await consignmentAPI.create({ order_reference: String(data.get("order_reference")), dealer_reference: optional(data,"dealer_reference"), pouch_reference: optional(data,"pouch_reference"), source_type: String(data.get("source_type")) as "manual"|"import", source_reference: optional(data,"source_reference"), notes: optional(data,"notes"), lines }); form.reset(); setLineCount(1); setSelected(result.consignment); await load(); } catch (cause) { setError(message(cause)); } }
