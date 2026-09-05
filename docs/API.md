@@ -366,3 +366,15 @@ and accepts only one explicit positive quantity across associated evidence.
 Snapdeal batches use the shared print API; output preserves the measured source
 shipping page, enriches a verified blank band with SKU/QTY, and optionally
 exports the exactly associated invoice.
+
+## Phase 14 automation
+
+Session-authenticated `/api/v1/automations` provides `/rules` (GET/POST),
+`/rules/{rule_id}` (GET/PUT), `/rules/{rule_id}/pause` (POST),
+`/rules/{rule_id}/test` (POST), `/rules/{rule_id}/history` (GET),
+`/timezone` (GET/PUT), `/preview` (POST), `/options` (GET), `/upcoming` (GET),
+`/runs` (GET, optional rule_id/failures filters), `/runs/{execution_id}/retry`
+(POST), and `/report` (GET). OpenAPI 0.14.0 defines typed requests/responses.
+Reads require `automations.view`; mutations and editor options require
+`automations.manage`. Rule update/pause uses optimistic version checks. Test-run
+request keys and execution retries preserve the original logical identity.

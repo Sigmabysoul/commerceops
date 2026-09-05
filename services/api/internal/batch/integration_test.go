@@ -641,10 +641,43 @@ func printPositions(t *testing.T, db *pgxpool.Pool, companyID, jobID string) []s
 func cleanupBatch(t *testing.T, f *batchFixture) {
 	t.Helper()
 	companies := []string{f.companyA, f.companyB}
-	for _, table := range []string{"print_artifacts", "print_job_items", "print_jobs", "batch_worker_assignments", "worker_assignment_rules", "batch_members", "batches", "marketplace_order_documents", "marketplace_order_items", "marketplace_orders", "processing_jobs", "source_files", "products", "audit_logs", "module_entitlements", "company_user_roles", "role_permissions", "employees", "roles", "company_users"} {
+	for _, table := range []string{"automation_domain_events", "print_artifacts", "print_job_items", "print_jobs", "batch_worker_assignments", "worker_assignment_rules", "batch_members", "batches", "marketplace_order_documents", "marketplace_order_items", "marketplace_orders", "processing_jobs", "source_files", "products", "audit_logs", "module_entitlements", "company_user_roles", "role_permissions", "employees", "roles", "company_users"} {
 		query := "DELETE FROM " + table + " WHERE company_id=ANY($1::uuid[])"
 		execBatchTest(t, f.db, query, companies)
 	}
 	_, _ = f.db.Exec(context.Background(), `DELETE FROM users WHERE id=$1`, f.userID)
 	_, _ = f.db.Exec(context.Background(), `DELETE FROM companies WHERE id=ANY($1::uuid[])`, companies)
+}
+
+func TestReadyRecordsOneAuthoritativeAutomationEvent(t *testing.T) {
+	f := setupBatch(t)
+	ctx := context.Background()
+	quantity := 2
+	order := f.order(t, f.companyA, "resolved", &f.productID, &quantity)
+	b, _, err := f.service.Create(ctx, f.principalA, CreateInput{MarketplaceKey: "flipkart", OrderIDs: []string{order}, IdempotencyKey: "automation-hook"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for n := 0; n < 2; n++ {
+		if _, err = f.service.Ready(ctx, f.principalA, b.ID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var events int
+	scanBatchTest(t, f.db, `SELECT count(*) FROM automation_domain_events WHERE company_id=$1 AND source_id=$2 AND event_type='ecommerce_batch_ready'`, []any{f.companyA, b.ID}, &events)
+	if events != 1 {
+		t.Fatalf("ready replay produced %d events", events)
+	}
+	bad := f.order(t, f.companyA, "needs_review", nil, nil)
+	draft, _, err := f.service.Create(ctx, f.principalA, CreateInput{MarketplaceKey: "flipkart", OrderIDs: []string{bad}, IdempotencyKey: "automation-ineligible"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = f.service.Ready(ctx, f.principalA, draft.ID); err == nil {
+		t.Fatal("invalid ready succeeded")
+	}
+	scanBatchTest(t, f.db, `SELECT count(*) FROM automation_domain_events WHERE company_id=$1 AND source_id=$2`, []any{f.companyA, draft.ID}, &events)
+	if events != 0 {
+		t.Fatal("failed transition emitted event")
+	}
 }

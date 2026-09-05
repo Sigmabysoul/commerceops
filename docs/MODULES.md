@@ -173,3 +173,11 @@ inside one application; it does not imply microservices.
   artifact persistence, reprint policy, or inventory mutations.
 - **Forbidden leakage:** generation must not infer missing SKU/quantity, obscure
   required shipping content, or create inventory transactions.
+
+## Automation (Phase 14)
+
+`internal/automation` owns approved printing rules, schedule calculation,
+PostgreSQL scheduler/leases, execution history, REST APIs and derived print
+reporting. Batch and Consignment persist facts through
+`platform/domainevent`; Printing owns queue creation and physical delivery.
+Automation has no Inventory dependency. See `workflows/automation.md`.

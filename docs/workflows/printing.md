@@ -93,3 +93,8 @@ an automatic duplicate. Any retry is a new audited job.
 Quick Print allows 1–100 copies and requires confirmation above 20. Uploading,
 generating, queueing, claiming, printing, failure, cancellation, and retry never
 call Inventory. Phase 13 creates no schedule or automatic trigger.
+
+Phase 14 adds approved Automation rules as another caller of the same physical
+queue. Schedules and authoritative batch-ready/consignment-packing facts select
+a configured Print Library PDF. See `automation.md`; Printing retains job,
+agent, physical retry, and inventory-neutrality ownership.

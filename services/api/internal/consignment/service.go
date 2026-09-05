@@ -17,6 +17,7 @@ import (
 	"github.com/commerceops/commerceops/services/api/internal/auth"
 	"github.com/commerceops/commerceops/services/api/internal/authorization"
 	"github.com/commerceops/commerceops/services/api/internal/inventory"
+	"github.com/commerceops/commerceops/services/api/internal/platform/domainevent"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -463,7 +464,13 @@ func (s *Service) Transition(ctx context.Context, p auth.Principal, id string, i
 			args = append(args, p.UserID)
 		}
 		_, err := tx.Exec(ctx, `UPDATE consignments SET status=$1,version=version+1,updated_at=now()`+columns+` WHERE company_id=$2 AND id=$3`, args...)
-		return err
+		if err != nil {
+			return err
+		}
+		if input.TargetStatus == "packing" || input.TargetStatus == "packed" {
+			return domainevent.Record(ctx, tx, p.CompanyID, p.UserID, "consignment_"+input.TargetStatus, id, item.Version+1)
+		}
+		return nil
 	})
 }
 

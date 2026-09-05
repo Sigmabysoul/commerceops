@@ -11,6 +11,7 @@ import (
 
 	"github.com/commerceops/commerceops/services/api/internal/auth"
 	"github.com/commerceops/commerceops/services/api/internal/authorization"
+	"github.com/commerceops/commerceops/services/api/internal/automation"
 	"github.com/commerceops/commerceops/services/api/internal/batch"
 	"github.com/commerceops/commerceops/services/api/internal/config"
 	"github.com/commerceops/commerceops/services/api/internal/consignment"
@@ -54,7 +55,14 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	if err != nil {
 		return err
 	}
-	printingHTTP := printing.NewHTTPHandler(printing.NewService(db, authorizer, storage))
+	physicalPrinting := printing.NewService(db, authorizer, storage)
+	printingHTTP := printing.NewHTTPHandler(physicalPrinting)
+	automationService := automation.NewService(db, authorizer, physicalPrinting)
+	automation.NewHTTPHandler(automationService).Register(mux, authHTTP.RequireSession)
+	automationCtx, stopAutomation := context.WithCancel(ctx)
+	automationDone := make(chan struct{})
+	go func() { defer close(automationDone); automationService.Run(automationCtx, logger) }()
+	defer func() { stopAutomation(); <-automationDone }()
 	printingService := batch.NewPrintingService(db, authorizer, storage, pdfgenerator.NewPoppler()).
 		RegisterPrintGenerator("amazon", amazon.PrintGenerationVersion, amazon.NewPrintGenerator()).
 		RegisterPrintGenerator("meesho", pdfgenerator.SourcePageGenerationVersion, pdfgenerator.NewSourcePages()).

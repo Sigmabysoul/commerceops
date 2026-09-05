@@ -27,3 +27,8 @@ immutable `consignment_out` transaction per product, and closes each source
 reservation with a consumption reason. Exact replay returns the original
 result; a changed payload conflicts. Cancellation closes active reservations
 without a ledger deduction.
+
+Phase 14 records durable `consignment_packing` and `consignment_packed` facts in
+the successful versioned transition transaction. Automation consumes these to
+print configured library assets through the normal Printing queue. Replaying a
+transition emits no additional fact and printing remains inventory-neutral.

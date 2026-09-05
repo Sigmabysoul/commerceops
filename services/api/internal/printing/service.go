@@ -578,6 +578,33 @@ func (s *Service) QueueArtifact(ctx context.Context, p auth.Principal, in QueueA
 }
 
 func (s *Service) createJob(ctx context.Context, p auth.Principal, printer string, artifact, asset *string, copies int, origin, ref, key string, source *string) (Job, bool, error) {
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return Job{}, false, err
+	}
+	defer tx.Rollback(ctx)
+	job, replay, err := s.createJobTx(ctx, tx, p, printer, artifact, asset, copies, origin, ref, key, source)
+	if err != nil {
+		return Job{}, false, err
+	}
+	if err = tx.Commit(ctx); err != nil {
+		return Job{}, false, err
+	}
+	return job, replay, nil
+}
+
+// QueueAutomationTx is an internal domain boundary. The caller owns an
+// authorized durable execution and transaction; Printing owns all job validation,
+// idempotency, queue insertion and audit. It never performs hardware I/O.
+func (s *Service) QueueAutomationTx(ctx context.Context, tx pgx.Tx, p auth.Principal, executionID, printer, asset string, copies int) (Job, error) {
+	if !uuidRE.MatchString(executionID) || !uuidRE.MatchString(asset) {
+		return Job{}, ErrInvalidInput
+	}
+	job, _, err := s.createJobTx(ctx, tx, p, printer, nil, &asset, copies, "automation", executionID, "automation:"+executionID, nil)
+	return job, err
+}
+
+func (s *Service) createJobTx(ctx context.Context, tx pgx.Tx, p auth.Principal, printer string, artifact, asset *string, copies int, origin, ref, key string, source *string) (Job, bool, error) {
 	// The request hash makes an idempotency key semantic: an exact replay returns
 	// the first job, while changing printer/source/copies is a visible conflict.
 	key = strings.TrimSpace(key)
@@ -590,11 +617,6 @@ func (s *Service) createJob(ctx context.Context, p auth.Principal, printer strin
 	}
 	sum := sha256.Sum256(payload)
 	hash := hex.EncodeToString(sum[:])
-	tx, err := s.db.Begin(ctx)
-	if err != nil {
-		return Job{}, false, err
-	}
-	defer tx.Rollback(ctx) //nolint:errcheck
 	var id string
 	err = tx.QueryRow(ctx, `INSERT INTO printer_jobs(company_id,requested_by,printer_id,print_artifact_id,print_library_asset_id,copies,origin_type,origin_reference,idempotency_key,request_hash,source_printer_job_id) SELECT $1,$2,rp.id,$3,$4,$5,$6,$7,$8,$9,$10 FROM registered_printers rp WHERE rp.company_id=$1 AND rp.id=$11 AND rp.enabled AND rp.status='online' AND rp.last_seen_at>now()-interval '90 seconds' AND ($4::uuid IS NULL OR EXISTS(SELECT 1 FROM print_library_assets a WHERE a.company_id=$1 AND a.id=$4 AND a.active)) ON CONFLICT(company_id,idempotency_key) DO NOTHING RETURNING id`, p.CompanyID, p.UserID, artifact, asset, copies, origin, ref, key, hash, source, printer).Scan(&id)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -603,11 +625,10 @@ func (s *Service) createJob(ctx context.Context, p auth.Principal, printer strin
 			if existingHash != hash {
 				return Job{}, false, ErrConflict
 			}
-			if commitErr := tx.Commit(ctx); commitErr != nil {
-				return Job{}, false, commitErr
-			}
-			j, e := s.getJob(ctx, p.CompanyID, id)
+			j, e := scanJob(tx.QueryRow(ctx, jobSelect+` WHERE company_id=$1 AND id=$2`, p.CompanyID, id))
 			return j, true, e
+		} else if !errors.Is(e, pgx.ErrNoRows) {
+			return Job{}, false, e
 		}
 		return Job{}, false, ErrNotFound
 	}
@@ -629,10 +650,7 @@ func (s *Service) createJob(ctx context.Context, p auth.Principal, printer strin
 			return Job{}, false, err
 		}
 	}
-	if err = tx.Commit(ctx); err != nil {
-		return Job{}, false, err
-	}
-	j, err := s.getJob(ctx, p.CompanyID, id)
+	j, err := scanJob(tx.QueryRow(ctx, jobSelect+` WHERE company_id=$1 AND id=$2`, p.CompanyID, id))
 	return j, false, err
 }
 

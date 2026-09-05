@@ -377,3 +377,63 @@ func mustScan(t *testing.T, db interface {
 	}
 }
 func stringPtr(v string) *string { return &v }
+
+func TestPackingAutomationEventsFollowVersionedTransitions(t *testing.T) {
+	f := setup(t)
+	ctx := context.Background()
+	_, _, err := f.inventory.StockIn(ctx, f.principal, inventory.CommandInput{ProductID: f.product, Quantity: 4, Reason: "Automation hook fixture", IdempotencyKey: "automation-stock"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	item, _, err := f.service.Create(ctx, f.principal, CreateInput{OrderReference: "AUTOMATION", SourceType: "manual", Lines: []LineInput{{ProductID: f.product, DepartmentID: f.department, RequiredQuantity: 2}}, IdempotencyKey: "automation-create"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	item, _, err = f.service.Allocate(ctx, f.principal, item.ID, ActionInput{ExpectedVersion: item.Version, IdempotencyKey: "automation-allocate"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	item, _, err = f.service.Transition(ctx, f.principal, item.ID, TransitionInput{TargetStatus: "picking", ExpectedVersion: item.Version, IdempotencyKey: "automation-picking"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	item, _, err = f.service.UpdateProgress(ctx, f.principal, item.ID, item.Lines[0].ID, ProgressInput{ReadyQuantity: 2, PackedQuantity: 0, ExpectedVersion: item.Lines[0].Version, IdempotencyKey: "automation-ready-progress"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	item, _, err = f.service.Transition(ctx, f.principal, item.ID, TransitionInput{TargetStatus: "ready", ExpectedVersion: item.Version, IdempotencyKey: "automation-ready"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	packing := TransitionInput{TargetStatus: "packing", ExpectedVersion: item.Version, IdempotencyKey: "automation-packing"}
+	for n := 0; n < 2; n++ {
+		item, _, err = f.service.Transition(ctx, f.principal, item.ID, packing)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, _, err = f.service.Transition(ctx, f.principal, item.ID, TransitionInput{TargetStatus: "packed", ExpectedVersion: item.Version, IdempotencyKey: "automation-invalid-packed"}); !errors.Is(err, ErrIncomplete) {
+		t.Fatal(err)
+	}
+	var count int
+	mustScan(t, f.db, `SELECT count(*) FROM automation_domain_events WHERE company_id=$1 AND source_id=$2`, []any{f.company, item.ID}, &count)
+	if count != 1 {
+		t.Fatalf("events=%d", count)
+	}
+	item, _, err = f.service.UpdateProgress(ctx, f.principal, item.ID, item.Lines[0].ID, ProgressInput{ReadyQuantity: 2, PackedQuantity: 2, ExpectedVersion: item.Lines[0].Version, IdempotencyKey: "automation-packed-progress"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	packed := TransitionInput{TargetStatus: "packed", ExpectedVersion: item.Version, IdempotencyKey: "automation-packed"}
+	for n := 0; n < 2; n++ {
+		item, _, err = f.service.Transition(ctx, f.principal, item.ID, packed)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	mustScan(t, f.db, `SELECT count(*) FROM automation_domain_events WHERE company_id=$1 AND source_id=$2 AND event_type IN ('consignment_packing','consignment_packed')`, []any{f.company, item.ID}, &count)
+	if count != 2 {
+		t.Fatalf("events=%d", count)
+	}
+	assertBalance(t, f, 4, 2, 2)
+}

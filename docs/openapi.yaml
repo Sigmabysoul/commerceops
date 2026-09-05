@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: CommerceOps API
-  version: 0.13.0
+  version: 0.14.0
 paths:
   /api/v1/health:
     get:
@@ -1081,16 +1081,599 @@ paths:
       security: [{agentBearer: []}]
       responses:
         "200": {description: Guarded idempotent lifecycle report accepted}
+  /api/v1/automations/rules:
+    get:
+      operationId: listAutomationRules
+      summary: List automation rules
+      description: Requires automations.view. Tenant comes from the authenticated
+        session.
+      security:
+      - sessionCookie: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - rules
+                properties:
+                  rules:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AutomationRule'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
+        '500':
+          $ref: '#/components/responses/Error'
+    post:
+      operationId: createAutomationRule
+      summary: Create a printing automation rule
+      description: Requires automations.manage. Tenant comes from the authenticated
+        session.
+      security:
+      - sessionCookie: []
+      responses:
+        '201':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - rule
+                properties:
+                  rule:
+                    $ref: '#/components/schemas/AutomationRule'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
+        '500':
+          $ref: '#/components/responses/Error'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AutomationRuleInput'
+  /api/v1/automations/rules/{rule_id}:
+    get:
+      operationId: getAutomationRule
+      summary: Read a rule
+      description: Requires automations.view. Tenant comes from the authenticated
+        session.
+      security:
+      - sessionCookie: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - rule
+                properties:
+                  rule:
+                    $ref: '#/components/schemas/AutomationRule'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
+        '500':
+          $ref: '#/components/responses/Error'
+      parameters:
+      - name: rule_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    put:
+      operationId: updateAutomationRule
+      summary: Update a rule and explicitly adopt company timezone
+      description: Requires automations.manage. Tenant comes from the authenticated
+        session.
+      security:
+      - sessionCookie: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - rule
+                properties:
+                  rule:
+                    $ref: '#/components/schemas/AutomationRule'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
+        '500':
+          $ref: '#/components/responses/Error'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AutomationRuleInput'
+      parameters:
+      - name: rule_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+  /api/v1/automations/rules/{rule_id}/pause:
+    post:
+      operationId: pauseAutomationRule
+      summary: Pause or resume a rule
+      description: Requires automations.manage. Tenant comes from the authenticated
+        session.
+      security:
+      - sessionCookie: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - rule
+                properties:
+                  rule:
+                    $ref: '#/components/schemas/AutomationRule'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
+        '500':
+          $ref: '#/components/responses/Error'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - version
+              - paused
+              properties:
+                version:
+                  type: integer
+                  minimum: 1
+                paused:
+                  type: boolean
+              additionalProperties: false
+      parameters:
+      - name: rule_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+  /api/v1/automations/rules/{rule_id}/test:
+    post:
+      operationId: testAutomationRule
+      summary: Queue an audited test that creates a real Print Job
+      description: Requires automations.manage. Tenant comes from the authenticated
+        session.
+      security:
+      - sessionCookie: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - execution_id
+                properties:
+                  execution_id:
+                    type: string
+                    format: uuid
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
+        '500':
+          $ref: '#/components/responses/Error'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - idempotency_key
+              properties:
+                idempotency_key:
+                  type: string
+                  minLength: 1
+                  maxLength: 128
+              additionalProperties: false
+      parameters:
+      - name: rule_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+  /api/v1/automations/rules/{rule_id}/history:
+    get:
+      operationId: automationRuleHistory
+      summary: Read saved rule snapshots and pause history
+      description: Requires automations.view. Tenant comes from the authenticated
+        session.
+      security:
+      - sessionCookie: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - history
+                properties:
+                  history:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AutomationHistory'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
+        '500':
+          $ref: '#/components/responses/Error'
+      parameters:
+      - name: rule_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+  /api/v1/automations/timezone:
+    get:
+      operationId: getAutomationTimezone
+      summary: Read company timezone
+      description: Requires automations.view. Tenant comes from the authenticated
+        session.
+      security:
+      - sessionCookie: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AutomationTimezone'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
+        '500':
+          $ref: '#/components/responses/Error'
+    put:
+      operationId: setAutomationTimezone
+      summary: Set company timezone
+      description: Requires automations.manage. Tenant comes from the authenticated
+        session.
+      security:
+      - sessionCookie: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AutomationTimezone'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
+        '500':
+          $ref: '#/components/responses/Error'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AutomationTimezone'
+  /api/v1/automations/preview:
+    post:
+      operationId: previewAutomationSchedule
+      summary: Preview the next ten occurrences in company timezone
+      description: Requires automations.view. Tenant comes from the authenticated
+        session.
+      security:
+      - sessionCookie: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - occurrences
+                properties:
+                  occurrences:
+                    type: array
+                    items:
+                      type: string
+                      format: date-time
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
+        '500':
+          $ref: '#/components/responses/Error'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AutomationSchedule'
+  /api/v1/automations/runs:
+    get:
+      operationId: listAutomationRuns
+      summary: Read latest 200 executions and physical job outcomes
+      description: Requires automations.view. Tenant comes from the authenticated
+        session.
+      security:
+      - sessionCookie: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - runs
+                properties:
+                  runs:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AutomationExecution'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
+        '500':
+          $ref: '#/components/responses/Error'
+      parameters:
+      - name: rule_id
+        in: query
+        schema:
+          type: string
+          format: uuid
+      - name: failures
+        in: query
+        schema:
+          type: boolean
+          default: false
+  /api/v1/automations/runs/{execution_id}/retry:
+    post:
+      operationId: retryAutomationExecution
+      summary: Retry failed queue creation using the same logical identity
+      description: Requires automations.manage. Tenant comes from the authenticated
+        session.
+      security:
+      - sessionCookie: []
+      responses:
+        '204':
+          description: Success
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
+        '500':
+          $ref: '#/components/responses/Error'
+      parameters:
+      - name: execution_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+  /api/v1/automations/upcoming:
+    get:
+      operationId: upcomingAutomationRuns
+      summary: Read next persisted occurrence for each active scheduled rule
+      description: Requires automations.view. Tenant comes from the authenticated
+        session.
+      security:
+      - sessionCookie: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - upcoming
+                properties:
+                  upcoming:
+                    type: array
+                    items:
+                      type: object
+                      required:
+                      - rule
+                      - at
+                      properties:
+                        rule:
+                          $ref: '#/components/schemas/AutomationRule'
+                        at:
+                          type: string
+                          format: date-time
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
+        '500':
+          $ref: '#/components/responses/Error'
+  /api/v1/automations/report:
+    get:
+      operationId: automationPrintReport
+      summary: Derive all-time automatic/manual jobs, copies and printer outcomes
+      description: Requires automations.view. Tenant comes from the authenticated
+        session.
+      security:
+      - sessionCookie: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - metrics
+                properties:
+                  metrics:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AutomationMetric'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
+        '500':
+          $ref: '#/components/responses/Error'
+  /api/v1/automations/options:
+    get:
+      operationId: automationRuleOptions
+      summary: Read friendly tenant asset and printer selections
+      description: Requires automations.manage. Tenant comes from the authenticated
+        session.
+      security:
+      - sessionCookie: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AutomationOptions'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
+        '500':
+          $ref: '#/components/responses/Error'
 components:
   securitySchemes:
     sessionCookie:
       type: apiKey
       in: cookie
+      name: commerceops_session
     agentBearer:
       type: http
       scheme: bearer
       bearerFormat: opaque-agent-credential
-      name: commerceops_session
   parameters:
     EmployeeID: {name: employee_id, in: path, required: true, schema: {type: string, format: uuid}}
     UserID: {name: user_id, in: path, required: true, schema: {type: string, format: uuid}}
@@ -1430,3 +2013,407 @@ components:
           properties:
             code: {type: string}
             message: {type: string}
+
+    AutomationSchedule:
+      type: object
+      required: []
+      properties:
+        mode:
+          type: string
+          enum:
+          - daily
+          - weekdays
+          - selected_weekdays
+        times:
+          type: array
+          items:
+            type: string
+            pattern: ^([01][0-9]|2[0-3]):[0-5][0-9]$
+          minItems: 1
+          maxItems: 24
+          uniqueItems: true
+        weekdays:
+          type: array
+          items:
+            type: integer
+            minimum: 1
+            maximum: 7
+          uniqueItems: true
+        start_date:
+          type: string
+          format: date
+        end_date:
+          type: string
+          format: date
+      additionalProperties: false
+      description: Scheduled rules require mode and times; selected_weekdays also requires
+        weekdays. Event rules use an empty object. Dates are inclusive. Nonexistent DST
+        minutes are skipped; repeated minutes run once.
+    AutomationRuleInput:
+      type: object
+      required:
+      - name
+      - enabled
+      - paused
+      - trigger_type
+      - schedule
+      - asset_id
+      - printer_id
+      - copies
+      - daily_limit
+      - failure_threshold
+      - backoff_seconds
+      - version
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 120
+        enabled:
+          type: boolean
+        paused:
+          type: boolean
+        trigger_type:
+          type: string
+          enum:
+          - scheduled
+          - ecommerce_batch_ready
+          - consignment_packing
+          - consignment_packed
+        schedule:
+          $ref: '#/components/schemas/AutomationSchedule'
+        asset_id:
+          type: string
+          format: uuid
+        printer_id:
+          type: string
+          format: uuid
+        copies:
+          type: integer
+          minimum: 1
+          maximum: 100
+        daily_limit:
+          type:
+          - integer
+          - 'null'
+          minimum: 1
+          maximum: 10000
+        failure_threshold:
+          type: integer
+          minimum: 1
+          maximum: 20
+        backoff_seconds:
+          type: integer
+          minimum: 1
+          maximum: 3600
+        version:
+          type: integer
+          minimum: 0
+          description: Zero on create; current optimistic version on update.
+      additionalProperties: false
+    AutomationRule:
+      type: object
+      required:
+      - name
+      - enabled
+      - paused
+      - trigger_type
+      - schedule
+      - asset_id
+      - printer_id
+      - copies
+      - daily_limit
+      - failure_threshold
+      - backoff_seconds
+      - version
+      - id
+      - timezone
+      - created_by
+      - asset_name
+      - printer_name
+      - consecutive_failures
+      - backoff_until
+      - next_run_at
+      - created_at
+      - updated_at
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 120
+        enabled:
+          type: boolean
+        paused:
+          type: boolean
+        trigger_type:
+          type: string
+          enum:
+          - scheduled
+          - ecommerce_batch_ready
+          - consignment_packing
+          - consignment_packed
+        schedule:
+          $ref: '#/components/schemas/AutomationSchedule'
+        asset_id:
+          type: string
+          format: uuid
+        printer_id:
+          type: string
+          format: uuid
+        copies:
+          type: integer
+          minimum: 1
+          maximum: 100
+        daily_limit:
+          type:
+          - integer
+          - 'null'
+          minimum: 1
+          maximum: 10000
+        failure_threshold:
+          type: integer
+          minimum: 1
+          maximum: 20
+        backoff_seconds:
+          type: integer
+          minimum: 1
+          maximum: 3600
+        version:
+          type: integer
+          minimum: 0
+          description: Zero on create; current optimistic version on update.
+        id:
+          type: string
+          format: uuid
+        timezone:
+          type: string
+        created_by:
+          type: string
+          format: uuid
+        asset_name:
+          type: string
+        printer_name:
+          type: string
+        consecutive_failures:
+          type: integer
+          minimum: 0
+        backoff_until:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        next_run_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    AutomationExecution:
+      type: object
+      required:
+      - id
+      - rule_id
+      - rule_version
+      - occurrence_key
+      - event_id
+      - scheduled_at
+      - test_run
+      - snapshot
+      - status
+      - attempt_count
+      - available_at
+      - error
+      - printer_job_id
+      - job_status
+      - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        rule_id:
+          type: string
+          format: uuid
+        rule_version:
+          type: integer
+        occurrence_key:
+          type: string
+        event_id:
+          type:
+          - string
+          - 'null'
+          format: uuid
+        scheduled_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        test_run:
+          type: boolean
+        snapshot:
+          $ref: '#/components/schemas/AutomationRule'
+        status:
+          type: string
+          enum:
+          - pending
+          - running
+          - completed
+          - failed
+          - skipped
+        attempt_count:
+          type: integer
+        available_at:
+          type: string
+          format: date-time
+        error:
+          type:
+          - string
+          - 'null'
+        printer_job_id:
+          type:
+          - string
+          - 'null'
+          format: uuid
+        job_status:
+          type:
+          - string
+          - 'null'
+          enum:
+          - queued
+          - claimed
+          - printing
+          - completed
+          - failed
+          - cancelled
+          - null
+        created_at:
+          type: string
+          format: date-time
+    AutomationMetric:
+      type: object
+      required:
+      - origin
+      - printer_id
+      - printer_name
+      - jobs
+      - copies
+      - completed
+      - failed
+      - cancelled
+      - pending
+      - failure_events
+      properties:
+        origin:
+          type: string
+          enum:
+          - automatic
+          - manual
+        printer_id:
+          type: string
+          format: uuid
+        printer_name:
+          type: string
+        jobs:
+          type: integer
+          format: int64
+        copies:
+          type: integer
+          format: int64
+        completed:
+          type: integer
+          format: int64
+        failed:
+          type: integer
+          format: int64
+        cancelled:
+          type: integer
+          format: int64
+        pending:
+          type: integer
+          format: int64
+        failure_events:
+          type: integer
+          format: int64
+    AutomationHistory:
+      type: object
+      required:
+      - id
+      - action
+      - actor_user_id
+      - occurred_at
+      - metadata
+      properties:
+        id:
+          type: string
+          format: uuid
+        action:
+          type: string
+        actor_user_id:
+          type: string
+          format: uuid
+        occurred_at:
+          type: string
+          format: date-time
+        metadata:
+          type: object
+          additionalProperties: true
+    AutomationTimezone:
+      type: object
+      required:
+      - timezone
+      properties:
+        timezone:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: Explicit IANA timezone; Local is forbidden. Existing rules retain
+            their snapshot until edited.
+      additionalProperties: false
+    AutomationOptions:
+      type: object
+      required:
+      - assets
+      - printers
+      properties:
+        assets:
+          type: array
+          items:
+            type: object
+            required:
+            - id
+            - name
+            - active
+            properties:
+              id:
+                type: string
+                format: uuid
+              name:
+                type: string
+              active:
+                type: boolean
+        printers:
+          type: array
+          items:
+            type: object
+            required:
+            - id
+            - friendly_name
+            - enabled
+            - status
+            properties:
+              id:
+                type: string
+                format: uuid
+              friendly_name:
+                type: string
+              enabled:
+                type: boolean
+              status:
+                type: string
+                enum:
+                - online
+                - offline

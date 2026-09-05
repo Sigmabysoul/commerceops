@@ -14,6 +14,7 @@ import (
 	"github.com/commerceops/commerceops/services/api/internal/audit"
 	"github.com/commerceops/commerceops/services/api/internal/auth"
 	"github.com/commerceops/commerceops/services/api/internal/authorization"
+	"github.com/commerceops/commerceops/services/api/internal/platform/domainevent"
 	"github.com/commerceops/commerceops/services/api/internal/platform/objectstorage"
 	"github.com/commerceops/commerceops/services/api/internal/platform/pdfgenerator"
 	"github.com/jackc/pgx/v5"
@@ -355,6 +356,11 @@ func (s *Service) transition(ctx context.Context, principal auth.Principal, id, 
 	}
 	if _, err = tx.Exec(ctx, `UPDATE batches SET status=$1,`+timestampColumn+`=now(),updated_at=now() WHERE company_id=$2 AND id=$3`, target, principal.CompanyID, id); err != nil {
 		return Batch{}, err
+	}
+	if target == "ready" {
+		if err = domainevent.Record(ctx, tx, principal.CompanyID, principal.UserID, "ecommerce_batch_ready", id, 1); err != nil {
+			return Batch{}, err
+		}
 	}
 	if err = s.audit.Record(ctx, tx, principal.CompanyID, principal.UserID, action, "batch", id, map[string]any{"previous_status": status, "status": target}); err != nil {
 		return Batch{}, err

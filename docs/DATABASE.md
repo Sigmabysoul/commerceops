@@ -97,3 +97,13 @@ Meesho-only business table or inventory schema change is introduced.
 Phase 10's remaining batch, print, outbound, reporting, and returns integration
 requires no additional migration: those domains already reference normalized
 marketplace keys and tenant-owned generic relations.
+
+## Phase 14 automation
+
+Migration `000022_printing_automation` adds `companies.timezone`,
+`automation_rules`, `automation_domain_events`, and `automation_executions`,
+plus dedicated permissions and the `automation` physical job origin. Composite
+tenant foreign keys protect rule/asset/printer/event/job relationships. Unique
+rule occurrence keys and job identities prevent duplicate queue creation. No
+Inventory or reporting counter schema changes. Down migration refuses to erase
+origins of existing automation jobs. See `workflows/automation.md`.

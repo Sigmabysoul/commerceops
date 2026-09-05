@@ -14,7 +14,7 @@ Phase 13 baseline:
 
 ## Phase Status
 
-`PHASE_14_DESIGN_COMPLETE_IMPLEMENTATION_PENDING`
+`PHASE_14_IMPLEMENTATION_COMPLETE_LOCAL_VERIFIED`
 
 Phases 0–10 are implemented and Phase 10 is the approved starting baseline.
 The owner explicitly authorized Phase 11 Myntra Batch A only.
@@ -26,16 +26,35 @@ The owner explicitly authorized Phase 13 after Phase 12 completion.
 
 The owner explicitly authorized Phase 14 after Phase 13 completion.
 
-## Phase 14 Start
+## Phase 14 Delivery
 
 - [x] dedicated Phase 14 branch
 - [x] bounded trigger set confirmed from the approved phase specification
 - [x] schema, timezone/DST, scheduler, event, safety, UX, reporting, and test design
-- [ ] migration and Automation domain implementation
-- [ ] authoritative Batch and Consignment event integration
-- [ ] scheduler lifecycle and API wiring
-- [ ] responsive Automation workspace and derived reporting
-- [ ] complete PostgreSQL-backed verification
+- [x] migration and Automation domain implementation
+- [x] authoritative Batch and Consignment event integration
+- [x] scheduler lifecycle and API wiring
+- [x] responsive Automation workspace and derived reporting
+- [x] complete PostgreSQL-backed verification
+
+## Phase 14 Verification
+
+On 2026-09-05, the final implementation passed `make verify-full` with
+`TEST_DATABASE_URL` pointing to a disposable PostgreSQL database migrated
+through `000022`. All PostgreSQL-backed tests ran, including Automation,
+Batch/Consignment hooks, migration round-trip, tenant/permission checks,
+concurrency, expired leases, crash rollback, daily limits, backoff/auto-pause,
+shutdown, normal agent delivery, physical failure reporting, and Inventory
+neutrality. Backend formatting/vet/tests/builds and frontend typecheck/lint/
+production build passed. OpenAPI YAML, unique keys/operation IDs, and local
+references were checked separately and passed.
+
+Six optional private production-PDF tests were skipped because their Amazon,
+Flipkart, Meesho, and Snapdeal sample environment variables were not supplied.
+Physical printer hardware and interactive browser behavior were not exercised.
+Remote CI has not run for these working-tree changes; local verification is not
+a claim about remote CI. See `PHASES/PHASE-14-VERIFICATION.md` for evidence and
+`workflows/automation.md` for operational limits.
 
 ## Phase 13 Delivery
 
@@ -166,4 +185,6 @@ association, extraction, and enrichment behavior remain deferred.
 
 ## Next Allowed Task
 
-Implement and verify only the approved Phase 14 Printing Automation scope.
+Phase 14 implementation is complete and locally verified. Do not begin any
+post-roadmap phase or new automation domain without explicit owner
+authorization. No later-phase work was introduced.

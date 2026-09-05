@@ -107,3 +107,16 @@ RULE CONSIGNMENT-005
 Pouch/file references are traceability fields, not globally unique identities,
 unless a future approved workflow establishes and migrates a narrower
 uniqueness scope.
+
+RULE AUTOMATION-001
+
+Schedules and approved domain events create normal Printing jobs only. They
+never contact printers, infer events from browser state, generate stock
+movements, or automatically retry ambiguous physical delivery.
+
+RULE AUTOMATION-002
+
+A rule occurrence produces at most one initial physical job across restarts and
+concurrent workers. Batch/Consignment facts commit with their source transition;
+queue creation commits with its execution outcome. Rules and every referenced
+asset, printer, event, and job must belong to the same tenant.

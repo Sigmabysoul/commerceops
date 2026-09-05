@@ -1,6 +1,7 @@
 # Phase 14 Printing Automation Design
 
-Status: implementation authorized by the owner on 2026-09-05.
+Status: implemented and locally verified on 2026-09-05 after owner authorization.
+See `PHASE-14-VERIFICATION.md`; remote CI has not run for the uncommitted changes.
 
 Phase 14 creates ordinary Phase 13 `printer_jobs`; it never sends documents to
 agents or printers directly. Automation has no Inventory dependency and cannot
@@ -142,3 +143,13 @@ counter table is introduced.
 - Inventory ledger and balances unchanged across every automation operation.
 - Migration up/down in an isolated schema, Go tests/vet/build, frontend
   typecheck/lint/build, OpenAPI parse, and full PostgreSQL-backed verification.
+
+## Implemented operational details
+
+The implementation follows these boundaries and commits Printing insertion plus
+execution completion atomically, in addition to preserving the semantic
+execution idempotency key. The bounded worker catches up persisted overdue
+schedule occurrences after downtime. Edits/resume schedule future occurrences;
+newly activated/edited event rules do not consume older facts. Limits, lifecycle,
+permission grants, API behavior, and explicit physical-retry handling are
+documented in `../workflows/automation.md`.

@@ -114,3 +114,13 @@ th { color: #68716a; font-size: .8rem; text-transform: uppercase; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); }
 @media (max-width: 980px) { .return-queues { grid-template-columns: repeat(2,minmax(0,1fr)); } }
 @media (max-width: 760px) { .grid, .batch-layout, .artifact-list, .assignment-grid, .inventory-actions, .metric-grid, .report-columns, .return-queues, .return-detail-layout, .action-panel { grid-template-columns: 1fr; } header, .product-heading, .upload-row, .panel-actions, .status-line, .report-filters, .workspace-controls { align-items: stretch; flex-direction: column; } .checks, .results article { grid-template-columns: 1fr; } .span-two, .action-panel h4, .action-panel p, .action-panel button { grid-column: auto; } }
+
+.automation-workspace { margin-top: 1rem; overflow-wrap: anywhere; }
+.automation-workspace .inline { flex-wrap: wrap; }
+.automation-workspace nav button[aria-pressed="true"] { outline: 2px solid #18211b; outline-offset: 2px; }
+.automation-workspace form { display: grid; gap: .8rem; margin-top: 1rem; }
+.automation-workspace fieldset { min-width: 0; display: grid; gap: .8rem; border: 1px solid #d9ded9; border-radius: .6rem; }
+.automation-workspace input[type="checkbox"] { width: auto; }
+.automation-workspace li { display: block; }
+.automation-workspace article, .automation-workspace aside { min-width: 0; }
+.automation-workspace button { min-height: 2.75rem; }

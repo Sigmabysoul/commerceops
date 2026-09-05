@@ -63,3 +63,10 @@ PostgreSQL-backed tests require an already migrated, disposable database:
 ```sh
 TEST_DATABASE_URL="$DATABASE_URL" go test ./... -v
 ```
+
+`000022_printing_automation` adds explicit company timezone, printing automation
+rules, durable Batch/Consignment events, leased executions, dedicated automation
+permissions, and the `automation` physical job origin. Apply before running the
+Phase 14 server. No inventory schema or independent reporting counters change.
+Rollback refuses to remove the origin of existing automation print jobs; test
+migration down/up only in a disposable database without such jobs.

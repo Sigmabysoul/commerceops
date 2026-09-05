@@ -14,7 +14,13 @@ transition.
 - **Phase 2 — Product Master:** canonical products, marketplace references, SKU
   mappings, and deterministic training/resolution.
 
-## Current phase
+## Historical Phase 3 planning snapshot
+
+The following Phase 3 status and locked-phase list are retained as historical
+planning context. Current authorization and completion status are maintained in
+[`CURRENT_STATE.md`](CURRENT_STATE.md). Phase 14 Printing Automation is the
+active scope; this snapshot does not authorize any phase transition.
+
 
 - **Phase 3 — Flipkart Processing:** implementation and review in progress.
   Secure uploads, extraction, normalization, Product Master resolution,

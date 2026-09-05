@@ -119,3 +119,10 @@ domain actions; it contains no authoritative transition or stock rules.
 Reporting derives permission-gated Phase 8 metrics directly from normalized
 orders, cancellation records, append-only lifecycle events, return items, and
 the Inventory ledger. No return counters or reporting tables are maintained.
+
+Phase 14 adds `internal/automation` for approved schedule/event rules. A small
+`platform/domainevent` recorder persists Batch/Consignment facts using the source
+transaction. The bounded in-process scheduler uses PostgreSQL occurrences and
+leases; a transaction-scoped Printing method creates the normal physical job
+and execution result atomically. Automation cannot contact hardware or mutate
+Inventory. See `workflows/automation.md` for timezone, retry, and restart policy.
