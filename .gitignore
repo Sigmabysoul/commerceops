@@ -1,0 +1,27 @@
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Go
+services/api/bin/
+services/api/server
+services/api/coverage.out
+services/api/printer-agent-journal.jsonl
+.cache/
+.pnpm-store/
+
+# Next.js / pnpm
+apps/web/node_modules/
+apps/web/.next/
+apps/web/out/
+apps/web/coverage/
+apps/web/*.tsbuildinfo
+apps/web/.env*
+!apps/web/.env.example
+
+# Editors and operating systems
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

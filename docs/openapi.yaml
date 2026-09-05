@@ -1,0 +1,2419 @@
+openapi: 3.1.0
+info:
+  title: CommerceOps API
+  version: 0.14.0
+paths:
+  /api/v1/health:
+    get:
+      operationId: getHealth
+      summary: Check application and required dependency health
+      responses:
+        "200":
+          description: Application and PostgreSQL are healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Health"
+        "503":
+          description: PostgreSQL is unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Health"
+  /api/v1/auth/login:
+    post:
+      operationId: login
+      summary: Start a verified company-scoped session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [email, password, company_id]
+              properties:
+                email: {type: string, format: email}
+                password: {type: string, format: password}
+                company_id: {type: string, format: uuid}
+      responses:
+        "200": {description: Authenticated; the session cookie is set}
+        "401": {$ref: "#/components/responses/Error"}
+        "403": {$ref: "#/components/responses/Error"}
+  /api/v1/auth/logout:
+    post:
+      operationId: logout
+      security: [{sessionCookie: []}]
+      responses:
+        "204": {description: Session revoked}
+        "401": {$ref: "#/components/responses/Error"}
+  /api/v1/auth/session:
+    get:
+      operationId: getSession
+      security: [{sessionCookie: []}]
+      responses:
+        "200": {description: Current authenticated principal}
+        "401": {$ref: "#/components/responses/Error"}
+  /api/v1/company:
+    get:
+      operationId: getCompany
+      security: [{sessionCookie: []}]
+      responses:
+        "200": {description: Company established by the session}
+        "401": {$ref: "#/components/responses/Error"}
+  /api/v1/employees:
+    get:
+      operationId: listEmployees
+      security: [{sessionCookie: []}]
+      responses:
+        "200": {description: Tenant employee list}
+        "403": {$ref: "#/components/responses/Error"}
+    post:
+      operationId: createEmployee
+      security: [{sessionCookie: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/CreateEmployee"}
+      responses:
+        "201": {description: Employee created}
+        "403": {$ref: "#/components/responses/Error"}
+  /api/v1/employees/{employee_id}:
+    parameters:
+      - {$ref: "#/components/parameters/EmployeeID"}
+    patch:
+      operationId: setEmployeeStatus
+      security: [{sessionCookie: []}]
+      responses:
+        "200": {description: Employee status changed}
+        "403": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+  /api/v1/user-access:
+    post:
+      operationId: createUserAccess
+      security: [{sessionCookie: []}]
+      responses:
+        "201": {description: User and company access created}
+        "403": {$ref: "#/components/responses/Error"}
+  /api/v1/user-access/{user_id}:
+    parameters:
+      - {$ref: "#/components/parameters/UserID"}
+    patch:
+      operationId: setUserAccessStatus
+      security: [{sessionCookie: []}]
+      responses:
+        "204": {description: Company access status changed}
+        "403": {$ref: "#/components/responses/Error"}
+  /api/v1/user-access/{user_id}/roles:
+    parameters:
+      - {$ref: "#/components/parameters/UserID"}
+    put:
+      operationId: setUserRoles
+      security: [{sessionCookie: []}]
+      responses:
+        "204": {description: Role assignments replaced}
+        "403": {$ref: "#/components/responses/Error"}
+  /api/v1/roles:
+    get:
+      operationId: listRoles
+      security: [{sessionCookie: []}]
+      responses:
+        "200": {description: Tenant roles and permissions}
+        "403": {$ref: "#/components/responses/Error"}
+    post:
+      operationId: createRole
+      security: [{sessionCookie: []}]
+      responses:
+        "201": {description: Role created}
+        "403": {$ref: "#/components/responses/Error"}
+  /api/v1/roles/{role_id}/permissions:
+    parameters:
+      - {$ref: "#/components/parameters/RoleID"}
+    put:
+      operationId: setRolePermissions
+      security: [{sessionCookie: []}]
+      responses:
+        "204": {description: Permission assignments replaced}
+        "403": {$ref: "#/components/responses/Error"}
+  /api/v1/permissions:
+    get:
+      operationId: listPermissions
+      security: [{sessionCookie: []}]
+      responses:
+        "200": {description: Permission definitions}
+        "403": {$ref: "#/components/responses/Error"}
+  /api/v1/module-entitlements:
+    get:
+      operationId: listModuleEntitlements
+      security: [{sessionCookie: []}]
+      responses:
+        "200": {description: Tenant module entitlements}
+        "403": {$ref: "#/components/responses/Error"}
+  /api/v1/module-entitlements/{module_key}:
+    parameters:
+      - name: module_key
+        in: path
+        required: true
+        schema: {type: string, pattern: "^[a-z][a-z0-9_]*$"}
+    put:
+      operationId: setModuleEntitlement
+      security: [{sessionCookie: []}]
+      responses:
+        "204": {description: Entitlement changed}
+        "403": {$ref: "#/components/responses/Error"}
+  /api/v1/audit-logs:
+    get:
+      operationId: listAuditLogs
+      security: [{sessionCookie: []}]
+      responses:
+        "200": {description: Recent tenant audit entries}
+        "403": {$ref: "#/components/responses/Error"}
+  /api/v1/marketplaces:
+    get:
+      operationId: listMarketplaces
+      summary: List normalized marketplace reference keys
+      security: [{sessionCookie: []}]
+      responses:
+        "200": {description: Active marketplace references}
+        "403": {$ref: "#/components/responses/Error"}
+  /api/v1/products:
+    get:
+      operationId: listProducts
+      summary: Search tenant products
+      security: [{sessionCookie: []}]
+      parameters:
+        - {name: q, in: query, schema: {type: string}}
+        - {name: status, in: query, schema: {type: string, enum: [active, inactive]}}
+      responses:
+        "200": {description: Tenant-scoped product list}
+        "403": {$ref: "#/components/responses/Error"}
+    post:
+      operationId: createProduct
+      summary: Create a canonical tenant product
+      security: [{sessionCookie: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ProductInput"}
+      responses:
+        "201": {description: Product created}
+        "409": {$ref: "#/components/responses/Error"}
+  /api/v1/products/{product_id}:
+    parameters:
+      - {$ref: "#/components/parameters/ProductID"}
+    get:
+      operationId: getProduct
+      security: [{sessionCookie: []}]
+      responses:
+        "200": {description: Tenant product}
+        "404": {$ref: "#/components/responses/Error"}
+    patch:
+      operationId: updateProduct
+      security: [{sessionCookie: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ProductInput"}
+      responses:
+        "200": {description: Updated product}
+        "404": {$ref: "#/components/responses/Error"}
+        "409": {$ref: "#/components/responses/Error"}
+  /api/v1/sku-mappings:
+    get:
+      operationId: listSkuMappings
+      security: [{sessionCookie: []}]
+      parameters:
+        - {name: product_id, in: query, schema: {type: string, format: uuid}}
+        - {name: marketplace, in: query, schema: {type: string}}
+        - {name: status, in: query, schema: {type: string, enum: [active, inactive]}}
+      responses:
+        "200": {description: Tenant-scoped SKU mappings}
+    post:
+      operationId: createSkuMapping
+      summary: Manually train an exact SKU mapping
+      security: [{sessionCookie: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/SkuMappingInput"}
+      responses:
+        "201": {description: SKU mapping created}
+        "409": {$ref: "#/components/responses/Error"}
+  /api/v1/sku-mappings/{mapping_id}:
+    parameters:
+      - {$ref: "#/components/parameters/MappingID"}
+    patch:
+      operationId: updateSkuMapping
+      security: [{sessionCookie: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/SkuMappingInput"}
+      responses:
+        "200": {description: Updated SKU mapping}
+        "404": {$ref: "#/components/responses/Error"}
+        "409": {$ref: "#/components/responses/Error"}
+  /api/v1/sku-mappings/resolve:
+    post:
+      operationId: resolveSkuMapping
+      summary: Resolve a deterministic exact marketplace SKU
+      security: [{sessionCookie: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [marketplace_key, sku]
+              properties:
+                marketplace_key: {type: string}
+                sku: {type: string}
+      responses:
+        "200":
+          description: Resolved mapping/product or explicit unresolved result
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/SkuResolution"}
+  /api/v1/amazon/jobs:
+    post:
+      operationId: uploadAmazonJob
+      summary: Upload an Amazon PDF for durable background normalization
+      security: [{sessionCookie: []}]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: {type: string, format: binary}
+      responses:
+        "202": {description: Amazon job queued, or existing source job returned}
+        "400": {$ref: "#/components/responses/Error"}
+        "403": {$ref: "#/components/responses/Error"}
+  /api/v1/amazon/jobs/{job_id}:
+    parameters:
+      - {name: job_id, in: path, required: true, schema: {type: string, format: uuid}}
+    get:
+      operationId: getAmazonJob
+      summary: Read Amazon job, normalized records, items, and review errors
+      security: [{sessionCookie: []}]
+      responses:
+        "200": {description: Tenant-scoped Amazon processing details}
+        "403": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+    post:
+      operationId: retryAmazonJob
+      summary: Clear derived Amazon results and queue the source for reprocessing
+      security: [{sessionCookie: []}]
+      responses:
+        "202": {description: Amazon job queued for retry}
+        "403": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+        "409": {$ref: "#/components/responses/Error"}
+  /api/v1/meesho/jobs:
+    post:
+      operationId: uploadMeeshoJob
+      summary: Upload a Meesho PDF for durable background normalization
+      security: [{sessionCookie: []}]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: {type: string, format: binary}
+      responses:
+        "202": {description: Meesho job queued, or existing source job returned}
+        "400": {$ref: "#/components/responses/Error"}
+        "403": {$ref: "#/components/responses/Error"}
+  /api/v1/meesho/jobs/{job_id}:
+    parameters:
+      - {name: job_id, in: path, required: true, schema: {type: string, format: uuid}}
+    get:
+      operationId: getMeeshoJob
+      summary: Read Meesho job, normalized records, items, documents, and review errors
+      security: [{sessionCookie: []}]
+      responses:
+        "200": {description: Tenant-scoped Meesho processing details}
+        "403": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+    post:
+      operationId: retryMeeshoJob
+      summary: Clear derived Meesho results and queue the source for reprocessing
+      security: [{sessionCookie: []}]
+      responses:
+        "202": {description: Meesho job queued for retry}
+        "403": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+        "409": {$ref: "#/components/responses/Error"}
+  /api/v1/myntra/jobs:
+    post:
+      operationId: importMyntraJob
+      summary: Import a Myntra packed-orders CSV for durable background normalization
+      security: [{sessionCookie: []}]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file, idempotency_key]
+              properties:
+                file: {type: string, format: binary}
+                idempotency_key: {type: string, minLength: 1, maxLength: 128}
+      responses:
+        "202": {description: Myntra import queued, or exact idempotent/source replay returned}
+        "400": {$ref: "#/components/responses/Error"}
+        "403": {$ref: "#/components/responses/Error"}
+        "409": {$ref: "#/components/responses/Error"}
+  /api/v1/myntra/jobs/{job_id}:
+    parameters:
+      - {name: job_id, in: path, required: true, schema: {type: string, format: uuid}}
+    get:
+      operationId: getMyntraJob
+      summary: Read Myntra import rows, normalized records, evidence metadata, and review errors
+      security: [{sessionCookie: []}]
+      responses:
+        "200": {description: Tenant-scoped Myntra processing details}
+        "403": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+    post:
+      operationId: retryMyntraJob
+      summary: Clear derived Myntra results and queue the CSV for reprocessing
+      security: [{sessionCookie: []}]
+      responses:
+        "202": {description: Myntra job queued for retry}
+        "403": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+        "409": {$ref: "#/components/responses/Error"}
+  /api/v1/snapdeal/jobs:
+    post:
+      operationId: uploadSnapdealJob
+      summary: Upload a Snapdeal invoice/packslip PDF for durable normalization
+      security: [{sessionCookie: []}]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: {type: string, format: binary}
+      responses:
+        "202": {description: Snapdeal job queued, or existing source job returned}
+        "400": {$ref: "#/components/responses/Error"}
+        "403": {$ref: "#/components/responses/Error"}
+  /api/v1/snapdeal/jobs/{job_id}:
+    parameters:
+      - {name: job_id, in: path, required: true, schema: {type: string, format: uuid}}
+    get:
+      operationId: getSnapdealJob
+      summary: Read Snapdeal normalized orders, associated documents, and review errors
+      security: [{sessionCookie: []}]
+      responses:
+        "200": {description: Tenant-scoped Snapdeal processing details}
+        "403": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+    post:
+      operationId: retrySnapdealJob
+      summary: Clear derived Snapdeal results and queue the source for reprocessing
+      security: [{sessionCookie: []}]
+      responses:
+        "202": {description: Snapdeal job queued for retry}
+        "403": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+        "409": {$ref: "#/components/responses/Error"}
+  /api/v1/batches:
+    get:
+      operationId: listBatches
+      summary: List tenant operational batches
+      security: [{sessionCookie: []}]
+      responses:
+        "200": {description: Tenant-scoped batch summaries}
+        "403": {$ref: "#/components/responses/Error"}
+    post:
+      operationId: createBatch
+      summary: Create an idempotent draft batch from normalized marketplace orders
+      security: [{sessionCookie: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/CreateBatch"}
+      responses:
+        "201": {description: Batch created}
+        "200": {description: Existing batch returned for an idempotent replay}
+        "409": {$ref: "#/components/responses/Error"}
+  /api/v1/batches/{batch_id}:
+    parameters:
+      - {$ref: "#/components/parameters/BatchID"}
+    get:
+      operationId: getBatch
+      security: [{sessionCookie: []}]
+      responses:
+        "200": {description: Batch detail, ordered members, and derived product totals}
+        "404": {$ref: "#/components/responses/Error"}
+  /api/v1/batches/{batch_id}/ready:
+    parameters:
+      - {$ref: "#/components/parameters/BatchID"}
+    post:
+      operationId: readyBatch
+      summary: Move a fully resolved draft batch to ready
+      security: [{sessionCookie: []}]
+      responses:
+        "200": {description: Batch is ready}
+        "409": {$ref: "#/components/responses/Error"}
+  /api/v1/batches/{batch_id}/cancel:
+    parameters:
+      - {$ref: "#/components/parameters/BatchID"}
+    post:
+      operationId: cancelBatch
+      summary: Cancel a draft batch
+      security: [{sessionCookie: []}]
+      responses:
+        "200": {description: Batch is cancelled}
+        "409": {$ref: "#/components/responses/Error"}
+  /api/v1/batch-eligible-orders:
+    get:
+      operationId: listBatchEligibleOrders
+      summary: List processed marketplace orders not already assigned to a batch
+      security: [{sessionCookie: []}]
+      parameters:
+        - {name: marketplace, in: query, required: true, schema: {type: string, enum: [flipkart, amazon, meesho, myntra, snapdeal]}}
+      responses:
+        "200": {description: Tenant-scoped eligible normalized orders}
+        "403": {$ref: "#/components/responses/Error"}
+  /api/v1/worker-assignment-rules:
+    get:
+      operationId: listWorkerAssignmentRules
+      summary: List tenant worker assignment rules
+      security: [{sessionCookie: []}]
+      parameters:
+        - {name: marketplace, in: query, required: true, schema: {type: string, enum: [flipkart, amazon, meesho, myntra, snapdeal]}}
+      responses:
+        "200": {description: Exact-product rules and required marketplace fallback}
+        "403": {$ref: "#/components/responses/Error"}
+    put:
+      operationId: replaceWorkerAssignmentRules
+      summary: Atomically replace tenant worker assignment rules
+      security: [{sessionCookie: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ReplaceWorkerAssignmentRules"}
+      responses:
+        "200": {description: Replaced assignment rules}
+        "400": {$ref: "#/components/responses/Error"}
+        "403": {$ref: "#/components/responses/Error"}
+  /api/v1/batches/{batch_id}/print-jobs:
+    parameters:
+      - {$ref: "#/components/parameters/BatchID"}
+    post:
+      operationId: generateBatchPrintJob
+      summary: Generate storage-backed printable artifacts for a ready batch
+      security: [{sessionCookie: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/GeneratePrintJob"}
+      responses:
+        "201": {description: Print artifacts generated}
+        "200": {description: Existing print job returned for an idempotent replay}
+        "409": {$ref: "#/components/responses/Error"}
+        "422": {$ref: "#/components/responses/Error"}
+    get:
+      operationId: listBatchPrintJobs
+      summary: List print and reprint history for a batch
+      security: [{sessionCookie: []}]
+      responses:
+        "200": {description: Tenant-scoped print history with artifacts}
+        "403": {$ref: "#/components/responses/Error"}
+  /api/v1/print-jobs/{print_job_id}:
+    parameters:
+      - {$ref: "#/components/parameters/PrintJobID"}
+    get:
+      operationId: getPrintJob
+      security: [{sessionCookie: []}]
+      responses:
+        "200": {description: Tenant print job and artifact metadata}
+        "404": {$ref: "#/components/responses/Error"}
+  /api/v1/print-jobs/{print_job_id}/reprints:
+    parameters:
+      - {$ref: "#/components/parameters/PrintJobID"}
+    post:
+      operationId: reprintPrintJob
+      summary: Create an idempotent source-linked reprint with a reason
+      security: [{sessionCookie: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ReprintJob"}
+      responses:
+        "201": {description: Reprint generated}
+        "200": {description: Existing reprint returned for an idempotent replay}
+        "403": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+  /api/v1/print-artifacts/{artifact_id}:
+    parameters:
+      - {$ref: "#/components/parameters/ArtifactID"}
+    get:
+      operationId: downloadPrintArtifact
+      security: [{sessionCookie: []}]
+      responses:
+        "200": {description: Generated PDF artifact}
+        "404": {$ref: "#/components/responses/Error"}
+  /api/v1/inventory:
+    get:
+      operationId: listInventoryBalances
+      summary: List tenant Product Master inventory balances
+      security: [{sessionCookie: []}]
+      responses:
+        "200": {description: On-hand, reserved, and available balances}
+        "403": {$ref: "#/components/responses/Error"}
+  /api/v1/inventory/transactions:
+    get:
+      operationId: listInventoryTransactions
+      summary: List immutable tenant inventory ledger entries
+      security: [{sessionCookie: []}]
+      parameters:
+        - {name: product_id, in: query, schema: {type: string, format: uuid}}
+        - {name: type, in: query, schema: {type: string, enum: [stock_in, manual_adjustment, correction, ecommerce_out]}}
+      responses:
+        "200": {description: Filtered inventory transactions}
+        "403": {$ref: "#/components/responses/Error"}
+  /api/v1/inventory/stock-in:
+    post:
+      operationId: inventoryStockIn
+      summary: Record positive stock-in through the ledger
+      security: [{sessionCookie: []}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/InventoryCommand"}}}}
+      responses:
+        "201": {description: Stock-in recorded}
+        "200": {description: Existing transaction returned for exact replay}
+        "409": {$ref: "#/components/responses/Error"}
+  /api/v1/inventory/adjustments:
+    post:
+      operationId: inventoryAdjustment
+      summary: Record a reasoned nonzero manual inventory delta
+      security: [{sessionCookie: []}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/InventoryCommand"}}}}
+      responses:
+        "201": {description: Adjustment recorded}
+        "200": {description: Existing transaction returned for exact replay}
+        "409": {$ref: "#/components/responses/Error"}
+  /api/v1/inventory/corrections:
+    post:
+      operationId: inventoryCorrection
+      summary: Record a compensating correction without rewriting history
+      security: [{sessionCookie: []}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/InventoryCommand"}}}}
+      responses:
+        "201": {description: Correction recorded}
+        "200": {description: Existing transaction returned for exact replay}
+        "409": {$ref: "#/components/responses/Error"}
+  /api/v1/inventory/batches/{batch_id}/confirm-outbound:
+    parameters:
+      - {$ref: "#/components/parameters/BatchID"}
+    post:
+      operationId: confirmInventoryEcommerceOutbound
+      summary: Atomically deduct a ready batch's Product Master totals once
+      security: [{sessionCookie: []}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/IdempotentCommand"}}}}
+      responses:
+        "201": {description: Ecommerce outbound transactions recorded}
+        "200": {description: Existing transactions returned for exact replay}
+        "409": {$ref: "#/components/responses/Error"}
+  /api/v1/inventory/reservations:
+    get:
+      operationId: listInventoryReservations
+      security: [{sessionCookie: []}]
+      parameters:
+        - {name: status, in: query, schema: {type: string, enum: [active, released]}}
+      responses:
+        "200": {description: Tenant reservations}
+    post:
+      operationId: createInventoryReservation
+      security: [{sessionCookie: []}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/ReservationCommand"}}}}
+      responses:
+        "201": {description: Stock reserved}
+        "200": {description: Existing reservation returned for exact replay}
+        "409": {$ref: "#/components/responses/Error"}
+  /api/v1/inventory/reservations/{reservation_id}/release:
+    parameters:
+      - {name: reservation_id, in: path, required: true, schema: {type: string, format: uuid}}
+    post:
+      operationId: releaseInventoryReservation
+      security: [{sessionCookie: []}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/ReasonedIdempotentCommand"}}}}
+      responses:
+        "201": {description: Reservation released}
+        "200": {description: Existing release returned for exact replay}
+        "409": {$ref: "#/components/responses/Error"}
+  /api/v1/cancellations:
+    get:
+      operationId: listCancellations
+      summary: List tenant cancellation records
+      security: [{sessionCookie: []}]
+      parameters:
+        - {name: status, in: query, schema: {type: string, enum: [recorded, closed]}}
+        - {name: marketplace, in: query, schema: {type: string, pattern: '^[a-z][a-z0-9_]{0,49}$'}}
+      responses:
+        "200": {description: Tenant cancellation records}
+        "403": {$ref: "#/components/responses/Error"}
+    post:
+      operationId: createCancellation
+      summary: Idempotently record cancellation and its authoritative outbound snapshot
+      security: [{sessionCookie: []}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/CreateCancellation"}}}}
+      responses:
+        "201": {description: Cancellation recorded without changing inventory}
+        "200": {description: Existing cancellation returned for exact replay}
+        "403": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+        "409": {$ref: "#/components/responses/Error"}
+  /api/v1/cancellations/{cancellation_id}:
+    parameters:
+      - {name: cancellation_id, in: path, required: true, schema: {type: string, format: uuid}}
+    get:
+      operationId: getCancellation
+      security: [{sessionCookie: []}]
+      responses:
+        "200": {description: Tenant cancellation detail}
+        "403": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+  /api/v1/cancellations/{cancellation_id}/close:
+    parameters:
+      - {name: cancellation_id, in: path, required: true, schema: {type: string, format: uuid}}
+    post:
+      operationId: closeCancellation
+      summary: Idempotently close a cancellation without changing inventory
+      security: [{sessionCookie: []}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/CloseLifecycle"}}}}
+      responses:
+        "201": {description: Cancellation closure recorded}
+        "200": {description: Existing closure returned for exact replay}
+        "403": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+        "409": {$ref: "#/components/responses/Error"}
+  /api/v1/returns:
+    get:
+      operationId: listReturns
+      summary: List tenant return cases
+      security: [{sessionCookie: []}]
+      parameters:
+        - {name: status, in: query, schema: {type: string, enum: [expected, received, inspected, inspection_pending, restocked, restock_corrected, damaged, rejected, closed]}}
+        - {name: marketplace, in: query, schema: {type: string, pattern: '^[a-z][a-z0-9_]{0,49}$'}}
+      responses:
+        "200": {description: Tenant return-case summaries}
+        "403": {$ref: "#/components/responses/Error"}
+    post:
+      operationId: createReturn
+      summary: Create an expected physical return from normalized order items
+      security: [{sessionCookie: []}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/CreateReturn"}}}}
+      responses:
+        "201": {description: Expected return created without changing inventory}
+        "200": {description: Existing return returned for exact replay}
+        "403": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+        "409": {$ref: "#/components/responses/Error"}
+  /api/v1/returns/{return_id}:
+    parameters:
+      - {name: return_id, in: path, required: true, schema: {type: string, format: uuid}}
+    get:
+      operationId: getReturn
+      summary: Read return items and append-only lifecycle events
+      security: [{sessionCookie: []}]
+      responses:
+        "200": {description: Tenant return detail}
+        "403": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+  /api/v1/returns/{return_id}/receive:
+    parameters:
+      - {name: return_id, in: path, required: true, schema: {type: string, format: uuid}}
+    post:
+      operationId: receiveReturn
+      summary: Idempotently record explicit physical quantities received
+      security: [{sessionCookie: []}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/ReceiveReturn"}}}}
+      responses:
+        "201": {description: Physical receipt recorded without changing inventory}
+        "200": {description: Existing receipt returned for exact replay}
+        "403": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+        "409": {$ref: "#/components/responses/Error"}
+  /api/v1/returns/{return_id}/inspect:
+    parameters:
+      - {name: return_id, in: path, required: true, schema: {type: string, format: uuid}}
+    post:
+      operationId: inspectReturn
+      summary: Record an explicit disposition for every received return item
+      security: [{sessionCookie: []}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/InspectReturn"}}}}
+      responses:
+        "201": {description: Return dispositions recorded without changing inventory}
+        "200": {description: Existing inspection returned for exact replay}
+        "403": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+        "409": {$ref: "#/components/responses/Error"}
+  /api/v1/returns/{return_id}/restock:
+    parameters:
+      - {name: return_id, in: path, required: true, schema: {type: string, format: uuid}}
+    post:
+      operationId: restockReturn
+      summary: Atomically accept inspected restockable quantities into centralized inventory
+      security: [{sessionCookie: []}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/RestockReturn"}}}}
+      responses:
+        "201": {description: Return restock ledger transactions recorded}
+        "200": {description: Existing restock returned for exact replay}
+        "403": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+        "409": {$ref: "#/components/responses/Error"}
+  /api/v1/returns/{return_id}/restock-corrections:
+    parameters:
+      - {name: return_id, in: path, required: true, schema: {type: string, format: uuid}}
+    post:
+      operationId: correctReturnRestock
+      summary: Record a bounded compensating inventory correction for an earlier restock
+      security: [{sessionCookie: []}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/CorrectReturnRestock"}}}}
+      responses:
+        "201": {description: Compensating correction recorded without rewriting history}
+        "200": {description: Existing correction returned for exact replay}
+        "403": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+        "409": {$ref: "#/components/responses/Error"}
+  /api/v1/returns/{return_id}/close:
+    parameters:
+      - {name: return_id, in: path, required: true, schema: {type: string, format: uuid}}
+    post:
+      operationId: closeReturn
+      summary: Idempotently close a disposition-complete return without changing inventory
+      security: [{sessionCookie: []}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/CloseLifecycle"}}}}
+      responses:
+        "201": {description: Terminal return closure recorded}
+        "200": {description: Existing closure returned for exact replay}
+        "403": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+        "409": {$ref: "#/components/responses/Error"}
+  /api/v1/consignment-departments:
+    get:
+      operationId: listConsignmentDepartments
+      security: [{sessionCookie: []}]
+      responses:
+        "200": {description: Broad or employee-membership-scoped departments}
+        "403": {$ref: "#/components/responses/Error"}
+    post:
+      operationId: createConsignmentDepartment
+      security: [{sessionCookie: []}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/ConsignmentDepartmentCommand"}}}}
+      responses:
+        "201": {description: Configurable tenant department created}
+        "403": {$ref: "#/components/responses/Error"}
+        "409": {$ref: "#/components/responses/Error"}
+  /api/v1/consignment-departments/{department_id}/members:
+    parameters:
+      - {name: department_id, in: path, required: true, schema: {type: string, format: uuid}}
+    put:
+      operationId: replaceConsignmentDepartmentMembers
+      security: [{sessionCookie: []}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/ConsignmentMembershipCommand"}}}}
+      responses:
+        "200": {description: Active employee membership replaced}
+        "403": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+  /api/v1/consignment-departments/{department_id}:
+    parameters:
+      - {name: department_id, in: path, required: true, schema: {type: string, format: uuid}}
+    patch:
+      operationId: updateConsignmentDepartment
+      security: [{sessionCookie: []}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/ConsignmentDepartmentCommand"}}}}
+      responses:
+        "200": {description: Department name or lifecycle status updated}
+        "403": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+        "409": {$ref: "#/components/responses/Error"}
+  /api/v1/consignments:
+    get:
+      operationId: listConsignments
+      security: [{sessionCookie: []}]
+      parameters:
+        - {name: status, in: query, schema: {type: string, enum: [created, allocated, picking, ready, packing, packed, outbound, completed, cancelled]}}
+        - {name: department_id, in: query, schema: {type: string, format: uuid}}
+        - {name: q, in: query, schema: {type: string, maxLength: 200}}
+      responses:
+        "200": {description: Broad or department-scoped consignment board}
+        "403": {$ref: "#/components/responses/Error"}
+    post:
+      operationId: createConsignment
+      security: [{sessionCookie: []}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/CreateConsignment"}}}}
+      responses:
+        "201": {description: Consignment and immutable creation event created}
+        "200": {description: Existing consignment returned for exact replay}
+        "403": {$ref: "#/components/responses/Error"}
+        "409": {$ref: "#/components/responses/Error"}
+  /api/v1/consignments/{consignment_id}:
+    parameters:
+      - {name: consignment_id, in: path, required: true, schema: {type: string, format: uuid}}
+    get:
+      operationId: getConsignment
+      security: [{sessionCookie: []}]
+      responses:
+        "200": {description: Authorized consignment detail, lines, and history}
+        "403": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+  /api/v1/consignments/{consignment_id}/allocate:
+    parameters:
+      - {name: consignment_id, in: path, required: true, schema: {type: string, format: uuid}}
+    post:
+      operationId: allocateConsignment
+      security: [{sessionCookie: []}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/ConsignmentAction"}}}}
+      responses:
+        "201": {description: Requirements reserved and state allocated atomically}
+        "200": {description: Exact replay}
+        "409": {$ref: "#/components/responses/Error"}
+  /api/v1/consignments/{consignment_id}/transition:
+    parameters:
+      - {name: consignment_id, in: path, required: true, schema: {type: string, format: uuid}}
+    post:
+      operationId: transitionConsignment
+      security: [{sessionCookie: []}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/ConsignmentTransition"}}}}
+      responses:
+        "201": {description: Valid state transition recorded}
+        "200": {description: Exact replay}
+        "409": {$ref: "#/components/responses/Error"}
+  /api/v1/consignments/{consignment_id}/lines/{line_id}/progress:
+    parameters:
+      - {name: consignment_id, in: path, required: true, schema: {type: string, format: uuid}}
+      - {name: line_id, in: path, required: true, schema: {type: string, format: uuid}}
+    post:
+      operationId: updateConsignmentLineProgress
+      security: [{sessionCookie: []}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/ConsignmentProgress"}}}}
+      responses:
+        "201": {description: Explicit ready and packed quantities recorded}
+        "200": {description: Exact replay}
+        "409": {$ref: "#/components/responses/Error"}
+  /api/v1/consignments/{consignment_id}/confirm-outbound:
+    parameters:
+      - {name: consignment_id, in: path, required: true, schema: {type: string, format: uuid}}
+    post:
+      operationId: confirmConsignmentOutbound
+      security: [{sessionCookie: []}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/ConsignmentAction"}}}}
+      responses:
+        "201": {description: Reservation consumed and consignment_out ledger recorded atomically}
+        "200": {description: Exact replay without another deduction}
+        "409": {$ref: "#/components/responses/Error"}
+  /api/v1/consignments/{consignment_id}/cancel:
+    parameters:
+      - {name: consignment_id, in: path, required: true, schema: {type: string, format: uuid}}
+    post:
+      operationId: cancelConsignment
+      security: [{sessionCookie: []}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/ConsignmentAction"}}}}
+      responses:
+        "201": {description: Pre-outbound consignment cancelled and reservations released}
+        "200": {description: Exact replay}
+        "409": {$ref: "#/components/responses/Error"}
+  /api/v1/reports/dashboard:
+    get:
+      operationId: getOperationalDashboard
+      summary: Read tenant-scoped operational metrics from authoritative domains
+      security: [{sessionCookie: []}]
+      parameters:
+        - {name: from, in: query, required: true, schema: {type: string, format: date-time}, description: Inclusive range start with explicit offset}
+        - {name: to, in: query, required: true, schema: {type: string, format: date-time}, description: Exclusive range end with explicit offset}
+        - {name: marketplace, in: query, schema: {type: string, pattern: '^[a-z][a-z0-9_]{0,49}$'}}
+        - {name: product_id, in: query, schema: {type: string, format: uuid}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 200, default: 50}}
+        - {name: offset, in: query, schema: {type: integer, minimum: 0, default: 0}}
+      responses:
+        "200": {description: Operational summary, marketplace breakdown, and permission-gated inventory and return/cancellation data}
+        "400": {$ref: "#/components/responses/Error"}
+        "403": {$ref: "#/components/responses/Error"}
+  /api/v1/printer-agents:
+    get:
+      operationId: listPrinterAgents
+      security: [{sessionCookie: []}]
+      responses:
+        "200": {description: Tenant agents with derived online, offline, or revoked status}
+    post:
+      operationId: createPrinterAgent
+      summary: Register a tenant device and issue its credential once
+      security: [{sessionCookie: []}]
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [friendly_name, platform], properties: {friendly_name: {type: string, maxLength: 120}, platform: {type: string, enum: [linux_cups]}}}}}}
+      responses:
+        "201": {description: Agent registered; credential is returned only in this response}
+        "403": {$ref: "#/components/responses/Error"}
+  /api/v1/printer-agents/{agent_id}:
+    parameters: [{name: agent_id, in: path, required: true, schema: {type: string, format: uuid}}]
+    delete:
+      operationId: revokePrinterAgent
+      security: [{sessionCookie: []}]
+      responses:
+        "204": {description: Agent and all credentials revoked}
+        "404": {$ref: "#/components/responses/Error"}
+  /api/v1/printers:
+    get:
+      operationId: listRegisteredPrinters
+      security: [{sessionCookie: []}]
+      responses:
+        "200": {description: Tenant printers with derived online status}
+        "403": {$ref: "#/components/responses/Error"}
+  /api/v1/printers/{printer_id}:
+    parameters: [{name: printer_id, in: path, required: true, schema: {type: string, format: uuid}}]
+    put:
+      operationId: updateRegisteredPrinter
+      security: [{sessionCookie: []}]
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [friendly_name, enabled], properties: {friendly_name: {type: string, maxLength: 120}, location: {type: [string, "null"], maxLength: 255}, enabled: {type: boolean}}}}}}
+      responses:
+        "200": {description: Friendly name, location, and enabled state updated}
+  /api/v1/print-library-assets:
+    get:
+      operationId: listPrintLibraryAssets
+      security: [{sessionCookie: []}]
+      parameters:
+        - {name: search, in: query, schema: {type: string}}
+        - {name: category, in: query, schema: {type: string}}
+      responses:
+        "200": {description: Active tenant print-library assets, favorites first}
+    post:
+      operationId: uploadPrintLibraryAsset
+      security: [{sessionCookie: []}]
+      requestBody: {required: true, content: {multipart/form-data: {schema: {type: object, required: [file, name, category, default_copies], properties: {file: {type: string, format: binary}, name: {type: string}, category: {type: string}, description: {type: string}, default_printer_id: {type: string, format: uuid}, default_copies: {type: integer, minimum: 1, maximum: 100}, product_id: {type: string, format: uuid}, favorite: {type: boolean}}}}}}
+      responses:
+        "201": {description: Validated PDF stored under a server-generated tenant key}
+  /api/v1/print-library-assets/{asset_id}:
+    parameters: [{name: asset_id, in: path, required: true, schema: {type: string, format: uuid}}]
+    put:
+      operationId: updatePrintLibraryAsset
+      security: [{sessionCookie: []}]
+      responses:
+        "200": {description: Reusable metadata updated while PDF content remains immutable}
+    delete:
+      operationId: archivePrintLibraryAsset
+      security: [{sessionCookie: []}]
+      responses:
+        "204": {description: Asset archived without deleting history}
+  /api/v1/printer-jobs:
+    get:
+      operationId: listPhysicalPrinterJobs
+      security: [{sessionCookie: []}]
+      responses:
+        "200": {description: Recent tenant physical print jobs}
+    post:
+      operationId: quickPrint
+      security: [{sessionCookie: []}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/QuickPrint"}}}}
+      responses:
+        "201": {description: Physical print job queued}
+        "200": {description: Existing semantic idempotent replay returned}
+  /api/v1/print-artifacts/{artifact_id}/printer-jobs:
+    parameters: [{name: artifact_id, in: path, required: true, schema: {type: string, format: uuid}}]
+    post:
+      operationId: queueGeneratedArtifact
+      security: [{sessionCookie: []}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/QueueArtifactPrint"}}}}
+      responses:
+        "201": {description: Existing marketplace artifact queued to a registered printer}
+  /api/v1/printer-jobs/{printer_job_id}/cancel:
+    parameters: [{name: printer_job_id, in: path, required: true, schema: {type: string, format: uuid}}]
+    post:
+      operationId: cancelPhysicalPrinterJob
+      security: [{sessionCookie: []}]
+      responses:
+        "200": {description: Queued job cancelled}
+  /api/v1/printer-jobs/{printer_job_id}/retry:
+    parameters: [{name: printer_job_id, in: path, required: true, schema: {type: string, format: uuid}}]
+    post:
+      operationId: retryPhysicalPrinterJob
+      security: [{sessionCookie: []}]
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [idempotency_key], properties: {idempotency_key: {type: string, maxLength: 128}}}}}}
+      responses:
+        "201": {description: Explicit audited retry queued as a new job}
+  /api/v1/printer-agent/heartbeat:
+    post:
+      operationId: printerAgentHeartbeat
+      security: [{agentBearer: []}]
+      responses:
+        "200": {description: Agent and discovered printer presence reconciled}
+  /api/v1/printer-agent/jobs/claim:
+    post:
+      operationId: claimPhysicalPrinterJob
+      security: [{agentBearer: []}]
+      responses:
+        "200": {description: One atomically leased job}
+        "204": {description: No eligible work}
+  /api/v1/printer-agent/jobs/{printer_job_id}/artifact:
+    parameters: [{name: printer_job_id, in: path, required: true, schema: {type: string, format: uuid}}]
+    get:
+      operationId: downloadAgentArtifact
+      security: [{agentBearer: []}]
+      parameters: [{name: X-Print-Lease, in: header, required: true, schema: {type: string}}]
+      responses:
+        "200": {description: Lease-authorized immutable PDF}
+  /api/v1/printer-agent/jobs/{printer_job_id}/status:
+    parameters: [{name: printer_job_id, in: path, required: true, schema: {type: string, format: uuid}}]
+    post:
+      operationId: reportPhysicalPrinterJobStatus
+      security: [{agentBearer: []}]
+      responses:
+        "200": {description: Guarded idempotent lifecycle report accepted}
+  /api/v1/automations/rules:
+    get:
+      operationId: listAutomationRules
+      summary: List automation rules
+      description: Requires automations.view. Tenant comes from the authenticated
+        session.
+      security:
+      - sessionCookie: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - rules
+                properties:
+                  rules:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AutomationRule'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
+        '500':
+          $ref: '#/components/responses/Error'
+    post:
+      operationId: createAutomationRule
+      summary: Create a printing automation rule
+      description: Requires automations.manage. Tenant comes from the authenticated
+        session.
+      security:
+      - sessionCookie: []
+      responses:
+        '201':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - rule
+                properties:
+                  rule:
+                    $ref: '#/components/schemas/AutomationRule'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
+        '500':
+          $ref: '#/components/responses/Error'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AutomationRuleInput'
+  /api/v1/automations/rules/{rule_id}:
+    get:
+      operationId: getAutomationRule
+      summary: Read a rule
+      description: Requires automations.view. Tenant comes from the authenticated
+        session.
+      security:
+      - sessionCookie: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - rule
+                properties:
+                  rule:
+                    $ref: '#/components/schemas/AutomationRule'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
+        '500':
+          $ref: '#/components/responses/Error'
+      parameters:
+      - name: rule_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    put:
+      operationId: updateAutomationRule
+      summary: Update a rule and explicitly adopt company timezone
+      description: Requires automations.manage. Tenant comes from the authenticated
+        session.
+      security:
+      - sessionCookie: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - rule
+                properties:
+                  rule:
+                    $ref: '#/components/schemas/AutomationRule'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
+        '500':
+          $ref: '#/components/responses/Error'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AutomationRuleInput'
+      parameters:
+      - name: rule_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+  /api/v1/automations/rules/{rule_id}/pause:
+    post:
+      operationId: pauseAutomationRule
+      summary: Pause or resume a rule
+      description: Requires automations.manage. Tenant comes from the authenticated
+        session.
+      security:
+      - sessionCookie: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - rule
+                properties:
+                  rule:
+                    $ref: '#/components/schemas/AutomationRule'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
+        '500':
+          $ref: '#/components/responses/Error'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - version
+              - paused
+              properties:
+                version:
+                  type: integer
+                  minimum: 1
+                paused:
+                  type: boolean
+              additionalProperties: false
+      parameters:
+      - name: rule_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+  /api/v1/automations/rules/{rule_id}/test:
+    post:
+      operationId: testAutomationRule
+      summary: Queue an audited test that creates a real Print Job
+      description: Requires automations.manage. Tenant comes from the authenticated
+        session.
+      security:
+      - sessionCookie: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - execution_id
+                properties:
+                  execution_id:
+                    type: string
+                    format: uuid
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
+        '500':
+          $ref: '#/components/responses/Error'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - idempotency_key
+              properties:
+                idempotency_key:
+                  type: string
+                  minLength: 1
+                  maxLength: 128
+              additionalProperties: false
+      parameters:
+      - name: rule_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+  /api/v1/automations/rules/{rule_id}/history:
+    get:
+      operationId: automationRuleHistory
+      summary: Read saved rule snapshots and pause history
+      description: Requires automations.view. Tenant comes from the authenticated
+        session.
+      security:
+      - sessionCookie: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - history
+                properties:
+                  history:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AutomationHistory'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
+        '500':
+          $ref: '#/components/responses/Error'
+      parameters:
+      - name: rule_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+  /api/v1/automations/timezone:
+    get:
+      operationId: getAutomationTimezone
+      summary: Read company timezone
+      description: Requires automations.view. Tenant comes from the authenticated
+        session.
+      security:
+      - sessionCookie: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AutomationTimezone'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
+        '500':
+          $ref: '#/components/responses/Error'
+    put:
+      operationId: setAutomationTimezone
+      summary: Set company timezone
+      description: Requires automations.manage. Tenant comes from the authenticated
+        session.
+      security:
+      - sessionCookie: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AutomationTimezone'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
+        '500':
+          $ref: '#/components/responses/Error'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AutomationTimezone'
+  /api/v1/automations/preview:
+    post:
+      operationId: previewAutomationSchedule
+      summary: Preview the next ten occurrences in company timezone
+      description: Requires automations.view. Tenant comes from the authenticated
+        session.
+      security:
+      - sessionCookie: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - occurrences
+                properties:
+                  occurrences:
+                    type: array
+                    items:
+                      type: string
+                      format: date-time
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
+        '500':
+          $ref: '#/components/responses/Error'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AutomationSchedule'
+  /api/v1/automations/runs:
+    get:
+      operationId: listAutomationRuns
+      summary: Read latest 200 executions and physical job outcomes
+      description: Requires automations.view. Tenant comes from the authenticated
+        session.
+      security:
+      - sessionCookie: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - runs
+                properties:
+                  runs:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AutomationExecution'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
+        '500':
+          $ref: '#/components/responses/Error'
+      parameters:
+      - name: rule_id
+        in: query
+        schema:
+          type: string
+          format: uuid
+      - name: failures
+        in: query
+        schema:
+          type: boolean
+          default: false
+  /api/v1/automations/runs/{execution_id}/retry:
+    post:
+      operationId: retryAutomationExecution
+      summary: Retry failed queue creation using the same logical identity
+      description: Requires automations.manage. Tenant comes from the authenticated
+        session.
+      security:
+      - sessionCookie: []
+      responses:
+        '204':
+          description: Success
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
+        '500':
+          $ref: '#/components/responses/Error'
+      parameters:
+      - name: execution_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+  /api/v1/automations/upcoming:
+    get:
+      operationId: upcomingAutomationRuns
+      summary: Read next persisted occurrence for each active scheduled rule
+      description: Requires automations.view. Tenant comes from the authenticated
+        session.
+      security:
+      - sessionCookie: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - upcoming
+                properties:
+                  upcoming:
+                    type: array
+                    items:
+                      type: object
+                      required:
+                      - rule
+                      - at
+                      properties:
+                        rule:
+                          $ref: '#/components/schemas/AutomationRule'
+                        at:
+                          type: string
+                          format: date-time
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
+        '500':
+          $ref: '#/components/responses/Error'
+  /api/v1/automations/report:
+    get:
+      operationId: automationPrintReport
+      summary: Derive all-time automatic/manual jobs, copies and printer outcomes
+      description: Requires automations.view. Tenant comes from the authenticated
+        session.
+      security:
+      - sessionCookie: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - metrics
+                properties:
+                  metrics:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AutomationMetric'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
+        '500':
+          $ref: '#/components/responses/Error'
+  /api/v1/automations/options:
+    get:
+      operationId: automationRuleOptions
+      summary: Read friendly tenant asset and printer selections
+      description: Requires automations.manage. Tenant comes from the authenticated
+        session.
+      security:
+      - sessionCookie: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AutomationOptions'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
+        '500':
+          $ref: '#/components/responses/Error'
+components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: commerceops_session
+    agentBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: opaque-agent-credential
+  parameters:
+    EmployeeID: {name: employee_id, in: path, required: true, schema: {type: string, format: uuid}}
+    UserID: {name: user_id, in: path, required: true, schema: {type: string, format: uuid}}
+    RoleID: {name: role_id, in: path, required: true, schema: {type: string, format: uuid}}
+    ProductID: {name: product_id, in: path, required: true, schema: {type: string, format: uuid}}
+    MappingID: {name: mapping_id, in: path, required: true, schema: {type: string, format: uuid}}
+    BatchID: {name: batch_id, in: path, required: true, schema: {type: string, format: uuid}}
+    PrintJobID: {name: print_job_id, in: path, required: true, schema: {type: string, format: uuid}}
+    ArtifactID: {name: artifact_id, in: path, required: true, schema: {type: string, format: uuid}}
+  responses:
+    Error:
+      description: Request failed
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/ErrorEnvelope"}
+  schemas:
+    QuickPrint:
+      type: object
+      additionalProperties: false
+      required: [asset_id, printer_id, copies, large_quantity_confirmed, idempotency_key]
+      properties:
+        asset_id: {type: string, format: uuid}
+        printer_id: {type: string, format: uuid}
+        copies: {type: integer, minimum: 1, maximum: 100}
+        large_quantity_confirmed: {type: boolean, description: Must be true above 20 copies}
+        idempotency_key: {type: string, minLength: 1, maxLength: 128}
+    QueueArtifactPrint:
+      type: object
+      additionalProperties: false
+      required: [printer_id, copies, idempotency_key]
+      properties:
+        printer_id: {type: string, format: uuid}
+        copies: {type: integer, minimum: 1, maximum: 100}
+        idempotency_key: {type: string, minLength: 1, maxLength: 128}
+    Health:
+      type: object
+      additionalProperties: false
+      required: [status, database]
+      properties:
+        status:
+          type: string
+          enum: [ok, unavailable]
+        database:
+          type: string
+          enum: [ok, unavailable]
+    CreateEmployee:
+      type: object
+      additionalProperties: false
+      required: [display_name]
+      properties:
+        display_name: {type: string}
+        user_id: {type: [string, "null"], format: uuid}
+    ProductInput:
+      type: object
+      additionalProperties: false
+      required: [internal_code, name]
+      properties:
+        internal_code: {type: string}
+        name: {type: string}
+        brand: {type: [string, "null"]}
+        variant: {type: [string, "null"]}
+        size: {type: [string, "null"]}
+        pack_type: {type: [string, "null"]}
+        unit_count: {type: [integer, "null"], minimum: 1}
+        status: {type: string, enum: [active, inactive], default: active}
+    SkuMappingInput:
+      type: object
+      additionalProperties: false
+      required: [marketplace_key, product_id, sku]
+      properties:
+        marketplace_key: {type: string}
+        product_id: {type: string, format: uuid}
+        sku: {type: string}
+        quantity_multiplier: {type: integer, minimum: 1, default: 1}
+        interpretation_metadata: {type: object, default: {}}
+        status: {type: string, enum: [active, inactive], default: active}
+    SkuResolution:
+      type: object
+      required: [status]
+      properties:
+        status: {type: string, enum: [resolved, unresolved]}
+        product: {type: object}
+        mapping: {type: object}
+    CreateBatch:
+      type: object
+      additionalProperties: false
+      required: [marketplace_key, order_ids, idempotency_key]
+      properties:
+        marketplace_key: {type: string, enum: [flipkart, amazon, meesho, myntra, snapdeal]}
+        order_ids:
+          type: array
+          minItems: 1
+          maxItems: 500
+          uniqueItems: true
+          items: {type: string, format: uuid}
+        idempotency_key: {type: string, minLength: 1, maxLength: 128}
+    GeneratePrintJob:
+      type: object
+      additionalProperties: false
+      required: [idempotency_key]
+      properties:
+        sort_labels: {type: boolean, default: false}
+        export_invoices: {type: boolean, default: false}
+        idempotency_key: {type: string, minLength: 1, maxLength: 128}
+    ReplaceWorkerAssignmentRules:
+      type: object
+      additionalProperties: false
+      required: [marketplace_key, rules]
+      properties:
+        marketplace_key: {type: string, enum: [flipkart, amazon, meesho, myntra, snapdeal]}
+        rules:
+          type: array
+          minItems: 1
+          maxItems: 1000
+          items:
+            type: object
+            additionalProperties: false
+            required: [employee_id, priority]
+            properties:
+              product_id: {type: [string, "null"], format: uuid}
+              employee_id: {type: string, format: uuid}
+              priority: {type: integer, minimum: 0, maximum: 10000}
+    ReprintJob:
+      type: object
+      additionalProperties: false
+      required: [reason, idempotency_key]
+      properties:
+        reason: {type: string, minLength: 1, maxLength: 500}
+        idempotency_key: {type: string, minLength: 1, maxLength: 128}
+    InventoryCommand:
+      type: object
+      additionalProperties: false
+      required: [product_id, quantity, reason, idempotency_key]
+      properties:
+        product_id: {type: string, format: uuid}
+        quantity: {type: integer, format: int64}
+        reason: {type: string, minLength: 1, maxLength: 500}
+        reference_type: {type: [string, "null"]}
+        reference_id: {type: [string, "null"]}
+        idempotency_key: {type: string, minLength: 1, maxLength: 128}
+    IdempotentCommand:
+      type: object
+      additionalProperties: false
+      required: [idempotency_key]
+      properties:
+        idempotency_key: {type: string, minLength: 1, maxLength: 128}
+    ReasonedIdempotentCommand:
+      type: object
+      additionalProperties: false
+      required: [reason, idempotency_key]
+      properties:
+        reason: {type: string, minLength: 1, maxLength: 500}
+        idempotency_key: {type: string, minLength: 1, maxLength: 128}
+    ReservationCommand:
+      type: object
+      additionalProperties: false
+      required: [product_id, quantity, reason, source_type, source_id, idempotency_key]
+      properties:
+        product_id: {type: string, format: uuid}
+        quantity: {type: integer, format: int64, minimum: 1}
+        reason: {type: string, minLength: 1, maxLength: 500}
+        source_type: {type: string, minLength: 1, maxLength: 100}
+        source_id: {type: string, minLength: 1, maxLength: 200}
+        idempotency_key: {type: string, minLength: 1, maxLength: 128}
+    CreateCancellation:
+      type: object
+      additionalProperties: false
+      required: [marketplace_order_id, reason, cancelled_at, idempotency_key]
+      properties:
+        marketplace_order_id: {type: string, format: uuid}
+        reason: {type: string, minLength: 1, maxLength: 500}
+        cancelled_at: {type: string, format: date-time}
+        idempotency_key: {type: string, minLength: 1, maxLength: 128}
+    CreateReturn:
+      type: object
+      additionalProperties: false
+      required: [marketplace_order_id, reason, items, idempotency_key]
+      properties:
+        marketplace_order_id: {type: string, format: uuid}
+        reason: {type: string, minLength: 1, maxLength: 500}
+        notes: {type: [string, "null"], minLength: 1, maxLength: 2000}
+        items:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items:
+            type: object
+            additionalProperties: false
+            required: [marketplace_order_item_id, expected_quantity]
+            properties:
+              marketplace_order_item_id: {type: string, format: uuid}
+              expected_quantity: {type: integer, format: int64, minimum: 1}
+        idempotency_key: {type: string, minLength: 1, maxLength: 128}
+    ReceiveReturn:
+      type: object
+      additionalProperties: false
+      required: [items, idempotency_key]
+      properties:
+        items:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items:
+            type: object
+            additionalProperties: false
+            required: [return_item_id, received_quantity]
+            properties:
+              return_item_id: {type: string, format: uuid}
+              received_quantity: {type: integer, format: int64, minimum: 0}
+        notes: {type: [string, "null"], minLength: 1, maxLength: 2000}
+        idempotency_key: {type: string, minLength: 1, maxLength: 128}
+    InspectReturn:
+      type: object
+      additionalProperties: false
+      required: [items, idempotency_key]
+      properties:
+        items:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items:
+            type: object
+            additionalProperties: false
+            required: [return_item_id, disposition]
+            properties:
+              return_item_id: {type: string, format: uuid}
+              disposition: {type: string, enum: [restockable, damaged, wrong_product, missing, rejected]}
+        notes: {type: [string, "null"], minLength: 1, maxLength: 2000}
+        idempotency_key: {type: string, minLength: 1, maxLength: 128}
+    RestockReturn:
+      type: object
+      additionalProperties: false
+      required: [idempotency_key]
+      properties:
+        notes: {type: [string, "null"], minLength: 1, maxLength: 2000}
+        idempotency_key: {type: string, minLength: 1, maxLength: 128}
+    CorrectReturnRestock:
+      type: object
+      additionalProperties: false
+      required: [items, reason, idempotency_key]
+      properties:
+        items:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items:
+            type: object
+            additionalProperties: false
+            required: [return_item_id, quantity]
+            properties:
+              return_item_id: {type: string, format: uuid}
+              quantity: {type: integer, format: int64, minimum: 1}
+        reason: {type: string, minLength: 1, maxLength: 500}
+        idempotency_key: {type: string, minLength: 1, maxLength: 128}
+    CloseLifecycle:
+      type: object
+      additionalProperties: false
+      required: [idempotency_key]
+      properties:
+        notes: {type: [string, "null"], minLength: 1, maxLength: 2000}
+        idempotency_key: {type: string, minLength: 1, maxLength: 128}
+    ConsignmentDepartmentCommand:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name: {type: string, minLength: 1, maxLength: 100}
+        status: {type: string, enum: [active, inactive], default: active}
+    ConsignmentMembershipCommand:
+      type: object
+      additionalProperties: false
+      required: [employee_ids]
+      properties:
+        employee_ids:
+          type: array
+          maxItems: 200
+          uniqueItems: true
+          items: {type: string, format: uuid}
+    CreateConsignment:
+      type: object
+      additionalProperties: false
+      required: [order_reference, source_type, lines, idempotency_key]
+      properties:
+        order_reference: {type: string, minLength: 1, maxLength: 200}
+        dealer_reference: {type: [string, "null"], minLength: 1, maxLength: 200}
+        pouch_reference: {type: [string, "null"], minLength: 1, maxLength: 200}
+        source_type: {type: string, enum: [manual, import]}
+        source_reference: {type: [string, "null"], minLength: 1, maxLength: 500}
+        notes: {type: [string, "null"], minLength: 1, maxLength: 2000}
+        lines:
+          type: array
+          minItems: 1
+          maxItems: 200
+          items:
+            type: object
+            additionalProperties: false
+            required: [product_id, department_id, required_quantity]
+            properties:
+              product_id: {type: string, format: uuid}
+              department_id: {type: string, format: uuid}
+              required_quantity: {type: integer, format: int64, minimum: 1}
+        idempotency_key: {type: string, minLength: 1, maxLength: 128}
+    ConsignmentAction:
+      type: object
+      additionalProperties: false
+      required: [expected_version, idempotency_key]
+      properties:
+        expected_version: {type: integer, minimum: 1}
+        notes: {type: [string, "null"], minLength: 1, maxLength: 2000}
+        idempotency_key: {type: string, minLength: 1, maxLength: 128}
+    ConsignmentTransition:
+      type: object
+      additionalProperties: false
+      required: [target_status, expected_version, idempotency_key]
+      properties:
+        target_status: {type: string, enum: [picking, ready, packing, packed, completed]}
+        expected_version: {type: integer, minimum: 1}
+        notes: {type: [string, "null"], minLength: 1, maxLength: 2000}
+        idempotency_key: {type: string, minLength: 1, maxLength: 128}
+    ConsignmentProgress:
+      type: object
+      additionalProperties: false
+      required: [ready_quantity, packed_quantity, expected_version, idempotency_key]
+      properties:
+        ready_quantity: {type: integer, format: int64, minimum: 0}
+        packed_quantity: {type: integer, format: int64, minimum: 0}
+        expected_version: {type: integer, minimum: 1}
+        notes: {type: [string, "null"], minLength: 1, maxLength: 2000}
+        idempotency_key: {type: string, minLength: 1, maxLength: 128}
+    ErrorEnvelope:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: {type: string}
+            message: {type: string}
+
+    AutomationSchedule:
+      type: object
+      required: []
+      properties:
+        mode:
+          type: string
+          enum:
+          - daily
+          - weekdays
+          - selected_weekdays
+        times:
+          type: array
+          items:
+            type: string
+            pattern: ^([01][0-9]|2[0-3]):[0-5][0-9]$
+          minItems: 1
+          maxItems: 24
+          uniqueItems: true
+        weekdays:
+          type: array
+          items:
+            type: integer
+            minimum: 1
+            maximum: 7
+          uniqueItems: true
+        start_date:
+          type: string
+          format: date
+        end_date:
+          type: string
+          format: date
+      additionalProperties: false
+      description: Scheduled rules require mode and times; selected_weekdays also requires
+        weekdays. Event rules use an empty object. Dates are inclusive. Nonexistent DST
+        minutes are skipped; repeated minutes run once.
+    AutomationRuleInput:
+      type: object
+      required:
+      - name
+      - enabled
+      - paused
+      - trigger_type
+      - schedule
+      - asset_id
+      - printer_id
+      - copies
+      - daily_limit
+      - failure_threshold
+      - backoff_seconds
+      - version
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 120
+        enabled:
+          type: boolean
+        paused:
+          type: boolean
+        trigger_type:
+          type: string
+          enum:
+          - scheduled
+          - ecommerce_batch_ready
+          - consignment_packing
+          - consignment_packed
+        schedule:
+          $ref: '#/components/schemas/AutomationSchedule'
+        asset_id:
+          type: string
+          format: uuid
+        printer_id:
+          type: string
+          format: uuid
+        copies:
+          type: integer
+          minimum: 1
+          maximum: 100
+        daily_limit:
+          type:
+          - integer
+          - 'null'
+          minimum: 1
+          maximum: 10000
+        failure_threshold:
+          type: integer
+          minimum: 1
+          maximum: 20
+        backoff_seconds:
+          type: integer
+          minimum: 1
+          maximum: 3600
+        version:
+          type: integer
+          minimum: 0
+          description: Zero on create; current optimistic version on update.
+      additionalProperties: false
+    AutomationRule:
+      type: object
+      required:
+      - name
+      - enabled
+      - paused
+      - trigger_type
+      - schedule
+      - asset_id
+      - printer_id
+      - copies
+      - daily_limit
+      - failure_threshold
+      - backoff_seconds
+      - version
+      - id
+      - timezone
+      - created_by
+      - asset_name
+      - printer_name
+      - consecutive_failures
+      - backoff_until
+      - next_run_at
+      - created_at
+      - updated_at
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 120
+        enabled:
+          type: boolean
+        paused:
+          type: boolean
+        trigger_type:
+          type: string
+          enum:
+          - scheduled
+          - ecommerce_batch_ready
+          - consignment_packing
+          - consignment_packed
+        schedule:
+          $ref: '#/components/schemas/AutomationSchedule'
+        asset_id:
+          type: string
+          format: uuid
+        printer_id:
+          type: string
+          format: uuid
+        copies:
+          type: integer
+          minimum: 1
+          maximum: 100
+        daily_limit:
+          type:
+          - integer
+          - 'null'
+          minimum: 1
+          maximum: 10000
+        failure_threshold:
+          type: integer
+          minimum: 1
+          maximum: 20
+        backoff_seconds:
+          type: integer
+          minimum: 1
+          maximum: 3600
+        version:
+          type: integer
+          minimum: 0
+          description: Zero on create; current optimistic version on update.
+        id:
+          type: string
+          format: uuid
+        timezone:
+          type: string
+        created_by:
+          type: string
+          format: uuid
+        asset_name:
+          type: string
+        printer_name:
+          type: string
+        consecutive_failures:
+          type: integer
+          minimum: 0
+        backoff_until:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        next_run_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    AutomationExecution:
+      type: object
+      required:
+      - id
+      - rule_id
+      - rule_version
+      - occurrence_key
+      - event_id
+      - scheduled_at
+      - test_run
+      - snapshot
+      - status
+      - attempt_count
+      - available_at
+      - error
+      - printer_job_id
+      - job_status
+      - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        rule_id:
+          type: string
+          format: uuid
+        rule_version:
+          type: integer
+        occurrence_key:
+          type: string
+        event_id:
+          type:
+          - string
+          - 'null'
+          format: uuid
+        scheduled_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        test_run:
+          type: boolean
+        snapshot:
+          $ref: '#/components/schemas/AutomationRule'
+        status:
+          type: string
+          enum:
+          - pending
+          - running
+          - completed
+          - failed
+          - skipped
+        attempt_count:
+          type: integer
+        available_at:
+          type: string
+          format: date-time
+        error:
+          type:
+          - string
+          - 'null'
+        printer_job_id:
+          type:
+          - string
+          - 'null'
+          format: uuid
+        job_status:
+          type:
+          - string
+          - 'null'
+          enum:
+          - queued
+          - claimed
+          - printing
+          - completed
+          - failed
+          - cancelled
+          - null
+        created_at:
+          type: string
+          format: date-time
+    AutomationMetric:
+      type: object
+      required:
+      - origin
+      - printer_id
+      - printer_name
+      - jobs
+      - copies
+      - completed
+      - failed
+      - cancelled
+      - pending
+      - failure_events
+      properties:
+        origin:
+          type: string
+          enum:
+          - automatic
+          - manual
+        printer_id:
+          type: string
+          format: uuid
+        printer_name:
+          type: string
+        jobs:
+          type: integer
+          format: int64
+        copies:
+          type: integer
+          format: int64
+        completed:
+          type: integer
+          format: int64
+        failed:
+          type: integer
+          format: int64
+        cancelled:
+          type: integer
+          format: int64
+        pending:
+          type: integer
+          format: int64
+        failure_events:
+          type: integer
+          format: int64
+    AutomationHistory:
+      type: object
+      required:
+      - id
+      - action
+      - actor_user_id
+      - occurred_at
+      - metadata
+      properties:
+        id:
+          type: string
+          format: uuid
+        action:
+          type: string
+        actor_user_id:
+          type: string
+          format: uuid
+        occurred_at:
+          type: string
+          format: date-time
+        metadata:
+          type: object
+          additionalProperties: true
+    AutomationTimezone:
+      type: object
+      required:
+      - timezone
+      properties:
+        timezone:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: Explicit IANA timezone; Local is forbidden. Existing rules retain
+            their snapshot until edited.
+      additionalProperties: false
+    AutomationOptions:
+      type: object
+      required:
+      - assets
+      - printers
+      properties:
+        assets:
+          type: array
+          items:
+            type: object
+            required:
+            - id
+            - name
+            - active
+            properties:
+              id:
+                type: string
+                format: uuid
+              name:
+                type: string
+              active:
+                type: boolean
+        printers:
+          type: array
+          items:
+            type: object
+            required:
+            - id
+            - friendly_name
+            - enabled
+            - status
+            properties:
+              id:
+                type: string
+                format: uuid
+              friendly_name:
+                type: string
+              enabled:
+                type: boolean
+              status:
+                type: string
+                enum:
+                - online
+                - offline

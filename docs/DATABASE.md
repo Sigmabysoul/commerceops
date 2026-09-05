@@ -1,0 +1,109 @@
+# Database conventions
+
+PostgreSQL is the sole structured-data store. The Go API connects through `pgx/v5` using the required `DATABASE_URL` environment variable.
+
+Schema changes must be represented by ordered SQL files under `services/api/migrations` and applied explicitly with `golang-migrate`. Application startup does not run migrations.
+
+Phase 1 begins with `000001_core_platform`. It separates global login identities from company access and company-owned employees, roles, entitlements and audit records. Composite foreign keys keep employee access and role assignments within one company. Company and audit history use restrictive deletion behavior; assignment records may cascade only when their owning access or role is removed.
+
+Phase 2 adds `000003_product_master`. Products have company-unique internal codes. SKU mappings use a composite `(company_id, product_id)` foreign key and a partial unique index on active `(company_id, marketplace_key, sku)` mappings. This prevents cross-company product references and makes ambiguous active resolution impossible at the database layer.
+
+Phase 3 migration `000005_flipkart_worker_leases` adds paired `worker_id` and
+`lease_expires_at` fields to `processing_jobs`. Flipkart workers may claim only
+queued jobs or processing jobs whose lease has expired. The partial claim index
+is marketplace- and status-scoped; tenant foreign keys and normalized order
+constraints remain unchanged.
+
+Future business tables must carry appropriate company ownership, and business-owned queries must enforce server-established tenant scope. Production schema changes must never be performed manually.
+
+Local PostgreSQL uses the persistent `postgres_data` Docker volume and environment-driven credentials. `.env.example` contains placeholders only.
+# Database
+
+PostgreSQL migrations are the schema source of truth. Phase 3 migration `000004_flipkart_processing` adds:
+
+- `source_files` for tenant-owned storage metadata and SHA-256 deduplication
+- `processing_jobs` for the persisted state machine and parser version
+- `marketplace_orders` and `marketplace_order_items` for normalized results
+- `processing_errors` for traceable page warnings and failures
+
+All business foreign keys include company ownership where applicable. Partial unique indexes protect authoritative Flipkart AWB and order identifiers without hiding duplicate review records. Phase 3 creates no inventory table or transaction.
+
+Phase 4 Batch A migration `000006_batch_foundation` adds tenant-owned `batches`
+and ordered `batch_members`. Composite foreign keys keep creators, batches, and
+normalized marketplace orders in the same company. Company/order uniqueness
+prevents silent inclusion in multiple operational batches, while a
+company/idempotency-key constraint makes creation safely replayable. Counts and
+Product Master totals are derived; no inventory or print-artifact tables are
+introduced in Batch A.
+
+Phase 4 Batch B migration `000007_print_generation` adds `print_jobs`, ordered
+`print_job_items`, and immutable `print_artifacts`. Tenant-composite foreign keys
+preserve the batch, normalized order, source file, processing job, and source
+page relationship. Artifacts record storage keys, hashes, sizes, page counts,
+and generation configuration. These records have no inventory side effects.
+
+Phase 5 migration `000009_inventory_ledger` adds tenant/Product Master scoped
+`inventory_balances` and immutable `inventory_transactions`. Balance rows are a
+transactionally locked cache; ledger entries preserve previous/resulting
+balances, actor, reason, reference, request hash, and idempotency key. A
+database trigger rejects ledger updates and deletes.
+
+Migration `000010_inventory_outbound_reservations` adds unique ready-batch
+outbound events and source-linked reservations. One ecommerce ledger entry is
+allowed per company/batch/product. Reservation source uniqueness prevents
+duplicate holds; company/status/product indexes support bounded operational
+reads. Reservation create/release updates cached `reserved` atomically without
+changing on-hand stock.
+
+Phase 6 migration `000011_dashboard_reporting` adds `reports.view` and
+company/date/status indexes supporting reporting filters. It introduces no
+report counters or aggregate tables: marketplace, batch, print, and inventory
+tables remain authoritative and reporting queries are rebuild-free by design.
+
+Phase 7 Batch A migration `000012_amazon_processing` adds only an Amazon-scoped
+partial claim index over the existing `processing_jobs` table. Amazon source
+files, jobs, normalized orders/items, errors, leases, and duplicate constraints
+reuse the generic marketplace schema; no Amazon-only business tables exist.
+
+Phase 7 Batch B migration `000013_amazon_document_association` adds the generic
+tenant-scoped `marketplace_order_documents` child relation. It preserves every
+contributing source page, role, source file, and extraction method for normalized
+orders and later shared print-artifact traceability.
+
+Phase 8 migrations `000014` through `000016` add tenant-scoped cancellation and
+physical-return cases, bounded Product Master return items, append-only lifecycle
+events, centralized `return_restock` ledger support, compensating correction
+traceability, and explicit closure actors/timestamps. Returns never maintain a
+second stock balance; Inventory balances and the immutable ledger remain the
+only stock authority.
+
+Phase 9 migration `000017_consignment_management` adds configurable
+tenant-owned departments and employee memberships, consignments, canonical
+Product Master lines, optimistic line versions, and immutable events. Composite
+foreign keys enforce company ownership. Order/SO references are unique inside a
+company; pouch/file references are indexed but deliberately not unique because
+the operating scope does not establish global uniqueness. The migration also
+adds `consignment_out` to the immutable Inventory ledger and permits one such
+entry per company/consignment/product. Reservations continue to use the Phase 5
+table: cancellation and outbound both close the active reservation, while the
+recorded release reason distinguishes release from outbound consumption.
+
+Phase 10 migration `000018_meesho_processing` adds only a Meesho-scoped
+partial claim index over existing `processing_jobs`. Meesho source files, jobs,
+normalized orders/items, source-page documents, errors, leases, Product Master
+mappings, and duplicate constraints reuse the generic marketplace schema. No
+Meesho-only business table or inventory schema change is introduced.
+
+Phase 10's remaining batch, print, outbound, reporting, and returns integration
+requires no additional migration: those domains already reference normalized
+marketplace keys and tenant-owned generic relations.
+
+## Phase 14 automation
+
+Migration `000022_printing_automation` adds `companies.timezone`,
+`automation_rules`, `automation_domain_events`, and `automation_executions`,
+plus dedicated permissions and the `automation` physical job origin. Composite
+tenant foreign keys protect rule/asset/printer/event/job relationships. Unique
+rule occurrence keys and job identities prevent duplicate queue creation. No
+Inventory or reporting counter schema changes. Down migration refuses to erase
+origins of existing automation jobs. See `workflows/automation.md`.

@@ -1,0 +1,399 @@
+// This file contains focused regression tests for the behavior owned by this package in the marketplace orchestration package.
+package marketplace
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/commerceops/commerceops/services/api/internal/auth"
+	"github.com/commerceops/commerceops/services/api/internal/authorization"
+	"github.com/commerceops/commerceops/services/api/internal/platform/objectstorage"
+	"github.com/commerceops/commerceops/services/api/internal/platform/pdfextractor"
+	"github.com/jackc/pgx/v5/pgxpool"
+)
+
+type mappedExtractor struct {
+	mu    sync.RWMutex
+	pages map[string][]pdfextractor.Page
+	fail  map[string]error
+}
+
+func (e *mappedExtractor) Extract(_ context.Context, pdf []byte) ([]pdfextractor.Page, error) {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	if err := e.fail[string(pdf)]; err != nil {
+		return nil, err
+	}
+	pages, ok := e.pages[string(pdf)]
+	if !ok {
+		return nil, errors.New("fixture missing")
+	}
+	return pages, nil
+}
+
+type phaseThreeFixture struct {
+	db                                    *pgxpool.Pool
+	service                               *Service
+	extractor                             *mappedExtractor
+	companyA, companyB, userID, productID string
+	principalA, principalB                auth.Principal
+}
+
+func setupPhaseThree(t *testing.T) *phaseThreeFixture {
+	t.Helper()
+	url := os.Getenv("TEST_DATABASE_URL")
+	if url == "" {
+		t.Skip("TEST_DATABASE_URL is not set")
+	}
+	ctx := context.Background()
+	db, err := pgxpool.New(ctx, url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	suffix := fmt.Sprint(time.Now().UnixNano())
+	f := &phaseThreeFixture{db: db, extractor: &mappedExtractor{pages: map[string][]pdfextractor.Page{}, fail: map[string]error{}}}
+	scan := func(query string, args []any, dest ...any) {
+		t.Helper()
+		if err := db.QueryRow(ctx, query, args...).Scan(dest...); err != nil {
+			t.Fatalf("fixture: %v", err)
+		}
+	}
+	scan(`INSERT INTO companies(name) VALUES($1) RETURNING id`, []any{"P3 A " + suffix}, &f.companyA)
+	scan(`INSERT INTO companies(name) VALUES($1) RETURNING id`, []any{"P3 B " + suffix}, &f.companyB)
+	scan(`INSERT INTO users(email,password_hash) VALUES($1,'test') RETURNING id`, []any{"p3-" + suffix + "@example.test"}, &f.userID)
+	mustExecP3(t, db, `INSERT INTO company_users(company_id,user_id) VALUES($1,$3),($2,$3)`, f.companyA, f.companyB, f.userID)
+	for _, company := range []string{f.companyA, f.companyB} {
+		var role string
+		scan(`INSERT INTO roles(company_id,name) VALUES($1,'Flipkart Operator') RETURNING id`, []any{company}, &role)
+		mustExecP3(t, db, `INSERT INTO role_permissions(company_id,role_id,permission_key) VALUES($1,$2,'labels.upload'),($1,$2,'labels.process')`, company, role)
+		mustExecP3(t, db, `INSERT INTO company_user_roles(company_id,user_id,role_id) VALUES($1,$2,$3)`, company, f.userID, role)
+		mustExecP3(t, db, `INSERT INTO module_entitlements(company_id,module_key,enabled) VALUES($1,'flipkart',true)`, company)
+	}
+	scan(`INSERT INTO products(company_id,internal_code,name) VALUES($1,'KNOWN','Known Product') RETURNING id`, []any{f.companyA}, &f.productID)
+	mustExecP3(t, db, `INSERT INTO sku_mappings(company_id,marketplace_key,product_id,sku) VALUES($1,'flipkart',$2,'KNOWN-SKU')`, f.companyA, f.productID)
+	store, err := objectstorage.NewLocal(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.service, err = newService(db, authorization.NewService(db), store, f.extractor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.principalA = auth.Principal{CompanyID: f.companyA, UserID: f.userID}
+	f.principalB = auth.Principal{CompanyID: f.companyB, UserID: f.userID}
+	t.Cleanup(func() { cleanupPhaseThree(t, f); db.Close() })
+	return f
+}
+func (f *phaseThreeFixture) register(data string, pages ...pdfextractor.Page) []byte {
+	pdf := []byte("%PDF-" + data)
+	f.extractor.mu.Lock()
+	f.extractor.pages[string(pdf)] = pages
+	f.extractor.mu.Unlock()
+	return pdf
+}
+func (f *phaseThreeFixture) process(t *testing.T) {
+	t.Helper()
+	processed, err := f.service.processNext()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !processed {
+		t.Fatal("expected queued job")
+	}
+}
+
+func TestPhaseThreePostgreSQLBehavior(t *testing.T) {
+	f := setupPhaseThree(t)
+	ctx := context.Background()
+	t.Run("entitlement and permissions are enforced before upload", func(t *testing.T) {
+		pdf := f.register("authorization-denied", pdfextractor.Page{Number: 1, Text: "Flipkart AWB: AWBDENIED1 Order ID: ODDENIED1 SKU: KNOWN-SKU Qty: 1"})
+		sourceFileCount := func() int {
+			t.Helper()
+			var count int
+			mustScanP3(t, f.db, `SELECT count(*) FROM source_files WHERE company_id=$1`, []any{f.companyA}, &count)
+			return count
+		}
+		assertDeniedWithoutPersistence := func(t *testing.T, expected error) {
+			t.Helper()
+			before := sourceFileCount()
+			if _, err := f.service.Upload(ctx, f.principalA, "denied.pdf", pdf); !errors.Is(err, expected) {
+				t.Fatalf("upload error = %v, want %v", err, expected)
+			}
+			if after := sourceFileCount(); after != before {
+				t.Fatalf("denied upload changed source-file count from %d to %d", before, after)
+			}
+		}
+
+		t.Run("disabled entitlement", func(t *testing.T) {
+			mustExecP3(t, f.db, `UPDATE module_entitlements SET enabled=false WHERE company_id=$1 AND module_key='flipkart'`, f.companyA)
+			t.Cleanup(func() {
+				mustExecP3(t, f.db, `UPDATE module_entitlements SET enabled=true WHERE company_id=$1 AND module_key='flipkart'`, f.companyA)
+			})
+			assertDeniedWithoutPersistence(t, authorization.ErrModuleUnavailable)
+		})
+
+		var roleID string
+		mustScanP3(t, f.db, `SELECT id FROM roles WHERE company_id=$1 AND name='Flipkart Operator'`, []any{f.companyA}, &roleID)
+		for _, permission := range []string{"labels.upload", "labels.process"} {
+			t.Run("missing "+permission, func(t *testing.T) {
+				mustExecP3(t, f.db, `DELETE FROM role_permissions WHERE company_id=$1 AND role_id=$2 AND permission_key=$3`, f.companyA, roleID, permission)
+				t.Cleanup(func() {
+					mustExecP3(t, f.db, `INSERT INTO role_permissions(company_id,role_id,permission_key) VALUES($1,$2,$3)`, f.companyA, roleID, permission)
+				})
+				assertDeniedWithoutPersistence(t, authorization.ErrPermissionDenied)
+			})
+		}
+	})
+	known := f.register("known", pdfextractor.Page{Number: 1, Text: "Flipkart AWB: AWBKNOWN1 Order ID: ODKNOWN1 SKU: KNOWN-SKU Qty: 2"})
+	uploaded, err := f.service.Upload(ctx, f.principalA, "known.pdf", known)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.process(t)
+	details, err := f.service.Get(ctx, f.principalA, uploaded.Job.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if details.Job.Status != "processed" || len(details.Orders) != 1 || details.Orders[0].SourcePage != 1 || details.Orders[0].Items[0].ProductID == nil || *details.Orders[0].Items[0].ProductID != f.productID {
+		t.Fatalf("resolved result=%#v", details)
+	}
+	assertLeaseCleared(t, f.db, uploaded.Job.ID)
+	t.Run("tenant get and retry isolation", func(t *testing.T) {
+		if _, err := f.service.Get(ctx, f.principalB, uploaded.Job.ID); !errors.Is(err, ErrNotFound) {
+			t.Fatalf("get err=%v", err)
+		}
+		if _, err := f.service.Retry(ctx, f.principalB, uploaded.Job.ID); !errors.Is(err, ErrNotFound) {
+			t.Fatalf("retry err=%v", err)
+		}
+	})
+	t.Run("source duplicate is per tenant", func(t *testing.T) {
+		duplicate, err := f.service.Upload(ctx, f.principalA, "again.pdf", known)
+		if err != nil || !duplicate.DuplicateSource || duplicate.Job.ID != uploaded.Job.ID {
+			t.Fatalf("same tenant duplicate=%#v err=%v", duplicate, err)
+		}
+		other, err := f.service.Upload(ctx, f.principalB, "same.pdf", known)
+		if err != nil || other.DuplicateSource || other.Job.ID == uploaded.Job.ID {
+			t.Fatalf("other tenant=%#v err=%v", other, err)
+		}
+		f.process(t)
+	})
+	t.Run("concurrent source duplicate race", func(t *testing.T) {
+		pdf := f.register("race", pdfextractor.Page{Number: 1, Text: "Flipkart AWB: AWBRACE01 Order ID: ODRACE01 SKU: KNOWN-SKU Qty: 1"})
+		const count = 8
+		results := make(chan UploadResult, count)
+		errs := make(chan error, count)
+		var wg sync.WaitGroup
+		for range count {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				result, err := f.service.Upload(ctx, f.principalA, "race.pdf", pdf)
+				if err != nil {
+					errs <- err
+					return
+				}
+				results <- result
+			}()
+		}
+		wg.Wait()
+		close(errs)
+		close(results)
+		for err := range errs {
+			t.Errorf("upload: %v", err)
+		}
+		ids := map[string]bool{}
+		duplicates := 0
+		for result := range results {
+			ids[result.Job.ID] = true
+			if result.DuplicateSource {
+				duplicates++
+			}
+		}
+		if len(ids) != 1 || duplicates != count-1 {
+			t.Fatalf("ids=%v duplicates=%d", ids, duplicates)
+		}
+		f.process(t)
+	})
+	t.Run("unresolved and missing quantity remain review null", func(t *testing.T) {
+		pdf := f.register("unresolved", pdfextractor.Page{Number: 3, Text: "Flipkart AWB: AWBUNKNOWN Order ID: ODUNKNOWN SKU: UNKNOWN"})
+		result, err := f.service.Upload(ctx, f.principalA, "unknown.pdf", pdf)
+		if err != nil {
+			t.Fatal(err)
+		}
+		f.process(t)
+		details, err := f.service.Get(ctx, f.principalA, result.Job.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		item := details.Orders[0].Items[0]
+		if details.Job.Status != "needs_review" || item.Quantity != nil || item.QuantitySource != "missing" || item.ResolutionStatus != "unresolved" || details.Orders[0].SourcePage != 3 {
+			t.Fatalf("details=%#v", details)
+		}
+	})
+	t.Run("duplicate AWB and order identifiers are visible", func(t *testing.T) {
+		for index, text := range []string{"Flipkart AWB: AWBKNOWN1 Order ID: ODOTHER1 SKU: KNOWN-SKU Qty: 1", "Flipkart AWB: AWBOTHER1 Order ID: ODKNOWN1 SKU: KNOWN-SKU Qty: 1"} {
+			pdf := f.register(fmt.Sprintf("duplicate-%d", index), pdfextractor.Page{Number: index + 1, Text: text})
+			result, err := f.service.Upload(ctx, f.principalA, "duplicate.pdf", pdf)
+			if err != nil {
+				t.Fatal(err)
+			}
+			f.process(t)
+			details, err := f.service.Get(ctx, f.principalA, result.Job.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if details.Job.Status != "needs_review" || details.Orders[0].Status != "duplicate" {
+				t.Fatalf("duplicate=%#v", details)
+			}
+		}
+	})
+	t.Run("safe retry and worker transitions", func(t *testing.T) {
+		pdf := f.register("retry", pdfextractor.Page{Number: 1, Text: "Flipkart AWB: AWBRETRY1 Order ID: ODRETRY1 SKU: RETRY-SKU Qty: 1"})
+		result, err := f.service.Upload(ctx, f.principalA, "retry.pdf", pdf)
+		if err != nil {
+			t.Fatal(err)
+		}
+		f.process(t)
+		before, _ := f.service.Get(ctx, f.principalA, result.Job.ID)
+		if before.Job.Status != "needs_review" {
+			t.Fatalf("before=%s", before.Job.Status)
+		}
+		mustExecP3(t, f.db, `INSERT INTO sku_mappings(company_id,marketplace_key,product_id,sku) VALUES($1,'flipkart',$2,'RETRY-SKU')`, f.companyA, f.productID)
+		retried, err := f.service.Retry(ctx, f.principalA, result.Job.ID)
+		if err != nil || retried.Status != "queued" {
+			t.Fatalf("retry=%#v err=%v", retried, err)
+		}
+		assertLeaseCleared(t, f.db, result.Job.ID)
+		f.process(t)
+		after, _ := f.service.Get(ctx, f.principalA, result.Job.ID)
+		if after.Job.Status != "processed" {
+			t.Fatalf("after=%#v", after)
+		}
+		assertLeaseCleared(t, f.db, result.Job.ID)
+	})
+	t.Run("extractor failure becomes failed with error", func(t *testing.T) {
+		pdf := []byte("%PDF-failure")
+		f.extractor.mu.Lock()
+		f.extractor.fail[string(pdf)] = errors.New("broken fixture")
+		f.extractor.mu.Unlock()
+		result, err := f.service.Upload(ctx, f.principalA, "failure.pdf", pdf)
+		if err != nil {
+			t.Fatal(err)
+		}
+		f.process(t)
+		details, _ := f.service.Get(ctx, f.principalA, result.Job.ID)
+		if details.Job.Status != "failed" || len(details.Errors) == 0 || details.Errors[0].Code != "PDF_EXTRACTION_FAILED" {
+			t.Fatalf("failure=%#v", details)
+		}
+		assertLeaseCleared(t, f.db, result.Job.ID)
+	})
+}
+
+func TestPhaseThreeMigrationUpDown(t *testing.T) {
+	url := os.Getenv("TEST_DATABASE_URL")
+	if url == "" {
+		t.Skip("TEST_DATABASE_URL is not set")
+	}
+	ctx := context.Background()
+	db, err := pgxpool.New(ctx, url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	tx, err := db.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	schema := "p3_migration_" + fmt.Sprint(time.Now().UnixNano())
+	if _, err = tx.Exec(ctx, `CREATE SCHEMA `+schema); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = tx.Exec(ctx, `SET LOCAL search_path TO `+schema+`,public`); err != nil {
+		t.Fatal(err)
+	}
+	root := filepath.Join("..", "..", "migrations")
+	for _, name := range []string{"000001_core_platform.up.sql", "000002_tenant_sessions.up.sql", "000003_product_master.up.sql", "000004_flipkart_processing.up.sql", "000005_flipkart_worker_leases.up.sql"} {
+		sql, readErr := os.ReadFile(filepath.Join(root, name))
+		if readErr != nil {
+			t.Fatal(readErr)
+		}
+		if _, err = tx.Exec(ctx, string(sql)); err != nil {
+			t.Fatalf("apply %s: %v", name, err)
+		}
+	}
+	var exists *string
+	if err = tx.QueryRow(ctx, `SELECT to_regclass($1)`, schema+".processing_jobs").Scan(&exists); err != nil || exists == nil {
+		t.Fatalf("up verification: %v %v", exists, err)
+	}
+	var leaseColumns int
+	if err = tx.QueryRow(ctx, `SELECT count(*) FROM information_schema.columns WHERE table_schema=$1 AND table_name='processing_jobs' AND column_name IN ('worker_id','lease_expires_at')`, schema).Scan(&leaseColumns); err != nil || leaseColumns != 2 {
+		t.Fatalf("lease columns: count=%d err=%v", leaseColumns, err)
+	}
+	down, err := os.ReadFile(filepath.Join(root, "000005_flipkart_worker_leases.down.sql"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = tx.Exec(ctx, string(down)); err != nil {
+		t.Fatalf("lease down: %v", err)
+	}
+	leaseColumns = -1
+	if err = tx.QueryRow(ctx, `SELECT count(*) FROM information_schema.columns WHERE table_schema=$1 AND table_name='processing_jobs' AND column_name IN ('worker_id','lease_expires_at')`, schema).Scan(&leaseColumns); err != nil || leaseColumns != 0 {
+		t.Fatalf("lease rollback columns: count=%d err=%v", leaseColumns, err)
+	}
+	down, err = os.ReadFile(filepath.Join(root, "000004_flipkart_processing.down.sql"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = tx.Exec(ctx, string(down)); err != nil {
+		t.Fatalf("phase 3 down: %v", err)
+	}
+	exists = nil
+	if err = tx.QueryRow(ctx, `SELECT to_regclass($1)`, schema+".processing_jobs").Scan(&exists); err != nil || exists != nil {
+		t.Fatalf("down verification: %v %v", exists, err)
+	}
+}
+
+func mustExecP3(t *testing.T, db *pgxpool.Pool, query string, args ...any) {
+	t.Helper()
+	if _, err := db.Exec(context.Background(), query, args...); err != nil {
+		t.Fatalf("fixture exec: %v", err)
+	}
+}
+func mustScanP3(t *testing.T, db *pgxpool.Pool, query string, args []any, dest ...any) {
+	t.Helper()
+	if err := db.QueryRow(context.Background(), query, args...).Scan(dest...); err != nil {
+		t.Fatalf("fixture scan: %v", err)
+	}
+}
+func assertLeaseCleared(t *testing.T, db *pgxpool.Pool, jobID string) {
+	t.Helper()
+	var workerID *string
+	var expiresAt *time.Time
+	mustScanP3(t, db, `SELECT worker_id,lease_expires_at FROM processing_jobs WHERE id=$1`, []any{jobID}, &workerID, &expiresAt)
+	if workerID != nil || expiresAt != nil {
+		t.Fatalf("job %s retained lease worker=%v expires=%v", jobID, workerID, expiresAt)
+	}
+}
+func cleanupPhaseThree(t *testing.T, f *phaseThreeFixture) {
+	t.Helper()
+	ctx := context.Background()
+	companies := []string{f.companyA, f.companyB}
+	for _, table := range []string{"marketplace_order_items", "processing_errors", "marketplace_orders", "processing_jobs", "source_files", "sku_mappings", "products", "audit_logs", "sessions", "module_entitlements", "company_user_roles", "role_permissions", "employees", "roles", "company_users"} {
+		query := "DELETE FROM " + table + " WHERE company_id=ANY($1::uuid[])"
+		if table == "marketplace_order_items" {
+			query = `DELETE FROM marketplace_order_items WHERE order_id IN(SELECT id FROM marketplace_orders WHERE company_id=ANY($1::uuid[]))`
+		}
+		if _, err := f.db.Exec(ctx, query, companies); err != nil {
+			t.Errorf("cleanup %s: %v", table, err)
+		}
+	}
+	_, _ = f.db.Exec(ctx, `DELETE FROM users WHERE id=$1`, f.userID)
+	_, _ = f.db.Exec(ctx, `DELETE FROM companies WHERE id=ANY($1::uuid[])`, companies)
+}

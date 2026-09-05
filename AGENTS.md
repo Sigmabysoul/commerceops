@@ -170,6 +170,12 @@ before declaring work complete.
 
 Never claim tests passed unless they were actually executed.
 
+Phase-completion and remediation-completion claims must use the full
+PostgreSQL-backed verification path when applicable. Run `make verify-full`
+with `TEST_DATABASE_URL` pointing to an already migrated disposable database.
+A `make verify` run that reports PostgreSQL tests as skipped does not satisfy
+that gate.
+
 ## Errors
 
 Do not silently ignore errors.
@@ -246,3 +252,57 @@ cleverness
 unnecessary abstraction
 premature scalability
 maximum number of technologies
+
+## Planning Requirement
+
+For any task touching multiple modules, a schema or API boundary, architecture,
+or more than a few files, state the implementation plan before editing.
+
+Before modifying code:
+
+The plan must include:
+
+1. expected files and modules
+2. expected schema and API changes, including `none`
+3. architecture and domain-boundary risks
+4. required tests
+5. confirmation that the task stays inside the active phase
+
+Then implement.
+
+If implementation or the plan conflicts with approved architecture, stop and
+report the conflict instead of silently changing the architecture.
+
+## Required Completion Report
+
+Every implementation task must end with:
+
+### Changed
+- files/modules changed
+
+### Behavior
+- what now works
+
+### Database / Migration Impact
+- migrations and schema impact, including `none`
+
+### Tests
+- commands actually run
+- pass/fail results
+- skipped tests, identified explicitly
+
+### Not Tested
+- anything that could not be verified
+
+Never claim an unexecuted or skipped test as passing.
+
+### Risks / Limitations
+- remaining technical risks
+
+### Scope Confirmation
+- confirm no work outside active phase was introduced
+
+### Branch / Commit / Working Tree
+- branch
+- commit SHA
+- working tree status

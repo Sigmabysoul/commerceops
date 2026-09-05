@@ -1,0 +1,9 @@
+Meesho
+Shipping Label
+Sub Order No.: 987654321098_1
+AWB Number: SANITIZEDAWB98765
+Supplier SKU: SANITIZED-SKU_10
+Quantity: 2
+Shipping Address:
+Sanitized Recipient
+Sanitized Street
