@@ -309,7 +309,9 @@ func (s *Service) UpdatePrinter(ctx context.Context, p auth.Principal, id string
 	if err != nil {
 		return Printer{}, mapConflict(err)
 	}
-	_ = json.Unmarshal(raw, &item.Capabilities)
+	if err = json.Unmarshal(raw, &item.Capabilities); err != nil {
+		return Printer{}, fmt.Errorf("decode printer capabilities: %w", err)
+	}
 	if err = s.audit.Record(ctx, tx, p.CompanyID, p.UserID, "printer.updated", "registered_printer", id, map[string]any{"friendly_name": item.FriendlyName, "enabled": item.Enabled, "location": item.Location}); err != nil {
 		return Printer{}, err
 	}
@@ -334,7 +336,9 @@ func (s *Service) listPrinters(ctx context.Context, company string) ([]Printer, 
 		if err = rows.Scan(&x.ID, &x.AgentID, &x.FriendlyName, &x.OSPrinterID, &raw, &x.Location, &x.Status, &x.Enabled, &x.LastSeenAt); err != nil {
 			return nil, err
 		}
-		_ = json.Unmarshal(raw, &x.Capabilities)
+		if err = json.Unmarshal(raw, &x.Capabilities); err != nil {
+			return nil, fmt.Errorf("decode printer capabilities: %w", err)
+		}
 		out = append(out, x)
 	}
 	return out, rows.Err()
@@ -363,7 +367,10 @@ func (s *Service) Heartbeat(ctx context.Context, p AgentPrincipal, printers []Lo
 			return nil, ErrInvalidInput
 		}
 		seen[item.OSPrinterID] = true
-		raw, _ := json.Marshal(item.Capabilities)
+		raw, marshalErr := json.Marshal(item.Capabilities)
+		if marshalErr != nil {
+			return nil, fmt.Errorf("encode printer capabilities: %w", marshalErr)
+		}
 		_, err = tx.Exec(ctx, `INSERT INTO registered_printers(company_id,agent_id,friendly_name,os_printer_id,capabilities,status,last_seen_at) VALUES($1,$2,$3,$4,$5,'online',now()) ON CONFLICT(company_id,agent_id,os_printer_id) DO UPDATE SET capabilities=EXCLUDED.capabilities,status='online',last_seen_at=now(),updated_at=now()`, p.CompanyID, p.AgentID, item.SuggestedName, item.OSPrinterID, raw)
 		if err != nil {
 			return nil, mapConflict(err)
@@ -388,7 +395,9 @@ func (s *Service) Heartbeat(ctx context.Context, p AgentPrincipal, printers []Lo
 		if err = rows.Scan(&x.ID, &x.AgentID, &x.FriendlyName, &x.OSPrinterID, &raw, &x.Location, &x.Status, &x.Enabled, &x.LastSeenAt); err != nil {
 			return nil, err
 		}
-		_ = json.Unmarshal(raw, &x.Capabilities)
+		if err = json.Unmarshal(raw, &x.Capabilities); err != nil {
+			return nil, fmt.Errorf("decode printer capabilities: %w", err)
+		}
 		out = append(out, x)
 	}
 	return out, rows.Err()
@@ -575,7 +584,10 @@ func (s *Service) createJob(ctx context.Context, p auth.Principal, printer strin
 	if !uuidRE.MatchString(printer) || copies < 1 || copies > MaxCopies || key == "" || len(key) > 128 {
 		return Job{}, false, ErrInvalidInput
 	}
-	payload, _ := json.Marshal([]any{printer, artifact, asset, copies, origin, ref, source})
+	payload, err := json.Marshal([]any{printer, artifact, asset, copies, origin, ref, source})
+	if err != nil {
+		return Job{}, false, fmt.Errorf("encode print job identity: %w", err)
+	}
 	sum := sha256.Sum256(payload)
 	hash := hex.EncodeToString(sum[:])
 	tx, err := s.db.Begin(ctx)
@@ -591,7 +603,9 @@ func (s *Service) createJob(ctx context.Context, p auth.Principal, printer strin
 			if existingHash != hash {
 				return Job{}, false, ErrConflict
 			}
-			_ = tx.Commit(ctx)
+			if commitErr := tx.Commit(ctx); commitErr != nil {
+				return Job{}, false, commitErr
+			}
 			j, e := s.getJob(ctx, p.CompanyID, id)
 			return j, true, e
 		}
@@ -605,6 +619,15 @@ func (s *Service) createJob(ctx context.Context, p auth.Principal, printer strin
 	}
 	if err = s.audit.Record(ctx, tx, p.CompanyID, p.UserID, "printing.requested", "printer_job", id, map[string]any{"printer_id": printer, "copies": copies, "origin_type": origin, "origin_reference": ref}); err != nil {
 		return Job{}, false, err
+	}
+	if source != nil {
+		metadata := map[string]any{"source_printer_job_id": *source}
+		if _, err = tx.Exec(ctx, `INSERT INTO printer_job_events(company_id,printer_job_id,event_type,actor_user_id,metadata) VALUES($1,$2,'retried',$3,jsonb_build_object('source_printer_job_id',$4::text))`, p.CompanyID, id, p.UserID, *source); err != nil {
+			return Job{}, false, err
+		}
+		if err = s.audit.Record(ctx, tx, p.CompanyID, p.UserID, "printing.retried", "printer_job", id, metadata); err != nil {
+			return Job{}, false, err
+		}
 	}
 	if err = tx.Commit(ctx); err != nil {
 		return Job{}, false, err
@@ -674,15 +697,7 @@ func (s *Service) Retry(ctx context.Context, p auth.Principal, id, key string) (
 	if source.Status != "failed" {
 		return Job{}, false, ErrInvalidState
 	}
-	j, replay, err := s.createJob(ctx, p, source.PrinterID, source.ArtifactID, source.AssetID, source.Copies, source.OriginType, source.OriginReference, key, &source.ID)
-	if err != nil {
-		return Job{}, false, err
-	}
-	if !replay {
-		_, _ = s.db.Exec(ctx, `INSERT INTO printer_job_events(company_id,printer_job_id,event_type,actor_user_id,metadata) VALUES($1,$2,'retried',$3,jsonb_build_object('source_printer_job_id',$4))`, p.CompanyID, j.ID, p.UserID, id)
-		_, _ = s.db.Exec(ctx, `INSERT INTO audit_logs(company_id,actor_user_id,action,target_type,target_id,metadata) VALUES($1,$2,'printing.retried','printer_job',$3,jsonb_build_object('source_printer_job_id',$4))`, p.CompanyID, p.UserID, j.ID, id)
-	}
-	return j, replay, nil
+	return s.createJob(ctx, p, source.PrinterID, source.ArtifactID, source.AssetID, source.Copies, source.OriginType, source.OriginReference, key, &source.ID)
 }
 
 func (s *Service) Claim(ctx context.Context, p AgentPrincipal) (Claim, error) {
@@ -797,7 +812,9 @@ func (s *Service) Report(ctx context.Context, p AgentPrincipal, id, lease, statu
 		return Job{}, err
 	}
 	if current == status || (current == "completed" && status == "completed") || (current == "failed" && status == "failed") {
-		_ = tx.Commit(ctx)
+		if err = tx.Commit(ctx); err != nil {
+			return Job{}, err
+		}
 		return s.getJob(ctx, p.CompanyID, id)
 	}
 	allowed := (current == "claimed" && status == "printing") || ((current == "claimed" || current == "printing") && (status == "completed" || status == "failed"))

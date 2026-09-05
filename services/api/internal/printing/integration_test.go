@@ -197,6 +197,16 @@ func TestFailedJobExplicitRetryAndConcurrentClaim(t *testing.T) {
 	if err != nil || replayed || retry.SourceJobID == nil || *retry.SourceJobID != job.ID {
 		t.Fatalf("retry=%v replay=%v err=%v", retry, replayed, err)
 	}
+	replayedRetry, replayed, err := f.service.Retry(ctx, f.p, job.ID, "retry-"+job.ID)
+	if err != nil || !replayed || replayedRetry.ID != retry.ID {
+		t.Fatalf("replayed retry=%v replay=%v err=%v", replayedRetry, replayed, err)
+	}
+	var retryEvents, retryAudits int
+	scan(t, f.db, `SELECT count(*) FROM printer_job_events WHERE company_id=$1 AND printer_job_id=$2 AND event_type='retried'`, f.company, retry.ID, &retryEvents)
+	scan(t, f.db, `SELECT count(*) FROM audit_logs WHERE company_id=$1 AND target_type='printer_job' AND target_id=$2 AND action='printing.retried'`, f.company, retry.ID, &retryAudits)
+	if retryEvents != 1 || retryAudits != 1 {
+		t.Fatalf("retry events=%d audits=%d", retryEvents, retryAudits)
+	}
 	retryClaim, err := f.service.Claim(ctx, agent)
 	if err != nil || retryClaim.Job.ID != retry.ID {
 		t.Fatalf("retry claim=%v err=%v", retryClaim, err)
