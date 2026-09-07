@@ -1,6 +1,6 @@
 # CommerceOps Architecture
 
-CommerceOps is a modular monolith: one Go backend, one PostgreSQL database, and one Next.js frontend. Accepted ADRs and `MASTER_SPEC.md` govern foundational decisions.
+CommerceOps is a modular monolith: one Go backend, one PostgreSQL database, and one Next.js frontend. Accepted ADRs and `MASTER_SPEC.md` govern foundational decisions. ADR-0005 defers commercial SaaS through Phases 15–25 while preserving the company safety boundary; ADR-0006 authorizes structural consolidation.
 
 ## Repository boundaries
 
@@ -126,3 +126,18 @@ transaction. The bounded in-process scheduler uses PostgreSQL occurrences and
 leases; a transaction-scoped Printing method creates the normal physical job
 and execution result atomically. Automation cannot contact hardware or mutate
 Inventory. See `workflows/automation.md` for timezone, retry, and restart policy.
+
+## Phase 15 target and compatibility
+
+The backend uses internal/app (composition), internal/domain (business ownership), and
+internal/platform (technical infrastructure), with one unchanged Go module. The detailed
+move map is in CODEX/MIGRATION_MAP.md; current paths in this guide are updated with each
+verified move. Executables stay in cmd/server and cmd/printer-agent.
+
+Application composition stays in app. Automation owns its scheduler; the marketplace
+root owns shared orchestration. PDF extraction and generation remain separate packages.
+No empty Department, Traceability, CSV/ZIP platform or JioMart packages are introduced.
+
+The owner approved these package moves, not business ownership changes. Company scope,
+login, permissions, entitlements, APIs, migrations, worker leases and domain semantics
+remain unchanged. Future seller identity and workstation identity are separate concepts.

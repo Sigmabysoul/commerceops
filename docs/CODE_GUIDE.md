@@ -82,3 +82,10 @@ server-generated keys, hashes, sizes, and traceability—not PDF blobs.
 5. Treat reprints and all physical printing as Inventory-neutral.
 6. Add a regression test, update OpenAPI/docs, and run `make verify-full` against
    a migrated disposable PostgreSQL database.
+
+## Phase 15 navigation
+
+Look under internal/app for composition, internal/domain for business ownership and
+internal/platform for technical mechanisms. CODEX/MIGRATION_MAP.md records the exact
+before/after paths and dependencies. Tests/fixtures remain colocated; no framework layers
+or empty future packages are introduced. Package names and public interfaces are preserved.

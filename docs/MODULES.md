@@ -181,3 +181,14 @@ PostgreSQL scheduler/leases, execution history, REST APIs and derived print
 reporting. Batch and Consignment persist facts through
 `platform/domainevent`; Printing owns queue creation and physical delivery.
 Automation has no Inventory dependency. See `workflows/automation.md`.
+
+## Structural consolidation and future ownership
+
+ADR-0006 changes package locations, not responsibility. app retains composition;
+Automation retains scheduling; Marketplace retains shared orchestration. Authentication,
+authorization, audit, configuration, health and printer-agent mechanics move to platform.
+
+Phase 17 may introduce department ownership around the existing Consignment-era
+Department identity, but Phase 15 does not transfer that responsibility. Phase 20 will
+own Trace Boxes, custody and trace history without Inventory balances. Seller-account
+business state belongs to Phase 16, not to printer-agent/workstation infrastructure.

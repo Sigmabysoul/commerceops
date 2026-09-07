@@ -120,3 +120,14 @@ A rule occurrence produces at most one initial physical job across restarts and
 concurrent workers. Batch/Consignment facts commit with their source transition;
 queue creation commits with its execution outcome. Rules and every referenced
 asset, printer, event, and job must belong to the same tenant.
+
+## Planning invariants for Phases 16–25
+
+These supplement existing rules; they do not imply new Phase 15 behavior.
+
+RULE COMPANY-001: Single-business-first never permits removing company safety scope.
+RULE SELLER-001: Seller accounts/trading identities are separate from workstations and printer agents.
+RULE DEPARTMENT-001: Reuse canonical departments. One active Product assignment; changes preserve historical and in-flight context.
+RULE TRACE-001: Trace QR/barcodes identify opaque server records, never encoded mutable workflow state or a second stock balance.
+RULE QC-001: QC PASS is not RESTOCK. Sellable stock changes only through an explicit authorized Inventory transition.
+RULE LIFECYCLE-001: No automatic archival deletion before verified export and restore; retain audit history.
