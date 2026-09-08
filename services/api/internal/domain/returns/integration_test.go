@@ -328,7 +328,7 @@ func TestReturnsMigrationUpDown(t *testing.T) {
 	schema := "p8_migration_" + fmt.Sprint(time.Now().UnixNano())
 	mustExec(t, tx, `CREATE SCHEMA `+schema)
 	mustExec(t, tx, `SET LOCAL search_path TO `+schema+`,public`)
-	root := filepath.Join("..", "..", "migrations")
+	root := filepath.Join("..", "..", "..", "migrations")
 	files, err := filepath.Glob(filepath.Join(root, "*.up.sql"))
 	if err != nil {
 		t.Fatal(err)
@@ -382,7 +382,7 @@ func TestReturnDispositionInventoryMigrationUpDown(t *testing.T) {
 	schema := "p8b_migration_" + fmt.Sprint(time.Now().UnixNano())
 	mustExec(t, tx, `CREATE SCHEMA `+schema)
 	mustExec(t, tx, `SET LOCAL search_path TO `+schema+`,public`)
-	root := filepath.Join("..", "..", "migrations")
+	root := filepath.Join("..", "..", "..", "migrations")
 	files, err := filepath.Glob(filepath.Join(root, "*.up.sql"))
 	if err != nil {
 		t.Fatal(err)
@@ -440,7 +440,7 @@ func TestReturnCancellationClosureMigrationUpDown(t *testing.T) {
 	schema := "p8c_migration_" + fmt.Sprint(time.Now().UnixNano())
 	mustExec(t, tx, `CREATE SCHEMA `+schema)
 	mustExec(t, tx, `SET LOCAL search_path TO `+schema+`,public`)
-	root := filepath.Join("..", "..", "migrations")
+	root := filepath.Join("..", "..", "..", "migrations")
 	files, err := filepath.Glob(filepath.Join(root, "*.up.sql"))
 	if err != nil {
 		t.Fatal(err)

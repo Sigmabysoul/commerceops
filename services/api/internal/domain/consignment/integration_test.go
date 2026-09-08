@@ -318,7 +318,7 @@ func TestPhaseNineMigrationUpDown(t *testing.T) {
 	schema := "p9_migration_" + fmt.Sprint(time.Now().UnixNano())
 	mustExec(t, tx, `CREATE SCHEMA `+schema)
 	mustExec(t, tx, `SET LOCAL search_path TO `+schema+`,public`)
-	root := filepath.Join("..", "..", "migrations")
+	root := filepath.Join("..", "..", "..", "migrations")
 	for n := 1; n <= 17; n++ {
 		matches, e := filepath.Glob(filepath.Join(root, fmt.Sprintf("%06d_*.up.sql", n)))
 		if e != nil || len(matches) != 1 {

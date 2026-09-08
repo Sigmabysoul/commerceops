@@ -12,11 +12,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/commerceops/commerceops/services/api/internal/domain/printing"
 	"github.com/commerceops/commerceops/services/api/internal/platform/auth"
 	"github.com/commerceops/commerceops/services/api/internal/platform/authorization"
 	"github.com/commerceops/commerceops/services/api/internal/platform/domainevent"
 	"github.com/commerceops/commerceops/services/api/internal/platform/objectstorage"
-	"github.com/commerceops/commerceops/services/api/internal/printing"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -72,7 +72,7 @@ func setup(t *testing.T) *fixture {
 		}
 		admin.Close()
 	})
-	migrations, err := filepath.Glob("../../migrations/*.up.sql")
+	migrations, err := filepath.Glob("../../../migrations/*.up.sql")
 	check(t, err)
 	for _, file := range migrations {
 		data, e := os.ReadFile(file)
@@ -104,7 +104,7 @@ func setup(t *testing.T) *fixture {
 	printers, err := f.print.Heartbeat(ctx, f.agent, []printing.LocalPrinter{{OSPrinterID: "fixture", SuggestedName: "Packing printer", Capabilities: map[string]any{}}})
 	check(t, err)
 	f.printer = printers[0].ID
-	f.pdf, err = os.ReadFile("../marketplace/amazon/testdata/sanitized_label_invoice.pdf")
+	f.pdf, err = os.ReadFile("../../marketplace/amazon/testdata/sanitized_label_invoice.pdf")
 	check(t, err)
 	asset, err := f.print.CreateAsset(ctx, f.p, "Packing sticker", "Packing", "", nil, 1, nil, false, "sticker.pdf", f.pdf)
 	check(t, err)
@@ -480,9 +480,9 @@ func TestJobAndExecutionCommitAtomicallyAfterCrash(t *testing.T) {
 func TestMigrationRoundTripAndHistoricalJobGuard(t *testing.T) {
 	f := setup(t)
 	ctx := context.Background()
-	down, err := os.ReadFile("../../migrations/000022_printing_automation.down.sql")
+	down, err := os.ReadFile("../../../migrations/000022_printing_automation.down.sql")
 	check(t, err)
-	up, err := os.ReadFile("../../migrations/000022_printing_automation.up.sql")
+	up, err := os.ReadFile("../../../migrations/000022_printing_automation.up.sql")
 	check(t, err)
 	tx, err := f.db.Begin(ctx)
 	check(t, err)

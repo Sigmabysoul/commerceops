@@ -76,7 +76,7 @@ func setup(t *testing.T) *fixture {
 		t.Fatalf("printers=%v err=%v", printers, err)
 	}
 	f.printer = printers[0]
-	f.pdf, err = os.ReadFile(filepath.Join("..", "marketplace", "amazon", "testdata", "sanitized_label_invoice.pdf"))
+	f.pdf, err = os.ReadFile(filepath.Join("..", "..", "marketplace", "amazon", "testdata", "sanitized_label_invoice.pdf"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -301,7 +301,7 @@ func TestPrintingMigrationUpDown(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer tx.Rollback(ctx)
-	root := filepath.Join("..", "..", "migrations")
+	root := filepath.Join("..", "..", "..", "migrations")
 	schema := "p13_migration_" + fmt.Sprint(time.Now().UnixNano())
 	if _, err = tx.Exec(ctx, `CREATE SCHEMA `+schema); err != nil {
 		t.Fatal(err)

@@ -9,13 +9,15 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/commerceops/commerceops/services/api/internal/automation"
-	"github.com/commerceops/commerceops/services/api/internal/batch"
-	"github.com/commerceops/commerceops/services/api/internal/consignment"
+	"github.com/commerceops/commerceops/services/api/internal/domain/automation"
+	"github.com/commerceops/commerceops/services/api/internal/domain/batch"
+	"github.com/commerceops/commerceops/services/api/internal/domain/consignment"
 	"github.com/commerceops/commerceops/services/api/internal/domain/core"
 	"github.com/commerceops/commerceops/services/api/internal/domain/inventory"
+	"github.com/commerceops/commerceops/services/api/internal/domain/printing"
 	"github.com/commerceops/commerceops/services/api/internal/domain/product"
 	"github.com/commerceops/commerceops/services/api/internal/domain/reporting"
+	returnsdomain "github.com/commerceops/commerceops/services/api/internal/domain/returns"
 	"github.com/commerceops/commerceops/services/api/internal/marketplace"
 	"github.com/commerceops/commerceops/services/api/internal/marketplace/amazon"
 	"github.com/commerceops/commerceops/services/api/internal/marketplace/snapdeal"
@@ -28,8 +30,6 @@ import (
 	"github.com/commerceops/commerceops/services/api/internal/platform/objectstorage"
 	"github.com/commerceops/commerceops/services/api/internal/platform/pdfextractor"
 	"github.com/commerceops/commerceops/services/api/internal/platform/pdfgenerator"
-	"github.com/commerceops/commerceops/services/api/internal/printing"
-	returnsdomain "github.com/commerceops/commerceops/services/api/internal/returns"
 )
 
 func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {

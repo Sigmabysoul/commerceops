@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/commerceops/commerceops/services/api/internal/domain/printing"
 	"github.com/commerceops/commerceops/services/api/internal/platform/auth"
-	"github.com/commerceops/commerceops/services/api/internal/printing"
 	"github.com/jackc/pgx/v5"
 )
 
