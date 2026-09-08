@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/commerceops/commerceops/services/api/internal/platform/pdfextractor"
+	"github.com/commerceops/commerceops/services/api/internal/platform/documents/pdf/extractor"
 )
 
 const ParserVersion = "meesho-labeled-v1"

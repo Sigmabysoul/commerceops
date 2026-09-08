@@ -25,11 +25,11 @@ import (
 	"github.com/commerceops/commerceops/services/api/internal/platform/authorization"
 	"github.com/commerceops/commerceops/services/api/internal/platform/config"
 	"github.com/commerceops/commerceops/services/api/internal/platform/database"
+	"github.com/commerceops/commerceops/services/api/internal/platform/documents/pdf/extractor"
+	"github.com/commerceops/commerceops/services/api/internal/platform/documents/pdf/generator"
 	"github.com/commerceops/commerceops/services/api/internal/platform/health"
 	"github.com/commerceops/commerceops/services/api/internal/platform/httpserver"
 	"github.com/commerceops/commerceops/services/api/internal/platform/objectstorage"
-	"github.com/commerceops/commerceops/services/api/internal/platform/pdfextractor"
-	"github.com/commerceops/commerceops/services/api/internal/platform/pdfgenerator"
 )
 
 func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {

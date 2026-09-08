@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/commerceops/commerceops/services/api/internal/platform/pdfextractor"
+	"github.com/commerceops/commerceops/services/api/internal/platform/documents/pdf/extractor"
 )
 
 func TestParseExplicitMeeshoLabel(t *testing.T) {

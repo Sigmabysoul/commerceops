@@ -15,7 +15,7 @@ import (
 	"time"
 
 	"github.com/commerceops/commerceops/services/api/internal/platform/auth"
-	"github.com/commerceops/commerceops/services/api/internal/platform/pdfgenerator"
+	"github.com/commerceops/commerceops/services/api/internal/platform/documents/pdf/generator"
 	"github.com/jackc/pgx/v5"
 )
 

@@ -17,7 +17,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/commerceops/commerceops/services/api/internal/platform/pdfgenerator"
+	"github.com/commerceops/commerceops/services/api/internal/platform/documents/pdf/generator"
 )
 
 const PrintGenerationVersion = "amazon-a4-enriched-v1"

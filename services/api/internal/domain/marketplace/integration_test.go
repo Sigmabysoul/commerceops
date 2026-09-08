@@ -13,8 +13,8 @@ import (
 
 	"github.com/commerceops/commerceops/services/api/internal/platform/auth"
 	"github.com/commerceops/commerceops/services/api/internal/platform/authorization"
+	"github.com/commerceops/commerceops/services/api/internal/platform/documents/pdf/extractor"
 	"github.com/commerceops/commerceops/services/api/internal/platform/objectstorage"
-	"github.com/commerceops/commerceops/services/api/internal/platform/pdfextractor"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 

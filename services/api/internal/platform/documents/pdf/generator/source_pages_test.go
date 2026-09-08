@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/commerceops/commerceops/services/api/internal/platform/pdfextractor"
-	"github.com/commerceops/commerceops/services/api/internal/platform/pdfgenerator"
+	"github.com/commerceops/commerceops/services/api/internal/platform/documents/pdf/extractor"
+	"github.com/commerceops/commerceops/services/api/internal/platform/documents/pdf/generator"
 )
 
 func TestSourcePagesPreservesCompletePagesAndOrder(t *testing.T) {

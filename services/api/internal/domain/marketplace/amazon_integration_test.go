@@ -12,7 +12,7 @@ import (
 
 	"github.com/commerceops/commerceops/services/api/internal/domain/marketplace/amazon"
 	"github.com/commerceops/commerceops/services/api/internal/platform/authorization"
-	"github.com/commerceops/commerceops/services/api/internal/platform/pdfextractor"
+	"github.com/commerceops/commerceops/services/api/internal/platform/documents/pdf/extractor"
 )
 
 func TestAmazonBatchBPostgreSQLIntegration(t *testing.T) {

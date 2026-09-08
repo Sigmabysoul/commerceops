@@ -10,7 +10,7 @@ import (
 
 	"github.com/commerceops/commerceops/services/api/internal/domain/marketplace/meesho"
 	"github.com/commerceops/commerceops/services/api/internal/platform/authorization"
-	"github.com/commerceops/commerceops/services/api/internal/platform/pdfextractor"
+	"github.com/commerceops/commerceops/services/api/internal/platform/documents/pdf/extractor"
 )
 
 func TestMeeshoBatchAPostgreSQLIntegration(t *testing.T) {

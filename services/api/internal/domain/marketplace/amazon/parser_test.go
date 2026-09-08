@@ -4,7 +4,7 @@ package amazon
 import (
 	"testing"
 
-	"github.com/commerceops/commerceops/services/api/internal/platform/pdfextractor"
+	"github.com/commerceops/commerceops/services/api/internal/platform/documents/pdf/extractor"
 )
 
 func TestParseExplicitTextLabel(t *testing.T) {
