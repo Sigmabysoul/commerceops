@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/commerceops/commerceops/services/api/internal/marketplace/meesho"
+	"github.com/commerceops/commerceops/services/api/internal/domain/marketplace/meesho"
 	"github.com/commerceops/commerceops/services/api/internal/platform/authorization"
 	"github.com/commerceops/commerceops/services/api/internal/platform/pdfextractor"
 )
@@ -157,7 +157,7 @@ func TestMeeshoProcessingMigrationUpDown(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
-	root := filepath.Join("..", "..", "migrations")
+	root := filepath.Join("..", "..", "..", "migrations")
 	down, err := os.ReadFile(filepath.Join(root, "000018_meesho_processing.down.sql"))
 	if err != nil {
 		t.Fatal(err)

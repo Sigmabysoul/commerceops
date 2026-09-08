@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/commerceops/commerceops/services/api/internal/marketplace/myntra"
+	"github.com/commerceops/commerceops/services/api/internal/domain/marketplace/myntra"
 	"github.com/commerceops/commerceops/services/api/internal/platform/authorization"
 )
 
@@ -118,7 +118,7 @@ func TestMyntraProcessingMigrationUpDown(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
-	root := filepath.Join("..", "..", "migrations")
+	root := filepath.Join("..", "..", "..", "migrations")
 	down, err := os.ReadFile(filepath.Join(root, "000019_myntra_csv_processing.down.sql"))
 	if err != nil {
 		t.Fatal(err)

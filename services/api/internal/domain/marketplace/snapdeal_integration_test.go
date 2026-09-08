@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/commerceops/commerceops/services/api/internal/marketplace/snapdeal"
+	"github.com/commerceops/commerceops/services/api/internal/domain/marketplace/snapdeal"
 	"github.com/commerceops/commerceops/services/api/internal/platform/authorization"
 	"github.com/commerceops/commerceops/services/api/internal/platform/pdfextractor"
 )
@@ -91,7 +91,7 @@ func TestSnapdealMigrationUpDown(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer tx.Rollback(ctx)
-	root := filepath.Join("..", "..", "migrations")
+	root := filepath.Join("..", "..", "..", "migrations")
 	down, err := os.ReadFile(filepath.Join(root, "000020_snapdeal_processing.down.sql"))
 	if err != nil {
 		t.Fatal(err)

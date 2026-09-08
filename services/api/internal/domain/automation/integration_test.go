@@ -104,7 +104,7 @@ func setup(t *testing.T) *fixture {
 	printers, err := f.print.Heartbeat(ctx, f.agent, []printing.LocalPrinter{{OSPrinterID: "fixture", SuggestedName: "Packing printer", Capabilities: map[string]any{}}})
 	check(t, err)
 	f.printer = printers[0].ID
-	f.pdf, err = os.ReadFile("../../marketplace/amazon/testdata/sanitized_label_invoice.pdf")
+	f.pdf, err = os.ReadFile("../marketplace/amazon/testdata/sanitized_label_invoice.pdf")
 	check(t, err)
 	asset, err := f.print.CreateAsset(ctx, f.p, "Packing sticker", "Packing", "", nil, 1, nil, false, "sticker.pdf", f.pdf)
 	check(t, err)

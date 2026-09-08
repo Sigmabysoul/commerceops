@@ -9,7 +9,7 @@ import (
 )
 
 func TestPopplerReturnsRealPages(t *testing.T) {
-	fixture := filepath.Join("..", "..", "marketplace", "flipkart", "testdata", "multi_page.pdf")
+	fixture := filepath.Join("..", "..", "domain", "marketplace", "flipkart", "testdata", "multi_page.pdf")
 	pdf, err := os.ReadFile(fixture)
 	if err != nil {
 		t.Fatal(err)

@@ -76,7 +76,7 @@ func setup(t *testing.T) *fixture {
 		t.Fatalf("printers=%v err=%v", printers, err)
 	}
 	f.printer = printers[0]
-	f.pdf, err = os.ReadFile(filepath.Join("..", "..", "marketplace", "amazon", "testdata", "sanitized_label_invoice.pdf"))
+	f.pdf, err = os.ReadFile(filepath.Join("..", "marketplace", "amazon", "testdata", "sanitized_label_invoice.pdf"))
 	if err != nil {
 		t.Fatal(err)
 	}
