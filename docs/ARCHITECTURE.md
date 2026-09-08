@@ -44,7 +44,7 @@ authority.
 Shared marketplace orchestration owns upload validation, object storage,
 tenant/marketplace source deduplication, job leases, retries, normalized
 persistence, duplicate protection, Product Master lookup, and audits. Isolated
-adapters under `internal/marketplace/<marketplace>` own document recognition,
+adapters under `internal/domain/marketplace/<marketplace>` own document recognition,
 field extraction, and marketplace-specific page association. The shared PDF
 boundary may opt into bounded OCR for text-empty pages; Phase 7 enables that
 capability only for Amazon. Amazon associates label and invoice pages by an
@@ -82,7 +82,7 @@ domain continues to own authorization, sorting, idempotency, artifact storage,
 auditing, downloads, and reprint traceability. Print generation never calls the
 inventory domain.
 
-Phase 13 adds `internal/printing` as the owner of physical delivery. Existing
+Phase 13 adds `internal/domain/printing` as the owner of physical delivery. Existing
 `print_jobs` remain immutable PDF-generation records; each hardware action is a
 canonical `printer_job` referencing a generated artifact or Print Library PDF.
 Agents poll using hashed, revocable credentials and atomically lease work for
@@ -120,7 +120,7 @@ Reporting derives permission-gated Phase 8 metrics directly from normalized
 orders, cancellation records, append-only lifecycle events, return items, and
 the Inventory ledger. No return counters or reporting tables are maintained.
 
-Phase 14 adds `internal/automation` for approved schedule/event rules. A small
+Phase 14 adds `internal/domain/automation` for approved schedule/event rules. A small
 `platform/domainevent` recorder persists Batch/Consignment facts using the source
 transaction. The bounded in-process scheduler uses PostgreSQL occurrences and
 leases; a transaction-scoped Printing method creates the normal physical job
