@@ -7,8 +7,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/commerceops/commerceops/services/api/internal/auth"
-	"github.com/commerceops/commerceops/services/api/internal/authorization"
+	"github.com/commerceops/commerceops/services/api/internal/platform/auth"
+	"github.com/commerceops/commerceops/services/api/internal/platform/authorization"
 	"github.com/commerceops/commerceops/services/api/internal/platform/httpserver"
 )
 

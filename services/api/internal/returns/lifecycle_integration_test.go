@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/commerceops/commerceops/services/api/internal/authorization"
 	"github.com/commerceops/commerceops/services/api/internal/batch"
 	"github.com/commerceops/commerceops/services/api/internal/inventory"
+	"github.com/commerceops/commerceops/services/api/internal/platform/authorization"
 	"github.com/commerceops/commerceops/services/api/internal/reporting"
 )
 

@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/commerceops/commerceops/services/api/internal/authorization"
 	"github.com/commerceops/commerceops/services/api/internal/marketplace/snapdeal"
+	"github.com/commerceops/commerceops/services/api/internal/platform/authorization"
 	"github.com/commerceops/commerceops/services/api/internal/platform/pdfextractor"
 )
 

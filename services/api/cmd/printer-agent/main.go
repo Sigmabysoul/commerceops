@@ -11,7 +11,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/commerceops/commerceops/services/api/internal/printeragent"
+	"github.com/commerceops/commerceops/services/api/internal/platform/printeragent"
 )
 
 func main() {

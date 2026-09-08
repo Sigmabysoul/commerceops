@@ -6,7 +6,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/commerceops/commerceops/services/api/internal/auth"
+	"github.com/commerceops/commerceops/services/api/internal/platform/auth"
 )
 
 func (s *Service) Runs(ctx context.Context, p auth.Principal, ruleID string, failures bool) ([]Execution, error) {

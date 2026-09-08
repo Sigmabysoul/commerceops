@@ -9,8 +9,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/commerceops/commerceops/services/api/internal/authorization"
 	"github.com/commerceops/commerceops/services/api/internal/marketplace/myntra"
+	"github.com/commerceops/commerceops/services/api/internal/platform/authorization"
 )
 
 func TestMyntraBatchAPostgreSQLIntegration(t *testing.T) {

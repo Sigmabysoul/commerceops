@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/commerceops/commerceops/services/api/internal/authorization"
 	"github.com/commerceops/commerceops/services/api/internal/marketplace/amazon"
+	"github.com/commerceops/commerceops/services/api/internal/platform/authorization"
 	"github.com/commerceops/commerceops/services/api/internal/platform/pdfextractor"
 )
 

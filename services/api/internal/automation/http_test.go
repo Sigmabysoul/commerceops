@@ -8,7 +8,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/commerceops/commerceops/services/api/internal/auth"
+	"github.com/commerceops/commerceops/services/api/internal/platform/auth"
 )
 
 func TestHTTPPermissionTenantAndInputBoundaries(t *testing.T) {

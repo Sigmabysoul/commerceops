@@ -9,7 +9,7 @@ import (
 	"syscall"
 
 	"github.com/commerceops/commerceops/services/api/internal/app"
-	"github.com/commerceops/commerceops/services/api/internal/config"
+	"github.com/commerceops/commerceops/services/api/internal/platform/config"
 )
 
 func main() {
