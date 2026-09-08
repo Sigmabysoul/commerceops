@@ -3,7 +3,7 @@
 ## Active phase
 
 Phase 15 — Repository Architecture Consolidation.
-Status: PHASE_15_IMPLEMENTATION_AUTHORIZED.
+Status: PHASE_15_IMPLEMENTATION_COMPLETE_LOCAL_VERIFIED_AWAITING_OWNER_APPROVAL.
 The owner explicitly approved the complete five-batch plan on 2026-09-07.
 Branch: me/phase-15-repository-architecture.
 Checkout: /home/sigma/work/commerceops-next.
@@ -31,5 +31,6 @@ by Phase 15. Company scope, entitlements and permissions remain intact.
 
 ## Next gate
 
-Complete Phase 15 verification and report. Phase 16 requires explicit owner authorization;
-no automatic progression, production deployment or production-readiness claim.
+Review and approve the locally verified Phase 15 result. The complete evidence is in
+PHASES/PHASE-15-VERIFICATION.md. Phase 16 requires explicit owner authorization; no
+automatic progression, production deployment or production-readiness claim.
