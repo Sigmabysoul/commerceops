@@ -156,7 +156,7 @@ func TestInventoryMigrationUpDown(t *testing.T) {
 	schema := "p5_migration_" + fmt.Sprint(time.Now().UnixNano())
 	exec(t, tx, `CREATE SCHEMA `+schema)
 	exec(t, tx, `SET LOCAL search_path TO `+schema+`,public`)
-	root := filepath.Join("..", "..", "migrations")
+	root := filepath.Join("..", "..", "..", "migrations")
 	for _, name := range []string{"000001_core_platform.up.sql", "000002_tenant_sessions.up.sql", "000003_product_master.up.sql", "000004_flipkart_processing.up.sql", "000005_flipkart_worker_leases.up.sql", "000006_batch_foundation.up.sql", "000007_print_generation.up.sql", "000008_worker_assignments_reprints.up.sql", "000009_inventory_ledger.up.sql", "000010_inventory_outbound_reservations.up.sql"} {
 		data, readErr := os.ReadFile(filepath.Join(root, name))
 		if readErr != nil {

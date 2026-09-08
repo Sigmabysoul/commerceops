@@ -12,10 +12,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/commerceops/commerceops/services/api/internal/inventory"
+	"github.com/commerceops/commerceops/services/api/internal/domain/inventory"
+	"github.com/commerceops/commerceops/services/api/internal/domain/reporting"
 	"github.com/commerceops/commerceops/services/api/internal/platform/auth"
 	"github.com/commerceops/commerceops/services/api/internal/platform/authorization"
-	"github.com/commerceops/commerceops/services/api/internal/reporting"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"

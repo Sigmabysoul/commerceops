@@ -12,8 +12,10 @@ import (
 	"github.com/commerceops/commerceops/services/api/internal/automation"
 	"github.com/commerceops/commerceops/services/api/internal/batch"
 	"github.com/commerceops/commerceops/services/api/internal/consignment"
-	"github.com/commerceops/commerceops/services/api/internal/core"
-	"github.com/commerceops/commerceops/services/api/internal/inventory"
+	"github.com/commerceops/commerceops/services/api/internal/domain/core"
+	"github.com/commerceops/commerceops/services/api/internal/domain/inventory"
+	"github.com/commerceops/commerceops/services/api/internal/domain/product"
+	"github.com/commerceops/commerceops/services/api/internal/domain/reporting"
 	"github.com/commerceops/commerceops/services/api/internal/marketplace"
 	"github.com/commerceops/commerceops/services/api/internal/marketplace/amazon"
 	"github.com/commerceops/commerceops/services/api/internal/marketplace/snapdeal"
@@ -27,8 +29,6 @@ import (
 	"github.com/commerceops/commerceops/services/api/internal/platform/pdfextractor"
 	"github.com/commerceops/commerceops/services/api/internal/platform/pdfgenerator"
 	"github.com/commerceops/commerceops/services/api/internal/printing"
-	"github.com/commerceops/commerceops/services/api/internal/product"
-	"github.com/commerceops/commerceops/services/api/internal/reporting"
 	returnsdomain "github.com/commerceops/commerceops/services/api/internal/returns"
 )
 

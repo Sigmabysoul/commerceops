@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/commerceops/commerceops/services/api/internal/inventory"
+	"github.com/commerceops/commerceops/services/api/internal/domain/inventory"
 	"github.com/commerceops/commerceops/services/api/internal/platform/audit"
 	"github.com/commerceops/commerceops/services/api/internal/platform/auth"
 	"github.com/commerceops/commerceops/services/api/internal/platform/authorization"

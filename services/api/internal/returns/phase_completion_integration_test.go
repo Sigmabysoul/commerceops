@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/commerceops/commerceops/services/api/internal/domain/reporting"
 	"github.com/commerceops/commerceops/services/api/internal/platform/authorization"
-	"github.com/commerceops/commerceops/services/api/internal/reporting"
 )
 
 func TestReturnAndCancellationClosureLifecycle(t *testing.T) {

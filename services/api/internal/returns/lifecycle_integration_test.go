@@ -10,9 +10,9 @@ import (
 	"time"
 
 	"github.com/commerceops/commerceops/services/api/internal/batch"
-	"github.com/commerceops/commerceops/services/api/internal/inventory"
+	"github.com/commerceops/commerceops/services/api/internal/domain/inventory"
+	"github.com/commerceops/commerceops/services/api/internal/domain/reporting"
 	"github.com/commerceops/commerceops/services/api/internal/platform/authorization"
-	"github.com/commerceops/commerceops/services/api/internal/reporting"
 )
 
 func TestInspectionRestockAndCompensatingCorrection(t *testing.T) {
