@@ -72,6 +72,45 @@ func (h *HTTPHandler) Product(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (h *HTTPHandler) DepartmentAssignments(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		methodNotAllowed(w)
+		return
+	}
+	items, err := h.service.ListDepartmentAssignments(r.Context(), principal(r), r.URL.Query().Get("product_id"))
+	if writeError(w, err) {
+		return
+	}
+	httpserver.WriteJSON(w, http.StatusOK, map[string]any{"product_department_assignments": items})
+}
+
+func (h *HTTPHandler) Departments(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		methodNotAllowed(w)
+		return
+	}
+	items, err := h.service.ListDepartments(r.Context(), principal(r))
+	if writeError(w, err) {
+		return
+	}
+	httpserver.WriteJSON(w, http.StatusOK, map[string]any{"departments": items})
+}
+
+func (h *HTTPHandler) ProductDepartment(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPut {
+		methodNotAllowed(w)
+		return
+	}
+	var input DepartmentAssignmentInput
+	if !httpserver.DecodeJSON(w, r, &input) {
+		return
+	}
+	if err := h.service.AssignDepartment(r.Context(), principal(r), r.PathValue("product_id"), input); writeError(w, err) {
+		return
+	}
+	httpserver.WriteJSON(w, http.StatusOK, map[string]any{"assigned": true})
+}
+
 func (h *HTTPHandler) Mappings(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:

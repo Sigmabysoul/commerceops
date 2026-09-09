@@ -4,6 +4,8 @@ export type Product = { id: string; internal_code: string; name: string; brand: 
 export type Marketplace = { key: string; display_name: string };
 export type SKUMapping = { id: string; marketplace_account_id: string; marketplace_key: string; product_id: string; sku: string; quantity_multiplier: number; interpretation_metadata: Record<string, unknown>; status: "active" | "inactive" };
 export type Resolution = { status: "resolved" | "unresolved"; product?: Product; mapping?: SKUMapping };
+export type ProductDepartmentAssignment = { product_id: string; department_id: string; department_name: string; assigned_by: string; effective_from: string; effective_to: string | null };
+export type ProductDepartment = { id: string; name: string };
 type ProductInput = Omit<Product, "id">;
 type MappingInput = Omit<SKUMapping, "id">;
 
@@ -17,6 +19,9 @@ export const productAPI = {
   products: (query = "") => request<{ products: Product[] }>(`/products?q=${encodeURIComponent(query)}`),
   createProduct: (input: ProductInput) => request<{ product: Product }>("/products", { method: "POST", body: JSON.stringify(input) }),
   updateProduct: (id: string, input: ProductInput) => request<{ product: Product }>(`/products/${id}`, { method: "PATCH", body: JSON.stringify(input) }),
+  departmentAssignments: () => request<{ product_department_assignments: ProductDepartmentAssignment[] }>("/product-department-assignments"),
+  departments: () => request<{ departments: ProductDepartment[] }>("/product-departments"),
+  assignDepartment: (productID: string, departmentID: string) => request<{ assigned: boolean }>(`/products/${productID}/department`, { method: "PUT", body: JSON.stringify({ department_id: departmentID }) }),
   marketplaces: () => request<{ marketplaces: Marketplace[] }>("/marketplaces"),
   mappings: () => request<{ sku_mappings: SKUMapping[] }>("/sku-mappings"),
   createMapping: (input: MappingInput) => request<{ sku_mapping: SKUMapping }>("/sku-mappings", { method: "POST", body: JSON.stringify(input) }),

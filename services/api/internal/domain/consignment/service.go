@@ -320,7 +320,7 @@ func (s *Service) Create(ctx context.Context, p auth.Principal, input CreateInpu
 		return Consignment{}, false, mapDBError(err)
 	}
 	for _, line := range input.Lines {
-		result, e := tx.Exec(ctx, `INSERT INTO consignment_lines(company_id,consignment_id,product_id,department_id,required_quantity,updated_by) SELECT $1,$2,p.id,d.id,$5,$6 FROM products p JOIN consignment_departments d ON d.company_id=p.company_id WHERE p.company_id=$1 AND p.id=$3 AND p.status='active' AND d.id=$4 AND d.status='active'`, p.CompanyID, id, line.ProductID, line.DepartmentID, line.RequiredQuantity, p.UserID)
+		result, e := tx.Exec(ctx, `INSERT INTO consignment_lines(company_id,consignment_id,product_id,department_id,required_quantity,updated_by) SELECT $1,$2,p.id,d.id,$5,$6 FROM products p JOIN product_department_assignments a ON a.company_id=p.company_id AND a.product_id=p.id AND a.effective_to IS NULL JOIN consignment_departments d ON d.company_id=a.company_id AND d.id=a.department_id WHERE p.company_id=$1 AND p.id=$3 AND p.status='active' AND d.id=$4 AND d.status='active'`, p.CompanyID, id, line.ProductID, line.DepartmentID, line.RequiredQuantity, p.UserID)
 		if e != nil {
 			return Consignment{}, false, mapDBError(e)
 		}

@@ -53,6 +53,103 @@ type ProductInput struct {
 	Status       string  `json:"status"`
 }
 
+type DepartmentAssignmentInput struct {
+	DepartmentID string `json:"department_id"`
+}
+
+type DepartmentAssignment struct {
+	ProductID      string     `json:"product_id"`
+	DepartmentID   string     `json:"department_id"`
+	DepartmentName string     `json:"department_name"`
+	AssignedBy     string     `json:"assigned_by"`
+	EffectiveFrom  time.Time  `json:"effective_from"`
+	EffectiveTo    *time.Time `json:"effective_to"`
+}
+
+type Department struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+func (s *Service) ListDepartments(ctx context.Context, principal auth.Principal) ([]Department, error) {
+	if err := s.authorizer.RequirePermission(ctx, principal, "products.view"); err != nil {
+		return nil, err
+	}
+	rows, err := s.db.Query(ctx, `SELECT id,name FROM consignment_departments WHERE company_id=$1 AND status='active' ORDER BY name,id`, principal.CompanyID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := make([]Department, 0)
+	for rows.Next() {
+		var item Department
+		if err = rows.Scan(&item.ID, &item.Name); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func (s *Service) ListDepartmentAssignments(ctx context.Context, principal auth.Principal, productID string) ([]DepartmentAssignment, error) {
+	if err := s.authorizer.RequirePermission(ctx, principal, "products.view"); err != nil {
+		return nil, err
+	}
+	productID = strings.TrimSpace(productID)
+	rows, err := s.db.Query(ctx, `SELECT a.product_id,a.department_id,d.name,a.assigned_by,a.effective_from,a.effective_to FROM product_department_assignments a JOIN consignment_departments d ON d.company_id=a.company_id AND d.id=a.department_id WHERE a.company_id=$1 AND ($2='' OR a.product_id::text=$2) ORDER BY a.product_id,a.effective_from DESC,a.id DESC`, principal.CompanyID, productID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := make([]DepartmentAssignment, 0)
+	for rows.Next() {
+		var item DepartmentAssignment
+		if err = rows.Scan(&item.ProductID, &item.DepartmentID, &item.DepartmentName, &item.AssignedBy, &item.EffectiveFrom, &item.EffectiveTo); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+// AssignDepartment changes future routing while historical Consignment lines retain their existing snapshot.
+func (s *Service) AssignDepartment(ctx context.Context, principal auth.Principal, productID string, input DepartmentAssignmentInput) error {
+	if err := s.authorizer.RequirePermission(ctx, principal, "products.manage"); err != nil {
+		return err
+	}
+	input.DepartmentID = strings.TrimSpace(input.DepartmentID)
+	if productID == "" || input.DepartmentID == "" {
+		return ErrInvalidInput
+	}
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	var current string
+	err = tx.QueryRow(ctx, `SELECT COALESCE(a.department_id::text,'') FROM products p LEFT JOIN product_department_assignments a ON a.company_id=p.company_id AND a.product_id=p.id AND a.effective_to IS NULL WHERE p.company_id=$1 AND p.id=$2 FOR UPDATE OF p`, principal.CompanyID, productID).Scan(&current)
+	if err != nil {
+		return mapDBError(err)
+	}
+	if current == input.DepartmentID {
+		return tx.Commit(ctx)
+	}
+	if _, err = tx.Exec(ctx, `UPDATE product_department_assignments SET effective_to=clock_timestamp() WHERE company_id=$1 AND product_id=$2 AND effective_to IS NULL`, principal.CompanyID, productID); err != nil {
+		return err
+	}
+	result, err := tx.Exec(ctx, `INSERT INTO product_department_assignments(company_id,product_id,department_id,assigned_by,effective_from) SELECT $1,p.id,d.id,$4,clock_timestamp() FROM products p JOIN consignment_departments d ON d.company_id=p.company_id WHERE p.company_id=$1 AND p.id=$2 AND d.id=$3 AND d.status='active'`, principal.CompanyID, productID, input.DepartmentID, principal.UserID)
+	if err != nil {
+		return mapDBError(err)
+	}
+	if result.RowsAffected() != 1 {
+		return ErrNotFound
+	}
+	if err = s.audit.Record(ctx, tx, principal.CompanyID, principal.UserID, "product.department_assigned", "product", productID, map[string]any{"department_id": input.DepartmentID, "previous_department_id": current}); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
 type Marketplace struct {
 	Key         string `json:"key"`
 	DisplayName string `json:"display_name"`

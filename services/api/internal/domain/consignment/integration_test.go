@@ -73,6 +73,7 @@ func setup(t *testing.T) *fixture {
 		t.Fatal(err)
 	}
 	f.secondDepartment = d2.ID
+	mustExec(t, db, `INSERT INTO product_department_assignments(company_id,product_id,department_id,assigned_by) VALUES($1,$2,$3,$4),($1,$5,$6,$4)`, f.company, f.product, f.department, user, f.secondProduct, f.secondDepartment)
 	if _, err = f.service.SetDepartmentMembers(ctx, f.principal, f.department, MembershipInput{EmployeeIDs: []string{f.workerEmployee}}); err != nil {
 		t.Fatal(err)
 	}
@@ -256,7 +257,7 @@ func TestConcurrentDifferentProductLinesBothCommit(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	item, _, err := f.service.Create(ctx, f.principal, CreateInput{OrderReference: "SO-MULTI", SourceType: "manual", Lines: []LineInput{{ProductID: f.product, DepartmentID: f.department, RequiredQuantity: 2}, {ProductID: f.secondProduct, DepartmentID: f.department, RequiredQuantity: 3}}, IdempotencyKey: "multi-create"})
+	item, _, err := f.service.Create(ctx, f.principal, CreateInput{OrderReference: "SO-MULTI", SourceType: "manual", Lines: []LineInput{{ProductID: f.product, DepartmentID: f.department, RequiredQuantity: 2}, {ProductID: f.secondProduct, DepartmentID: f.secondDepartment, RequiredQuantity: 3}}, IdempotencyKey: "multi-create"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -276,7 +277,7 @@ func TestConcurrentDifferentProductLinesBothCommit(t *testing.T) {
 		go func(index int, line Line) {
 			defer wg.Done()
 			<-start
-			_, _, runErr := f.service.UpdateProgress(ctx, f.worker, item.ID, line.ID, ProgressInput{ReadyQuantity: line.RequiredQuantity, ExpectedVersion: line.Version, IdempotencyKey: fmt.Sprintf("multi-progress-%d", index)})
+			_, _, runErr := f.service.UpdateProgress(ctx, f.principal, item.ID, line.ID, ProgressInput{ReadyQuantity: line.RequiredQuantity, ExpectedVersion: line.Version, IdempotencyKey: fmt.Sprintf("multi-progress-%d", index)})
 			results <- runErr
 		}(index, line)
 	}

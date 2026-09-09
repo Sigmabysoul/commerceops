@@ -55,6 +55,48 @@ func TestProductMasterPostgreSQL(t *testing.T) {
 		t.Fatalf("create product: %v", err)
 	}
 
+	t.Run("department reassignment preserves one active history", func(t *testing.T) {
+		var first, second string
+		mustScan(t, db, `INSERT INTO consignment_departments(company_id,name,created_by) VALUES($1,$2,$3) RETURNING id`, []any{companyOne, "Packing " + suffix, managerID}, &first)
+		mustScan(t, db, `INSERT INTO consignment_departments(company_id,name,created_by) VALUES($1,$2,$3) RETURNING id`, []any{companyOne, "Dispatch " + suffix, managerID}, &second)
+		if err := service.AssignDepartment(ctx, manager, productOne.ID, DepartmentAssignmentInput{DepartmentID: first}); err != nil {
+			t.Fatal(err)
+		}
+		if err := service.AssignDepartment(ctx, manager, productOne.ID, DepartmentAssignmentInput{DepartmentID: first}); err != nil {
+			t.Fatal(err)
+		}
+		start := make(chan struct{})
+		results := make(chan error, 2)
+		for _, departmentID := range []string{second, first} {
+			go func(id string) {
+				<-start
+				results <- service.AssignDepartment(ctx, manager, productOne.ID, DepartmentAssignmentInput{DepartmentID: id})
+			}(departmentID)
+		}
+		close(start)
+		for range 2 {
+			if runErr := <-results; runErr != nil {
+				t.Fatal(runErr)
+			}
+		}
+		items, err := service.ListDepartmentAssignments(ctx, manager, productOne.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		active := 0
+		for _, item := range items {
+			if item.EffectiveTo == nil {
+				active++
+			}
+		}
+		if active != 1 || len(items) < 2 || len(items) > 3 {
+			t.Fatalf("assignments=%#v", items)
+		}
+		if err := service.AssignDepartment(ctx, manager, productOne.ID, DepartmentAssignmentInput{DepartmentID: "00000000-0000-4000-8000-000000000000"}); !errors.Is(err, ErrNotFound) {
+			t.Fatalf("cross-company/missing department=%v", err)
+		}
+	})
+
 	t.Run("internal code uniqueness and tenant isolation", func(t *testing.T) {
 		if _, err := service.CreateProduct(ctx, manager, ProductInput{InternalCode: "GB-AVX-3B", Name: "Duplicate"}); !errors.Is(err, ErrConflict) {
 			t.Fatalf("expected conflict, got %v", err)
@@ -167,7 +209,7 @@ func cleanup(t *testing.T, db *pgxpool.Pool, companyOne, companyTwo string, user
 	t.Helper()
 	ctx := context.Background()
 	companies := []string{companyOne, companyTwo}
-	for _, table := range []string{"sku_mappings", "products", "audit_logs", "sessions", "module_entitlements", "company_user_roles", "role_permissions", "employees", "roles", "company_users"} {
+	for _, table := range []string{"sku_mappings", "product_department_assignments", "products", "consignment_departments", "audit_logs", "sessions", "module_entitlements", "company_user_roles", "role_permissions", "employees", "roles", "company_users"} {
 		if _, err := db.Exec(ctx, "DELETE FROM "+table+" WHERE company_id=ANY($1::uuid[])", companies); err != nil {
 			t.Errorf("cleanup %s: %v", table, err)
 		}
