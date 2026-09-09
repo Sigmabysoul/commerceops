@@ -1,11 +1,15 @@
 # Phase 17 — Departments and Product ownership
 
-Status: Future planning only — requires preceding verification and explicit owner authorization.
-Revision: 2026-09-07.
+Status: In progress — owner authorized implementation after verified Phase 16.
+Revision: 2026-09-10.
 
 ## Goal and work
 
 Reuse canonical departments from Consignment. Add effective-dated Product assignment/history and future routing.
+
+Implementation records authorized Product reassignment history, permits at most one active
+department, and requires new Consignment lines to use that current assignment. Existing lines
+remain unchanged so historical and in-flight routing is preserved.
 
 ## Boundaries
 

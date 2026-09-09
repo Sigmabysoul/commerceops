@@ -6,7 +6,7 @@ Phase 17 — Department ownership and operating boundaries.
 Status: IMPLEMENTATION_IN_PROGRESS.
 Phase 16 completed its local full verification gate on 2026-09-09. Phase 17 starts from that
 verified seller-account baseline and must complete its own verification before Phase 18.
-Branch: me/phase-16-single-business-seller-accounts.
+Branch: me/phase-17-departments-product-ownership.
 Checkout: /home/sigma/work/commerceops-next.
 
 ## Selected implementation baseline

@@ -273,6 +273,41 @@ paths:
         "200": {description: Updated product}
         "404": {$ref: "#/components/responses/Error"}
         "409": {$ref: "#/components/responses/Error"}
+  /api/v1/products/{product_id}/department:
+    parameters:
+      - {$ref: "#/components/parameters/ProductID"}
+    put:
+      operationId: assignProductDepartment
+      summary: Change the active department used for future Product routing
+      security: [{sessionCookie: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/DepartmentAssignmentInput"}
+      responses:
+        "200": {description: Department assignment recorded}
+        "400": {$ref: "#/components/responses/Error"}
+        "403": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+  /api/v1/product-departments:
+    get:
+      operationId: listProductDepartments
+      summary: List active canonical departments available for Product ownership
+      security: [{sessionCookie: []}]
+      responses:
+        "200": {description: Tenant-scoped active departments}
+        "403": {$ref: "#/components/responses/Error"}
+  /api/v1/product-department-assignments:
+    get:
+      operationId: listProductDepartmentAssignments
+      summary: List effective-dated Product department history
+      security: [{sessionCookie: []}]
+      parameters:
+        - {name: product_id, in: query, schema: {type: string, format: uuid}}
+      responses:
+        "200": {description: Tenant-scoped assignment history}
+        "403": {$ref: "#/components/responses/Error"}
   /api/v1/sku-mappings:
     get:
       operationId: listSkuMappings
@@ -1791,6 +1826,12 @@ components:
         pack_type: {type: [string, "null"]}
         unit_count: {type: [integer, "null"], minimum: 1}
         status: {type: string, enum: [active, inactive], default: active}
+    DepartmentAssignmentInput:
+      type: object
+      additionalProperties: false
+      required: [department_id]
+      properties:
+        department_id: {type: string, format: uuid}
     SkuMappingInput:
       type: object
       additionalProperties: false

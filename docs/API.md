@@ -65,11 +65,18 @@ Product Master endpoints use only the authenticated session company. No request 
 | GET | `/api/v1/marketplaces` | `products.view` | List normalized marketplace reference keys |
 | GET, POST | `/api/v1/products` | `products.view`, `products.manage` | Search/list or create canonical products |
 | GET, PATCH | `/api/v1/products/{product_id}` | `products.view`, `products.manage` | Read or update a product and its lifecycle status |
+| GET | `/api/v1/product-departments` | `products.view` | List active canonical departments available for ownership |
+| GET | `/api/v1/product-department-assignments` | `products.view` | List current and historical Product department assignments |
+| PUT | `/api/v1/products/{product_id}/department` | `products.manage` | Change the department used for future routing |
 | GET, POST | `/api/v1/sku-mappings` | `products.view`, `products.manage` | List or manually train SKU mappings |
 | PATCH | `/api/v1/sku-mappings/{mapping_id}` | `products.manage` | Edit or deactivate a mapping |
 | POST | `/api/v1/sku-mappings/resolve` | `products.view` | Resolve one exact marketplace/SKU identifier |
 
 SKU training and resolution require an active seller account matching the selected marketplace. Resolution trims surrounding whitespace and then performs a case-sensitive exact match within the authenticated company, seller account, and marketplace. It never performs fuzzy, substring, case-insensitive, or fallback matching. A successful lookup returns `status: "resolved"` with its mapping and product; every unknown, inactive, or differently-cased identifier returns `status: "unresolved"` without guessing.
+
+Product department changes are effective-dated and tenant-scoped. New Consignment lines must
+use the Product's active department; existing lines retain their stored department when the
+Product is reassigned.
 
 The OpenAPI source is `docs/openapi.yaml`. It must be updated whenever the public API contract changes.
 

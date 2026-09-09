@@ -38,12 +38,12 @@ inside one application; it does not imply microservices.
 
 ## Product Master (`internal/domain/product`)
 
-- **Owns:** canonical tenant products, lifecycle state, marketplace SKU
-  mappings, deterministic exact resolution, and Product Master training.
+- **Owns:** canonical tenant products, lifecycle state, effective-dated department
+  ownership, marketplace SKU mappings, deterministic exact resolution, and Product Master training.
 - **Does not own:** marketplace document parsing, order ingestion, inventory
   balances, or worker assignment.
-- **Allowed dependencies:** authenticated principals, authorization, audit, and
-  normalized marketplace keys.
+- **Allowed dependencies:** canonical Consignment department identities, authenticated
+  principals, authorization, audit, and normalized marketplace keys.
 - **Forbidden leakage:** marketplace SKU strings must never become canonical
   product identity, and marketplace processors must not invent products.
 
@@ -200,7 +200,7 @@ ADR-0006 changes package locations, not responsibility. app retains composition;
 Automation retains scheduling; Marketplace retains shared orchestration. Authentication,
 authorization, audit, configuration, health and printer-agent mechanics move to platform.
 
-Phase 17 may introduce department ownership around the existing Consignment-era
-Department identity, but Phase 15 does not transfer that responsibility. Phase 20 will
+Phase 17 introduced Product ownership around the existing Consignment-era Department
+identity without duplicating it. Phase 20 will
 own Trace Boxes, custody and trace history without Inventory balances. Seller-account
 business state belongs to Phase 16, not to printer-agent/workstation infrastructure.

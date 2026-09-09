@@ -138,3 +138,10 @@ context into batches, batch members, cancellations, return cases, and marketplac
 documents. Child records inherit the account only from their normalized marketplace order;
 batches reject a mixed-account order selection. Composite foreign keys keep each workflow
 record aligned with its parent account without changing inventory ownership or movement rules.
+
+## Phase 17 Product department ownership
+
+Migration `000026_product_department_ownership` reuses `consignment_departments` and adds
+effective-dated `product_department_assignments`. A partial unique index permits at most one
+active assignment per company and Product. Reassignment closes the previous interval while
+existing `consignment_lines.department_id` values remain immutable snapshots of their routing.
