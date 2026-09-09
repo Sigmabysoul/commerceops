@@ -3,11 +3,16 @@
 ## Active phase
 
 Phase 18 — JioMart marketplace integration.
-Status: IMPLEMENTATION_IN_PROGRESS.
+Status: BLOCKED_AWAITING_REPRESENTATIVE_EVIDENCE.
 Phase 17 completed its local PostgreSQL-backed full verification gate on 2026-09-10. Phase 18
 starts from that verified Product department-ownership baseline.
 Branch: me/phase-18-jiomart.
 Checkout: /home/sigma/work/commerceops-next.
+
+The Phase 17 baseline was reproduced on 2026-09-10 using a fresh disposable PostgreSQL
+database migrated through `000026`; PostgreSQL-backed `make verify-full` passed. Supplied
+private files were classified as Flipkart, Snapdeal, Amazon and Myntra evidence. None is an
+authoritative JioMart source, so no JioMart parser, API, schema or UI change has been made.
 
 ## Selected implementation baseline
 
@@ -34,5 +39,7 @@ Departments and traceability remain future work.
 
 ## Next gate
 
-Implement and verify Phase 18's approved JioMart scope. No production deployment
-or production-readiness claim is authorized.
+Obtain a representative original JioMart order export or shipping-label/invoice PDF, sanitize
+it into committed regression fixtures, then implement and verify Phase 18's approved scope.
+Do not infer fields or geometry from other marketplaces. No production deployment or
+production-readiness claim is authorized.
