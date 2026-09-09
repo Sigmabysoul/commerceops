@@ -2,11 +2,11 @@
 
 ## Active phase
 
-Phase 17 — Department ownership and operating boundaries.
+Phase 18 — JioMart marketplace integration.
 Status: IMPLEMENTATION_IN_PROGRESS.
-Phase 16 completed its local full verification gate on 2026-09-09. Phase 17 starts from that
-verified seller-account baseline and must complete its own verification before Phase 18.
-Branch: me/phase-17-departments-product-ownership.
+Phase 17 completed its local PostgreSQL-backed full verification gate on 2026-09-10. Phase 18
+starts from that verified Product department-ownership baseline.
+Branch: me/phase-18-jiomart.
 Checkout: /home/sigma/work/commerceops-next.
 
 ## Selected implementation baseline
@@ -34,5 +34,5 @@ Departments and traceability remain future work.
 
 ## Next gate
 
-Implement and verify Phase 17's approved department-ownership scope. No production deployment
+Implement and verify Phase 18's approved JioMart scope. No production deployment
 or production-readiness claim is authorized.
