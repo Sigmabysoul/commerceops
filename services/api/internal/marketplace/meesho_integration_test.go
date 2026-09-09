@@ -4,6 +4,7 @@ package marketplace
 import (
 	"context"
 	"errors"
+	"github.com/commerceops/commerceops/services/api/internal/testfixture"
 	"os"
 	"path/filepath"
 	"testing"
@@ -17,7 +18,7 @@ func TestMeeshoBatchAPostgreSQLIntegration(t *testing.T) {
 	f := setupPhaseThree(t)
 	ctx := context.Background()
 	mustExecP3(t, f.db, `INSERT INTO module_entitlements(company_id,module_key,enabled) VALUES($1,'meesho',true),($2,'meesho',true)`, f.companyA, f.companyB)
-	mustExecP3(t, f.db, `INSERT INTO sku_mappings(company_id,marketplace_key,product_id,sku) VALUES($1,'meesho',$2,'MEESHO-KNOWN')`, f.companyA, f.productID)
+	mustExecP3(t, f.db, `INSERT INTO sku_mappings(company_id,marketplace_key,product_id,sku,marketplace_account_id) VALUES($1,'meesho',$2,'MEESHO-KNOWN',(SELECT id FROM marketplace_accounts WHERE company_id=$1 AND marketplace_key='meesho' AND internal_key='fixture_'||'meesho'))`, f.companyA, f.productID)
 	service, err := newServiceForProcessor(f.db, authorization.NewService(f.db), f.service.storage, f.extractor, meeshoProcessor())
 	if err != nil {
 		t.Fatal(err)
@@ -26,7 +27,7 @@ func TestMeeshoBatchAPostgreSQLIntegration(t *testing.T) {
 	t.Run("entitlement is required before persistence", func(t *testing.T) {
 		pdf := f.register("meesho-denied", pdfextractor.Page{Number: 1, Text: meeshoText("100000000001_1", "MEESHOAWBDENIED", "MEESHO-KNOWN", "1")})
 		mustExecP3(t, f.db, `UPDATE module_entitlements SET enabled=false WHERE company_id=$1 AND module_key='meesho'`, f.companyA)
-		if _, uploadErr := service.Upload(ctx, f.principalA, "denied.pdf", pdf); !errors.Is(uploadErr, authorization.ErrModuleUnavailable) {
+		if _, uploadErr := service.Upload(ctx, f.principalA, "denied.pdf", pdf, testfixture.Account(t, f.db, f.principalA.CompanyID, "meesho")); !errors.Is(uploadErr, authorization.ErrModuleUnavailable) {
 			t.Fatalf("upload error=%v", uploadErr)
 		}
 		mustExecP3(t, f.db, `UPDATE module_entitlements SET enabled=true WHERE company_id=$1 AND module_key='meesho'`, f.companyA)
@@ -41,7 +42,7 @@ func TestMeeshoBatchAPostgreSQLIntegration(t *testing.T) {
 		mustScanP3(t, f.db, `SELECT id FROM roles WHERE company_id=$1 AND name='Flipkart Operator'`, []any{f.companyA}, &roleID)
 		mustExecP3(t, f.db, `DELETE FROM role_permissions WHERE company_id=$1 AND role_id=$2 AND permission_key='labels.process'`, f.companyA, roleID)
 		pdf := f.register("meesho-permission-denied", pdfextractor.Page{Number: 1, Text: meeshoText("100000000001_2", "MEESHOAWBDENIED2", "MEESHO-KNOWN", "1")})
-		if _, uploadErr := service.Upload(ctx, f.principalA, "permission-denied.pdf", pdf); !errors.Is(uploadErr, authorization.ErrPermissionDenied) {
+		if _, uploadErr := service.Upload(ctx, f.principalA, "permission-denied.pdf", pdf, testfixture.Account(t, f.db, f.principalA.CompanyID, "meesho")); !errors.Is(uploadErr, authorization.ErrPermissionDenied) {
 			t.Fatalf("upload error=%v", uploadErr)
 		}
 		mustExecP3(t, f.db, `INSERT INTO role_permissions(company_id,role_id,permission_key) VALUES($1,$2,'labels.process')`, f.companyA, roleID)
@@ -55,7 +56,7 @@ func TestMeeshoBatchAPostgreSQLIntegration(t *testing.T) {
 	known := f.register("meesho-known", pdfextractor.Page{Number: 6, ExtractionMethod: "text", Text: meeshoText("100000000002_1", "MEESHOAWBKNOWN", "MEESHO-KNOWN", "2")})
 	var inventoryBefore int
 	mustScanP3(t, f.db, `SELECT count(*) FROM inventory_transactions WHERE company_id=$1`, []any{f.companyA}, &inventoryBefore)
-	uploaded, err := service.Upload(ctx, f.principalA, "meesho-known.pdf", known)
+	uploaded, err := service.Upload(ctx, f.principalA, "meesho-known.pdf", known, testfixture.Account(t, f.db, f.principalA.CompanyID, "meesho"))
 	if err != nil || uploaded.Job.ParserVersion != meesho.ParserVersion {
 		t.Fatalf("upload=%#v err=%v", uploaded, err)
 	}
@@ -86,14 +87,14 @@ func TestMeeshoBatchAPostgreSQLIntegration(t *testing.T) {
 	if _, retryErr := service.Retry(ctx, f.principalB, uploaded.Job.ID); !errors.Is(retryErr, ErrNotFound) {
 		t.Fatalf("cross-tenant retry=%v", retryErr)
 	}
-	duplicate, err := service.Upload(ctx, f.principalA, "same-source.pdf", known)
+	duplicate, err := service.Upload(ctx, f.principalA, "same-source.pdf", known, testfixture.Account(t, f.db, f.principalA.CompanyID, "meesho"))
 	if err != nil || !duplicate.DuplicateSource || duplicate.Job.ID != uploaded.Job.ID {
 		t.Fatalf("duplicate=%#v err=%v", duplicate, err)
 	}
 
 	t.Run("unknown SKU and missing quantity remain review values", func(t *testing.T) {
 		pdf := f.register("meesho-review", pdfextractor.Page{Number: 9, Text: meeshoText("100000000003_1", "MEESHOAWBREVIEW", "MEESHO-UNKNOWN", "")})
-		result, uploadErr := service.Upload(ctx, f.principalA, "review.pdf", pdf)
+		result, uploadErr := service.Upload(ctx, f.principalA, "review.pdf", pdf, testfixture.Account(t, f.db, f.principalA.CompanyID, "meesho"))
 		if uploadErr != nil {
 			t.Fatal(uploadErr)
 		}
@@ -112,14 +113,14 @@ func TestMeeshoBatchAPostgreSQLIntegration(t *testing.T) {
 
 	t.Run("retry uses newly trained exact Meesho SKU mapping", func(t *testing.T) {
 		pdf := f.register("meesho-retry", pdfextractor.Page{Number: 3, Text: meeshoText("100000000004_1", "MEESHOAWBRETRY", "MEESHO-RETRY", "4")})
-		result, uploadErr := service.Upload(ctx, f.principalA, "retry.pdf", pdf)
+		result, uploadErr := service.Upload(ctx, f.principalA, "retry.pdf", pdf, testfixture.Account(t, f.db, f.principalA.CompanyID, "meesho"))
 		if uploadErr != nil {
 			t.Fatal(uploadErr)
 		}
 		if _, processErr := service.processNext(); processErr != nil {
 			t.Fatal(processErr)
 		}
-		mustExecP3(t, f.db, `INSERT INTO sku_mappings(company_id,marketplace_key,product_id,sku) VALUES($1,'meesho',$2,'MEESHO-RETRY')`, f.companyA, f.productID)
+		mustExecP3(t, f.db, `INSERT INTO sku_mappings(company_id,marketplace_key,product_id,sku,marketplace_account_id) VALUES($1,'meesho',$2,'MEESHO-RETRY',(SELECT id FROM marketplace_accounts WHERE company_id=$1 AND marketplace_key='meesho' AND internal_key='fixture_'||'meesho'))`, f.companyA, f.productID)
 		job, retryErr := service.Retry(ctx, f.principalA, result.Job.ID)
 		if retryErr != nil || job.Status != "queued" || job.ParserVersion != meesho.ParserVersion {
 			t.Fatalf("job=%#v err=%v", job, retryErr)
@@ -135,7 +136,7 @@ func TestMeeshoBatchAPostgreSQLIntegration(t *testing.T) {
 
 	t.Run("duplicate Meesho business identifier is visible", func(t *testing.T) {
 		pdf := f.register("meesho-business-duplicate", pdfextractor.Page{Number: 2, Text: meeshoText("100000000002_1", "MEESHOAWBOTHER", "MEESHO-KNOWN", "1")})
-		result, uploadErr := service.Upload(ctx, f.principalA, "business-duplicate.pdf", pdf)
+		result, uploadErr := service.Upload(ctx, f.principalA, "business-duplicate.pdf", pdf, testfixture.Account(t, f.db, f.principalA.CompanyID, "meesho"))
 		if uploadErr != nil {
 			t.Fatal(uploadErr)
 		}

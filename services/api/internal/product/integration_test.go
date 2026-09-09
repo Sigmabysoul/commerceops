@@ -11,6 +11,7 @@ import (
 
 	"github.com/commerceops/commerceops/services/api/internal/auth"
 	"github.com/commerceops/commerceops/services/api/internal/authorization"
+	"github.com/commerceops/commerceops/services/api/internal/testfixture"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -28,7 +29,9 @@ func TestProductMasterPostgreSQL(t *testing.T) {
 	suffix := fmt.Sprint(time.Now().UnixNano())
 	var companyOne, companyTwo, managerID, viewerID, roleID string
 	mustScan(t, db, `INSERT INTO companies(name) VALUES($1) RETURNING id`, []any{"Products A " + suffix}, &companyOne)
+	testfixture.SeedAccounts(t, db, companyOne)
 	mustScan(t, db, `INSERT INTO companies(name) VALUES($1) RETURNING id`, []any{"Products B " + suffix}, &companyTwo)
+	testfixture.SeedAccounts(t, db, companyTwo)
 	mustScan(t, db, `INSERT INTO users(email,password_hash) VALUES($1,'test-hash') RETURNING id`, []any{"product-manager-" + suffix + "@example.test"}, &managerID)
 	mustScan(t, db, `INSERT INTO users(email,password_hash) VALUES($1,'test-hash') RETURNING id`, []any{"product-viewer-" + suffix + "@example.test"}, &viewerID)
 	defer cleanup(t, db, companyOne, companyTwo, managerID, viewerID)
@@ -68,12 +71,12 @@ func TestProductMasterPostgreSQL(t *testing.T) {
 		if len(items) != 1 || items[0].ID != productOne.ID {
 			t.Fatalf("cross-tenant products visible: %#v", items)
 		}
-		if _, err := service.CreateMapping(ctx, manager, MappingInput{MarketplaceKey: "flipkart", ProductID: otherProduct, SKU: "CROSS-TENANT"}); !errors.Is(err, ErrInvalidInput) {
+		if _, err := service.CreateMapping(ctx, manager, MappingInput{MarketplaceAccountID: testfixture.Account(t, db, companyOne, "flipkart"), MarketplaceKey: "flipkart", ProductID: otherProduct, SKU: "CROSS-TENANT"}); !errors.Is(err, ErrInvalidInput) {
 			t.Fatalf("cross-tenant mapping result: %v", err)
 		}
 	})
 
-	mapping, err := service.CreateMapping(ctx, manager, MappingInput{MarketplaceKey: "flipkart", ProductID: productOne.ID, SKU: "  ABC-XYZ-123  ", QuantityMultiplier: 2, InterpretationMetadata: map[string]any{"note": "two packs"}})
+	mapping, err := service.CreateMapping(ctx, manager, MappingInput{MarketplaceAccountID: testfixture.Account(t, db, companyOne, "flipkart"), MarketplaceKey: "flipkart", ProductID: productOne.ID, SKU: "  ABC-XYZ-123  ", QuantityMultiplier: 2, InterpretationMetadata: map[string]any{"note": "two packs"}})
 	if err != nil {
 		t.Fatalf("create mapping: %v", err)
 	}
@@ -82,7 +85,7 @@ func TestProductMasterPostgreSQL(t *testing.T) {
 	}
 
 	t.Run("deterministic resolution", func(t *testing.T) {
-		resolved, err := service.Resolve(ctx, manager, "flipkart", "ABC-XYZ-123")
+		resolved, err := service.Resolve(ctx, manager, "flipkart", "ABC-XYZ-123", testfixture.Account(t, db, companyOne, "flipkart"))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -90,7 +93,7 @@ func TestProductMasterPostgreSQL(t *testing.T) {
 			t.Fatalf("unexpected resolution: %#v", resolved)
 		}
 		for _, request := range [][2]string{{"amazon", "ABC-XYZ-123"}, {"flipkart", "abc-xyz-123"}, {"flipkart", "unknown"}} {
-			result, err := service.Resolve(ctx, manager, request[0], request[1])
+			result, err := service.Resolve(ctx, manager, request[0], request[1], testfixture.Account(t, db, companyOne, request[0]))
 			if err != nil || result.Status != "unresolved" || result.Product != nil {
 				t.Fatalf("expected unresolved for %#v: %#v %v", request, result, err)
 			}
@@ -98,21 +101,21 @@ func TestProductMasterPostgreSQL(t *testing.T) {
 	})
 
 	t.Run("ambiguous active mapping is rejected", func(t *testing.T) {
-		if _, err := service.CreateMapping(ctx, manager, MappingInput{MarketplaceKey: "flipkart", ProductID: productOne.ID, SKU: "ABC-XYZ-123"}); !errors.Is(err, ErrConflict) {
+		if _, err := service.CreateMapping(ctx, manager, MappingInput{MarketplaceAccountID: testfixture.Account(t, db, companyOne, "flipkart"), MarketplaceKey: "flipkart", ProductID: productOne.ID, SKU: "ABC-XYZ-123"}); !errors.Is(err, ErrConflict) {
 			t.Fatalf("expected conflict, got %v", err)
 		}
 	})
 
 	t.Run("inactive mapping and product do not resolve", func(t *testing.T) {
-		inactive, err := service.UpdateMapping(ctx, manager, mapping.ID, MappingInput{MarketplaceKey: mapping.MarketplaceKey, ProductID: mapping.ProductID, SKU: mapping.SKU, QuantityMultiplier: mapping.QuantityMultiplier, InterpretationMetadata: map[string]any{}, Status: "inactive"})
+		inactive, err := service.UpdateMapping(ctx, manager, mapping.ID, MappingInput{MarketplaceAccountID: testfixture.Account(t, db, companyOne, "flipkart"), MarketplaceKey: mapping.MarketplaceKey, ProductID: mapping.ProductID, SKU: mapping.SKU, QuantityMultiplier: mapping.QuantityMultiplier, InterpretationMetadata: map[string]any{}, Status: "inactive"})
 		if err != nil || inactive.Status != "inactive" {
 			t.Fatalf("deactivate mapping: %#v %v", inactive, err)
 		}
-		result, err := service.Resolve(ctx, manager, "flipkart", mapping.SKU)
+		result, err := service.Resolve(ctx, manager, "flipkart", mapping.SKU, testfixture.Account(t, db, companyOne, "flipkart"))
 		if err != nil || result.Status != "unresolved" {
 			t.Fatalf("inactive mapping resolved: %#v %v", result, err)
 		}
-		mapping, err = service.CreateMapping(ctx, manager, MappingInput{MarketplaceKey: "flipkart", ProductID: productOne.ID, SKU: mapping.SKU})
+		mapping, err = service.CreateMapping(ctx, manager, MappingInput{MarketplaceAccountID: testfixture.Account(t, db, companyOne, "flipkart"), MarketplaceKey: "flipkart", ProductID: productOne.ID, SKU: mapping.SKU})
 		if err != nil {
 			t.Fatalf("replace inactive mapping: %v", err)
 		}
@@ -120,7 +123,7 @@ func TestProductMasterPostgreSQL(t *testing.T) {
 		if err != nil {
 			t.Fatalf("deactivate product: %v", err)
 		}
-		result, err = service.Resolve(ctx, manager, "flipkart", mapping.SKU)
+		result, err = service.Resolve(ctx, manager, "flipkart", mapping.SKU, testfixture.Account(t, db, companyOne, "flipkart"))
 		if err != nil || result.Status != "unresolved" {
 			t.Fatalf("inactive product resolved: %#v %v", result, err)
 		}
@@ -129,7 +132,7 @@ func TestProductMasterPostgreSQL(t *testing.T) {
 	t.Run("same SKU is independent across companies", func(t *testing.T) {
 		var productTwo string
 		mustScan(t, db, `INSERT INTO products(company_id,internal_code,name) VALUES($1,'OTHER','Other') RETURNING id`, []any{companyTwo}, &productTwo)
-		mustExec(t, db, `INSERT INTO sku_mappings(company_id,marketplace_key,product_id,sku) VALUES($1,'flipkart',$2,'ABC-XYZ-123')`, companyTwo, productTwo)
+		mustExec(t, db, `INSERT INTO sku_mappings(company_id,marketplace_key,product_id,sku,marketplace_account_id) VALUES($1,'flipkart',$2,'ABC-XYZ-123',(SELECT id FROM marketplace_accounts WHERE company_id=$1 AND marketplace_key='flipkart' AND internal_key='fixture_'||'flipkart'))`, companyTwo, productTwo)
 		var count int
 		if err := db.QueryRow(ctx, `SELECT count(*) FROM sku_mappings WHERE sku='ABC-XYZ-123'`).Scan(&count); err != nil || count != 3 {
 			t.Fatalf("independent mappings count=%d err=%v", count, err)
@@ -167,7 +170,7 @@ func cleanup(t *testing.T, db *pgxpool.Pool, companyOne, companyTwo string, user
 	t.Helper()
 	ctx := context.Background()
 	companies := []string{companyOne, companyTwo}
-	for _, table := range []string{"sku_mappings", "products", "audit_logs", "sessions", "module_entitlements", "company_user_roles", "role_permissions", "employees", "roles", "company_users"} {
+	for _, table := range []string{"sku_mappings", "products", "audit_logs", "sessions", "module_entitlements", "company_user_roles", "role_permissions", "employees", "roles", "company_users", "marketplace_accounts", "business_identities"} {
 		if _, err := db.Exec(ctx, "DELETE FROM "+table+" WHERE company_id=ANY($1::uuid[])", companies); err != nil {
 			t.Errorf("cleanup %s: %v", table, err)
 		}

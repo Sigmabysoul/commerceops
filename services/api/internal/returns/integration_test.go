@@ -16,6 +16,7 @@ import (
 	"github.com/commerceops/commerceops/services/api/internal/auth"
 	"github.com/commerceops/commerceops/services/api/internal/authorization"
 	"github.com/commerceops/commerceops/services/api/internal/inventory"
+	"github.com/commerceops/commerceops/services/api/internal/testfixture"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -45,7 +46,9 @@ func setup(t *testing.T) *fixture {
 	f := &fixture{db: db}
 	suffix := fmt.Sprint(time.Now().UnixNano())
 	mustScan(t, db, `INSERT INTO companies(name) VALUES($1) RETURNING id`, []any{"Returns A " + suffix}, &f.company)
+	testfixture.SeedAccounts(t, db, f.company)
 	mustScan(t, db, `INSERT INTO companies(name) VALUES($1) RETURNING id`, []any{"Returns B " + suffix}, &f.otherCompany)
+	testfixture.SeedAccounts(t, db, f.otherCompany)
 	mustScan(t, db, `INSERT INTO users(email,password_hash) VALUES($1,'test') RETURNING id`, []any{"returns-" + suffix + "@example.test"}, &f.user)
 	mustExec(t, db, `INSERT INTO company_users(company_id,user_id) VALUES($1,$3),($2,$3)`, f.company, f.otherCompany, f.user)
 	mustScan(t, db, `INSERT INTO roles(company_id,name) VALUES($1,'Returns Operator') RETURNING id`, []any{f.company}, &f.role)
@@ -63,7 +66,7 @@ func setup(t *testing.T) *fixture {
 	f.concurrentOrder, f.concurrentItem = createOrder(t, db, f.company, f.user, f.product, "amazon", "171-7654321-7654321", 3, "c")
 	f.otherOrder, _ = createOrder(t, db, f.otherCompany, f.user, otherProduct, "flipkart", "OTHER-"+suffix, 1, "d")
 	var batch string
-	mustScan(t, db, `INSERT INTO batches(company_id,marketplace_key,status,created_by,idempotency_key,request_hash,ready_at) VALUES($1,'amazon','ready',$2,$3,$4,now()) RETURNING id`, []any{f.company, f.user, "returns-outbound-" + suffix, fmt.Sprintf("%064x", 91)}, &batch)
+	mustScan(t, db, `INSERT INTO batches(company_id,marketplace_key,status,created_by,idempotency_key,request_hash,ready_at,marketplace_account_id) VALUES($1,'amazon','ready',$2,$3,$4,now(),(SELECT id FROM marketplace_accounts WHERE company_id=$1 AND marketplace_key='amazon' AND internal_key='fixture_'||'amazon')) RETURNING id`, []any{f.company, f.user, "returns-outbound-" + suffix, fmt.Sprintf("%064x", 91)}, &batch)
 	mustExec(t, db, `INSERT INTO batch_members(company_id,batch_id,marketplace_order_id,position) VALUES($1,$2,$3,1)`, f.company, batch, f.amazonOrder)
 	mustExec(t, db, `INSERT INTO inventory_outbound_events(company_id,batch_id,actor_user_id,idempotency_key,request_hash) VALUES($1,$2,$3,$4,$5)`, f.company, batch, f.user, "returns-outbound-event-"+suffix, fmt.Sprintf("%064x", 92))
 	f.principal = auth.Principal{CompanyID: f.company, UserID: f.user}
@@ -483,7 +486,7 @@ func createOrder(t *testing.T, db *pgxpool.Pool, company, user, product, marketp
 	t.Helper()
 	suffix := fmt.Sprint(time.Now().UnixNano())
 	var source, job, order, item string
-	mustScan(t, db, `INSERT INTO source_files(company_id,marketplace_key,storage_key,original_filename,content_type,size_bytes,sha256,uploaded_by) VALUES($1,$2,$3,$4,'application/pdf',1,$5,$6) RETURNING id`, []any{company, marketplace, marketplace + "/returns/" + suffix, marketplace + ".pdf", strings.Repeat(hashByte, 64), user}, &source)
+	mustScan(t, db, `INSERT INTO source_files(company_id,marketplace_key,storage_key,original_filename,content_type,size_bytes,sha256,uploaded_by,marketplace_account_id) VALUES($1,$2,$3,$4,'application/pdf',1,$5,$6,(SELECT id FROM marketplace_accounts WHERE company_id=$1 AND marketplace_key=$2 AND internal_key='fixture_'||$2)) RETURNING id`, []any{company, marketplace, marketplace + "/returns/" + suffix, marketplace + ".pdf", strings.Repeat(hashByte, 64), user}, &source)
 	mustScan(t, db, `INSERT INTO processing_jobs(company_id,source_file_id,marketplace_key,status,parser_version,total_pages,processed_pages) VALUES($1,$2,$3,'processed','returns-test',1,1) RETURNING id`, []any{company, source, marketplace}, &job)
 	mustScan(t, db, `INSERT INTO marketplace_orders(company_id,marketplace_key,source_file_id,processing_job_id,source_page,marketplace_order_id,status,parser_version) VALUES($1,$2,$3,$4,1,$5,'resolved','returns-test') RETURNING id`, []any{company, marketplace, source, job, externalID}, &order)
 	mustScan(t, db, `INSERT INTO marketplace_order_items(company_id,order_id,raw_sku,product_id,quantity,quantity_source,resolution_status) VALUES($1,$2,'RETURN-SKU',$3,$4,'extracted','resolved') RETURNING id`, []any{company, order, product, quantity}, &item)

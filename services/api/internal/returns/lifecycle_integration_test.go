@@ -355,7 +355,7 @@ func TestCancellationBlocksBatchAndSerializesWithOutbound(t *testing.T) {
 func readyBatch(t *testing.T, f *fixture, orderID, key string) string {
 	t.Helper()
 	var batchID string
-	mustScan(t, f.db, `INSERT INTO batches(company_id,marketplace_key,status,created_by,idempotency_key,request_hash,ready_at) VALUES($1,'flipkart','ready',$2,$3,$4,now()) RETURNING id`, []any{f.company, f.user, key + "-" + f.company, fmt.Sprintf("%064x", time.Now().UnixNano())}, &batchID)
+	mustScan(t, f.db, `INSERT INTO batches(company_id,marketplace_key,status,created_by,idempotency_key,request_hash,ready_at,marketplace_account_id) VALUES($1,'flipkart','ready',$2,$3,$4,now(),(SELECT id FROM marketplace_accounts WHERE company_id=$1 AND marketplace_key='flipkart' AND internal_key='fixture_'||'flipkart')) RETURNING id`, []any{f.company, f.user, key + "-" + f.company, fmt.Sprintf("%064x", time.Now().UnixNano())}, &batchID)
 	mustExec(t, f.db, `INSERT INTO batch_members(company_id,batch_id,marketplace_order_id,position) VALUES($1,$2,$3,1)`, f.company, batchID, orderID)
 	return batchID
 }

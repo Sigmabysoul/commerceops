@@ -1,62 +1,60 @@
 # AI-Assisted Engineering Workflow
 
-CommerceOps uses AI tools as constrained engineering contributors. Product
-authority, approved architecture, domain rules, and phase gates remain the
-source of truth.
+CommerceOps uses AI tools as constrained contributors.
 
-## Review and approval flow
+Authoritative sources:
+- product-owner decisions
+- MASTER_SPEC.md
+- DOMAIN_RULES.md
+- MODULES.md
+- CURRENT_STATE.md
+- approved Phase documents / ADRs
 
-```text
-User / product owner
-→ architecture and scope review
-→ Codex implementation
-→ automated verification
-→ external architecture review
-→ optional Gemini or Claude second review for risky work
-→ approval
-→ next phase
-```
+## Responsibilities
 
-External review is a gate, not a formality. A successful build does not approve
-architecture, business behavior, or a phase transition. Secondary AI review is
-useful for security-sensitive, tenant-sensitive, schema-heavy, or otherwise
-risky changes, but it does not replace owner approval.
+### Codex
+Primary implementation agent:
+- code
+- migrations
+- tests
+- refactors
+- frontend/backend changes
+- CI fixes
 
-## Implementation lifecycle
+### ChatGPT
+Primary architecture/review agent:
+- architecture
+- Phase planning
+- repo review
+- approval gates
+- integration design
+- debugging strategy
+- Codex prompts
 
-Every implementation follows this lifecycle:
+### Gemini / Google AI Studio
+Use when it has an advantage:
+- many screenshots/PDFs/images
+- marketplace label/invoice comparison
+- visual anchor/layout analysis
+- UI screenshot critique
+- long multimodal context
+- structured extraction experiments
+- sanitized fixture ideation
+- independent second review
 
-```text
+Gemini output is advisory unless an approved Phase explicitly introduces runtime AI.
+
+Deterministic parsing remains preferred for stable business identifiers/layouts.
+
+## Lifecycle
+
 READ
 → PLAN
-→ IMPLEMENT SMALL BATCH
+→ IMPLEMENT COHESIVE BATCH
 → TEST
 → SELF-REVIEW
 → COMMIT
 → REPORT
 → STOP
-```
 
-- **READ:** Read `AGENTS.md`, the source-of-truth documents, the active phase
-  specification, applicable module documentation, and the existing code.
-- **PLAN:** State affected modules/files, schema and API impact, architecture
-  risks, required tests, and active-phase compliance before broad work begins.
-- **IMPLEMENT SMALL BATCH:** Make the smallest coherent change. Phases must be
-  delivered incrementally, never as uncontrolled large rewrites.
-- **TEST:** Run checks appropriate to the change. Clearly distinguish passed,
-  failed, skipped, and unexecuted tests.
-- **SELF-REVIEW:** Inspect the diff for tenant isolation, module ownership,
-  domain invariants, phase scope, secrets, unrelated edits, and documentation
-  drift.
-- **COMMIT:** Create a focused commit only when requested or authorized. Do not
-  mix unrelated work into it.
-- **REPORT:** Use the completion-report format required by `AGENTS.md`.
-- **STOP:** Do not automatically begin another task or phase.
-
-## Phase discipline
-
-Only the active phase may be implemented. Future phase documents are design
-references until the current phase passes its review gate and the owner
-explicitly authorizes the next phase. If a requested implementation requires a
-foundational architecture change, stop and request an approved ADR rather than
-silently expanding scope.
+Never automatically start the next Phase.

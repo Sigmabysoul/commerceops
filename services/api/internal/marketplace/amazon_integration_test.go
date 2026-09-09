@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/commerceops/commerceops/services/api/internal/testfixture"
 	"os"
 	"path/filepath"
 	"testing"
@@ -19,7 +20,7 @@ func TestAmazonBatchBPostgreSQLIntegration(t *testing.T) {
 	f := setupPhaseThree(t)
 	ctx := context.Background()
 	mustExecP3(t, f.db, `INSERT INTO module_entitlements(company_id,module_key,enabled) VALUES($1,'amazon',true),($2,'amazon',true)`, f.companyA, f.companyB)
-	mustExecP3(t, f.db, `INSERT INTO sku_mappings(company_id,marketplace_key,product_id,sku) VALUES($1,'amazon',$2,'AMZ-KNOWN')`, f.companyA, f.productID)
+	mustExecP3(t, f.db, `INSERT INTO sku_mappings(company_id,marketplace_key,product_id,sku,marketplace_account_id) VALUES($1,'amazon',$2,'AMZ-KNOWN',(SELECT id FROM marketplace_accounts WHERE company_id=$1 AND marketplace_key='amazon' AND internal_key='fixture_'||'amazon'))`, f.companyA, f.productID)
 	service, err := newServiceForProcessor(f.db, authorization.NewService(f.db), f.service.storage, f.extractor, amazonProcessor())
 	if err != nil {
 		t.Fatal(err)
@@ -28,7 +29,7 @@ func TestAmazonBatchBPostgreSQLIntegration(t *testing.T) {
 	t.Run("Amazon entitlement is required before persistence", func(t *testing.T) {
 		pdf := f.register("amazon-denied", pdfextractor.Page{Number: 1, Text: amazonText("406-1000000-1000000", "TRACKDENIED1", "AMZ-KNOWN", "1")})
 		mustExecP3(t, f.db, `UPDATE module_entitlements SET enabled=false WHERE company_id=$1 AND module_key='amazon'`, f.companyA)
-		if _, uploadErr := service.Upload(ctx, f.principalA, "denied.pdf", pdf); !errors.Is(uploadErr, authorization.ErrModuleUnavailable) {
+		if _, uploadErr := service.Upload(ctx, f.principalA, "denied.pdf", pdf, testfixture.Account(t, f.db, f.principalA.CompanyID, "amazon")); !errors.Is(uploadErr, authorization.ErrModuleUnavailable) {
 			t.Fatalf("upload error=%v", uploadErr)
 		}
 		mustExecP3(t, f.db, `UPDATE module_entitlements SET enabled=true WHERE company_id=$1 AND module_key='amazon'`, f.companyA)
@@ -43,7 +44,7 @@ func TestAmazonBatchBPostgreSQLIntegration(t *testing.T) {
 		mustScanP3(t, f.db, `SELECT id FROM roles WHERE company_id=$1 AND name='Flipkart Operator'`, []any{f.companyA}, &roleID)
 		mustExecP3(t, f.db, `DELETE FROM role_permissions WHERE company_id=$1 AND role_id=$2 AND permission_key='labels.upload'`, f.companyA, roleID)
 		pdf := f.register("amazon-permission-denied", pdfextractor.Page{Number: 1, Text: amazonText("406-1100000-1100000", "TRACKDENIED2", "AMZ-KNOWN", "1")})
-		if _, uploadErr := service.Upload(ctx, f.principalA, "permission-denied.pdf", pdf); !errors.Is(uploadErr, authorization.ErrPermissionDenied) {
+		if _, uploadErr := service.Upload(ctx, f.principalA, "permission-denied.pdf", pdf, testfixture.Account(t, f.db, f.principalA.CompanyID, "amazon")); !errors.Is(uploadErr, authorization.ErrPermissionDenied) {
 			t.Fatalf("upload error=%v", uploadErr)
 		}
 		mustExecP3(t, f.db, `INSERT INTO role_permissions(company_id,role_id,permission_key) VALUES($1,$2,'labels.upload')`, f.companyA, roleID)
@@ -55,7 +56,7 @@ func TestAmazonBatchBPostgreSQLIntegration(t *testing.T) {
 	})
 
 	known := f.register("amazon-known", pdfextractor.Page{Number: 6, Text: amazonText("406-2000000-2000000", "TRACKKNOWN1", "AMZ-KNOWN", "2")})
-	uploaded, err := service.Upload(ctx, f.principalA, "amazon-known.pdf", known)
+	uploaded, err := service.Upload(ctx, f.principalA, "amazon-known.pdf", known, testfixture.Account(t, f.db, f.principalA.CompanyID, "amazon"))
 	if err != nil || uploaded.Job.ParserVersion != amazon.ParserVersion {
 		t.Fatalf("upload=%#v err=%v", uploaded, err)
 	}
@@ -81,7 +82,7 @@ func TestAmazonBatchBPostgreSQLIntegration(t *testing.T) {
 		pdf := f.register("amazon-associated",
 			pdfextractor.Page{Number: 5, ExtractionMethod: "ocr", Text: "amazon.in Shipping Label\nOrder ID: " + orderID + "\nAWB: TRACKASSOC250"},
 			pdfextractor.Page{Number: 11, ExtractionMethod: "text", Text: "amazon.in\nTax Invoice\nOrder Number: " + orderID + "\nSeller SKU: AMZ-KNOWN\nQuantity: 3"})
-		result, uploadErr := service.Upload(ctx, f.principalA, "associated.pdf", pdf)
+		result, uploadErr := service.Upload(ctx, f.principalA, "associated.pdf", pdf, testfixture.Account(t, f.db, f.principalA.CompanyID, "amazon"))
 		if uploadErr != nil {
 			t.Fatal(uploadErr)
 		}
@@ -101,14 +102,14 @@ func TestAmazonBatchBPostgreSQLIntegration(t *testing.T) {
 	if _, err = service.Get(ctx, f.principalB, uploaded.Job.ID); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("cross-tenant get=%v", err)
 	}
-	duplicate, err := service.Upload(ctx, f.principalA, "same-source.pdf", known)
+	duplicate, err := service.Upload(ctx, f.principalA, "same-source.pdf", known, testfixture.Account(t, f.db, f.principalA.CompanyID, "amazon"))
 	if err != nil || !duplicate.DuplicateSource || duplicate.Job.ID != uploaded.Job.ID {
 		t.Fatalf("duplicate=%#v err=%v", duplicate, err)
 	}
 
 	t.Run("unknown SKU and missing quantity remain review values", func(t *testing.T) {
 		pdf := f.register("amazon-review", pdfextractor.Page{Number: 9, Text: amazonText("406-3000000-3000000", "TRACKREVIEW1", "AMZ-UNKNOWN", "")})
-		result, uploadErr := service.Upload(ctx, f.principalA, "review.pdf", pdf)
+		result, uploadErr := service.Upload(ctx, f.principalA, "review.pdf", pdf, testfixture.Account(t, f.db, f.principalA.CompanyID, "amazon"))
 		if uploadErr != nil {
 			t.Fatal(uploadErr)
 		}
@@ -127,14 +128,14 @@ func TestAmazonBatchBPostgreSQLIntegration(t *testing.T) {
 
 	t.Run("retry uses newly trained exact Amazon SKU mapping", func(t *testing.T) {
 		pdf := f.register("amazon-retry", pdfextractor.Page{Number: 3, Text: amazonText("406-4000000-4000000", "TRACKRETRY1", "AMZ-RETRY", "4")})
-		result, uploadErr := service.Upload(ctx, f.principalA, "retry.pdf", pdf)
+		result, uploadErr := service.Upload(ctx, f.principalA, "retry.pdf", pdf, testfixture.Account(t, f.db, f.principalA.CompanyID, "amazon"))
 		if uploadErr != nil {
 			t.Fatal(uploadErr)
 		}
 		if _, processErr := service.processNext(); processErr != nil {
 			t.Fatal(processErr)
 		}
-		mustExecP3(t, f.db, `INSERT INTO sku_mappings(company_id,marketplace_key,product_id,sku) VALUES($1,'amazon',$2,'AMZ-RETRY')`, f.companyA, f.productID)
+		mustExecP3(t, f.db, `INSERT INTO sku_mappings(company_id,marketplace_key,product_id,sku,marketplace_account_id) VALUES($1,'amazon',$2,'AMZ-RETRY',(SELECT id FROM marketplace_accounts WHERE company_id=$1 AND marketplace_key='amazon' AND internal_key='fixture_'||'amazon'))`, f.companyA, f.productID)
 		job, retryErr := service.Retry(ctx, f.principalA, result.Job.ID)
 		if retryErr != nil || job.Status != "queued" || job.ParserVersion != amazon.ParserVersion {
 			t.Fatalf("job=%#v err=%v", job, retryErr)
@@ -150,7 +151,7 @@ func TestAmazonBatchBPostgreSQLIntegration(t *testing.T) {
 
 	t.Run("duplicate Amazon business identifier is visible", func(t *testing.T) {
 		pdf := f.register("amazon-business-duplicate", pdfextractor.Page{Number: 2, Text: amazonText("406-2000000-2000000", "TRACKOTHER1", "AMZ-KNOWN", "1")})
-		result, uploadErr := service.Upload(ctx, f.principalA, "business-duplicate.pdf", pdf)
+		result, uploadErr := service.Upload(ctx, f.principalA, "business-duplicate.pdf", pdf, testfixture.Account(t, f.db, f.principalA.CompanyID, "amazon"))
 		if uploadErr != nil {
 			t.Fatal(uploadErr)
 		}

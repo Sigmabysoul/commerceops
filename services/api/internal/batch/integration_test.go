@@ -17,6 +17,7 @@ import (
 	"github.com/commerceops/commerceops/services/api/internal/authorization"
 	"github.com/commerceops/commerceops/services/api/internal/platform/objectstorage"
 	"github.com/commerceops/commerceops/services/api/internal/platform/pdfgenerator"
+	"github.com/commerceops/commerceops/services/api/internal/testfixture"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -62,7 +63,9 @@ func setupBatch(t *testing.T) *batchFixture {
 	f := &batchFixture{db: db}
 	suffix := fmt.Sprint(time.Now().UnixNano())
 	scanBatchTest(t, db, `INSERT INTO companies(name) VALUES($1) RETURNING id`, []any{"P4 A " + suffix}, &f.companyA)
+	testfixture.SeedAccounts(t, db, f.companyA)
 	scanBatchTest(t, db, `INSERT INTO companies(name) VALUES($1) RETURNING id`, []any{"P4 B " + suffix}, &f.companyB)
+	testfixture.SeedAccounts(t, db, f.companyB)
 	scanBatchTest(t, db, `INSERT INTO users(email,password_hash) VALUES($1,'test') RETURNING id`, []any{"p4-" + suffix + "@example.test"}, &f.userID)
 	execBatchTest(t, db, `INSERT INTO company_users(company_id,user_id) VALUES($1,$3),($2,$3)`, f.companyA, f.companyB, f.userID)
 	for _, company := range []string{f.companyA, f.companyB} {
@@ -103,7 +106,7 @@ func TestMyntraMissingQuantityCannotBecomeReady(t *testing.T) {
 	seed := fmt.Sprintf("myntra-%s-%d", f.companyA, time.Now().UnixNano())
 	hash := sha256.Sum256([]byte(seed))
 	var sourceID, jobID, orderID string
-	scanBatchTest(t, f.db, `INSERT INTO source_files(company_id,marketplace_key,storage_key,original_filename,content_type,size_bytes,sha256,uploaded_by) VALUES($1,'myntra',$2,'orders.csv','text/csv',1,$3,$4) RETURNING id`, []any{f.companyA, seed, hex.EncodeToString(hash[:]), f.userID}, &sourceID)
+	scanBatchTest(t, f.db, `INSERT INTO source_files(company_id,marketplace_key,storage_key,original_filename,content_type,size_bytes,sha256,uploaded_by,marketplace_account_id) VALUES($1,'myntra',$2,'orders.csv','text/csv',1,$3,$4,(SELECT id FROM marketplace_accounts WHERE company_id=$1 AND marketplace_key='myntra' AND internal_key='fixture_'||'myntra')) RETURNING id`, []any{f.companyA, seed, hex.EncodeToString(hash[:]), f.userID}, &sourceID)
 	scanBatchTest(t, f.db, `INSERT INTO processing_jobs(company_id,source_file_id,marketplace_key,status,parser_version,total_pages,processed_pages) VALUES($1,$2,'myntra','needs_review','myntra-packed-orders-csv-v1',1,1) RETURNING id`, []any{f.companyA, sourceID}, &jobID)
 	scanBatchTest(t, f.db, `INSERT INTO marketplace_orders(company_id,marketplace_key,source_file_id,processing_job_id,source_page,marketplace_order_id,awb,status,parser_version) VALUES($1,'myntra',$2,$3,2,'7000000099','MYSP1000000099','needs_review','myntra-packed-orders-csv-v1') RETURNING id`, []any{f.companyA, sourceID, jobID}, &orderID)
 	execBatchTest(t, f.db, `INSERT INTO marketplace_order_items(company_id,order_id,raw_sku,product_id,quantity,quantity_source,resolution_status) VALUES($1,$2,'SANITIZED-SKU',$3,NULL,'missing','resolved')`, f.companyA, orderID, f.productID)
@@ -130,7 +133,7 @@ func (f *batchFixture) amazonOrder(t *testing.T, quantity int) string {
 	seed := fmt.Sprintf("amazon-%s-%d", f.companyA, time.Now().UnixNano())
 	hash := sha256.Sum256([]byte(seed))
 	var sourceID, jobID, orderID string
-	scanBatchTest(t, f.db, `INSERT INTO source_files(company_id,marketplace_key,storage_key,original_filename,content_type,size_bytes,sha256,uploaded_by) VALUES($1,'amazon',$2,'amazon.pdf','application/pdf',1,$3,$4) RETURNING id`, []any{f.companyA, seed, hex.EncodeToString(hash[:]), f.userID}, &sourceID)
+	scanBatchTest(t, f.db, `INSERT INTO source_files(company_id,marketplace_key,storage_key,original_filename,content_type,size_bytes,sha256,uploaded_by,marketplace_account_id) VALUES($1,'amazon',$2,'amazon.pdf','application/pdf',1,$3,$4,(SELECT id FROM marketplace_accounts WHERE company_id=$1 AND marketplace_key='amazon' AND internal_key='fixture_'||'amazon')) RETURNING id`, []any{f.companyA, seed, hex.EncodeToString(hash[:]), f.userID}, &sourceID)
 	if err := f.storage.Put(context.Background(), seed, bytes.NewReader([]byte("%PDF-amazon-source")), 18, "application/pdf"); err != nil {
 		t.Fatal(err)
 	}
@@ -146,7 +149,7 @@ func (f *batchFixture) meeshoOrder(t *testing.T, quantity int) string {
 	seed := fmt.Sprintf("meesho-%s-%d", f.companyA, time.Now().UnixNano())
 	hash := sha256.Sum256([]byte(seed))
 	var sourceID, jobID, orderID string
-	scanBatchTest(t, f.db, `INSERT INTO source_files(company_id,marketplace_key,storage_key,original_filename,content_type,size_bytes,sha256,uploaded_by) VALUES($1,'meesho',$2,'meesho.pdf','application/pdf',1,$3,$4) RETURNING id`, []any{f.companyA, seed, hex.EncodeToString(hash[:]), f.userID}, &sourceID)
+	scanBatchTest(t, f.db, `INSERT INTO source_files(company_id,marketplace_key,storage_key,original_filename,content_type,size_bytes,sha256,uploaded_by,marketplace_account_id) VALUES($1,'meesho',$2,'meesho.pdf','application/pdf',1,$3,$4,(SELECT id FROM marketplace_accounts WHERE company_id=$1 AND marketplace_key='meesho' AND internal_key='fixture_'||'meesho')) RETURNING id`, []any{f.companyA, seed, hex.EncodeToString(hash[:]), f.userID}, &sourceID)
 	source := []byte("%PDF-meesho-source")
 	if err := f.storage.Put(context.Background(), seed, bytes.NewReader(source), int64(len(source)), "application/pdf"); err != nil {
 		t.Fatal(err)
@@ -164,7 +167,7 @@ func (f *batchFixture) order(t *testing.T, company, status string, productID *st
 	hash := sha256.Sum256([]byte(seed))
 	sha := hex.EncodeToString(hash[:])
 	var sourceID, jobID, orderID string
-	scanBatchTest(t, f.db, `INSERT INTO source_files(company_id,marketplace_key,storage_key,original_filename,content_type,size_bytes,sha256,uploaded_by) VALUES($1,'flipkart',$2,'batch.pdf','application/pdf',1,$3,$4) RETURNING id`, []any{company, seed, sha, f.userID}, &sourceID)
+	scanBatchTest(t, f.db, `INSERT INTO source_files(company_id,marketplace_key,storage_key,original_filename,content_type,size_bytes,sha256,uploaded_by,marketplace_account_id) VALUES($1,'flipkart',$2,'batch.pdf','application/pdf',1,$3,$4,(SELECT id FROM marketplace_accounts WHERE company_id=$1 AND marketplace_key='flipkart' AND internal_key='fixture_'||'flipkart')) RETURNING id`, []any{company, seed, sha, f.userID}, &sourceID)
 	if err := f.storage.Put(context.Background(), seed, bytes.NewReader([]byte("%PDF-source")), 11, "application/pdf"); err != nil {
 		t.Fatal(err)
 	}
@@ -499,7 +502,7 @@ func TestSnapdealUsesSharedBatchPrintingAndInvoiceAssociation(t *testing.T) {
 	seed := fmt.Sprintf("snapdeal-%s-%d", f.companyA, time.Now().UnixNano())
 	hash := sha256.Sum256([]byte(seed))
 	var source, job, order string
-	scanBatchTest(t, f.db, `INSERT INTO source_files(company_id,marketplace_key,storage_key,original_filename,content_type,size_bytes,sha256,uploaded_by) VALUES($1,'snapdeal',$2,'snapdeal.pdf','application/pdf',1,$3,$4) RETURNING id`, []any{f.companyA, seed, hex.EncodeToString(hash[:]), f.userID}, &source)
+	scanBatchTest(t, f.db, `INSERT INTO source_files(company_id,marketplace_key,storage_key,original_filename,content_type,size_bytes,sha256,uploaded_by,marketplace_account_id) VALUES($1,'snapdeal',$2,'snapdeal.pdf','application/pdf',1,$3,$4,(SELECT id FROM marketplace_accounts WHERE company_id=$1 AND marketplace_key='snapdeal' AND internal_key='fixture_'||'snapdeal')) RETURNING id`, []any{f.companyA, seed, hex.EncodeToString(hash[:]), f.userID}, &source)
 	pdf := []byte("%PDF-snapdeal-source")
 	if err := f.storage.Put(ctx, seed, bytes.NewReader(pdf), int64(len(pdf)), "application/pdf"); err != nil {
 		t.Fatal(err)
@@ -641,7 +644,7 @@ func printPositions(t *testing.T, db *pgxpool.Pool, companyID, jobID string) []s
 func cleanupBatch(t *testing.T, f *batchFixture) {
 	t.Helper()
 	companies := []string{f.companyA, f.companyB}
-	for _, table := range []string{"automation_domain_events", "print_artifacts", "print_job_items", "print_jobs", "batch_worker_assignments", "worker_assignment_rules", "batch_members", "batches", "marketplace_order_documents", "marketplace_order_items", "marketplace_orders", "processing_jobs", "source_files", "products", "audit_logs", "module_entitlements", "company_user_roles", "role_permissions", "employees", "roles", "company_users"} {
+	for _, table := range []string{"automation_domain_events", "print_artifacts", "print_job_items", "print_jobs", "batch_worker_assignments", "worker_assignment_rules", "batch_members", "batches", "marketplace_order_documents", "marketplace_order_items", "marketplace_orders", "processing_jobs", "source_files", "products", "audit_logs", "module_entitlements", "company_user_roles", "role_permissions", "employees", "roles", "company_users", "marketplace_accounts", "business_identities"} {
 		query := "DELETE FROM " + table + " WHERE company_id=ANY($1::uuid[])"
 		execBatchTest(t, f.db, query, companies)
 	}

@@ -1,48 +1,60 @@
 # CommerceOps Roadmap
 
-Phase documents describe intended scope. Only approved phases and the current
-phase are actionable; locked future phases are design references and may not be
-implemented until the current review gate passes and the owner authorizes the
-transition.
+**Current approved implementation baseline:** Phase 14 — Printing Automation  
+**Approved commit:** `d90e4f7c0ceab032bc33a0618e1ceabdc20906b5`
 
-## Approved and completed
+This roadmap separates implemented phases from future authorized phases.
 
-- **Phase 0 — Foundation:** repository, runtime, PostgreSQL, migrations,
-  frontend, CI, and architecture foundation.
-- **Phase 1 — Core Platform:** companies, identities, employees, roles,
-  permissions, entitlements, sessions, and audit foundation.
-- **Phase 2 — Product Master:** canonical products, marketplace references, SKU
-  mappings, and deterministic training/resolution.
+## Completed / approved
 
-## Historical Phase 3 planning snapshot
-
-The following Phase 3 status and locked-phase list are retained as historical
-planning context. Current authorization and completion status are maintained in
-[`CURRENT_STATE.md`](CURRENT_STATE.md). Phase 14 Printing Automation is the
-active scope; this snapshot does not authorize any phase transition.
-
-
-- **Phase 3 — Flipkart Processing:** implementation and review in progress.
-  Secure uploads, extraction, normalization, Product Master resolution,
-  duplicates, jobs, manual review, and UI are within scope. Inventory, batches,
-  and printing are not.
-
-Phase 3 must pass its documented automated checks, representative fixture
-validation, and external architecture review before any phase transition.
-
-## Locked future phases
-
-- Phase 4 — Batch and printing
+- Phase 0 — Foundation
+- Phase 1 — Core Platform
+- Phase 2 — Product Master
+- Phase 3 — Flipkart Processing
+- Phase 4 — Batch + Printing
 - Phase 5 — Inventory
-- Phase 6 — Dashboard and reporting
+- Phase 6 — Dashboard + Reporting
 - Phase 7 — Amazon
-- Phase 8 — Returns and cancellations
-- Phase 9 — Consignment management
+- Phase 8 — Returns & Cancellations
+- Phase 9 — Consignment
 - Phase 10 — Meesho
-- Phase 11 — Myntra
+- Phase 11 — Myntra Batch A (CSV foundation; print-payload completion pending)
 - Phase 12 — Snapdeal
-- Phase 13 — Printer agent
-- Phase 14 — Advanced automation
+- Phase 13 — Printing Platform / Printer Agent
+- Phase 14 — Printing Automation
 
-The sequence can change only through an explicit product/architecture decision.
-No AI agent may automatically start a locked phase.
+## Next authorized planning sequence
+
+### Phase 15 — Multi-ID Business Model / Marketplace Seller Accounts
+First-class seller accounts under one tenant; account-aware SKU mappings, provenance,
+dedupe, Returns, reporting and workstation routing.
+
+### Phase 11 Completion — Myntra Print Capture
+Remain under Phase 11 because this is completion of deferred Myntra behavior, not
+a new marketplace phase. Capture actual browser/OS print payload before implementing
+layout/parser/enrichment.
+
+### Phase 16 — JioMart
+Add JioMart evidence-backed ingestion after Marketplace Accounts are available.
+
+### Phase 17 — Return Rework & Box Traceability
+Opaque QR Trace Boxes, QC, handovers, rework/sticker work, packing, final check,
+Returns and Consignment integration.
+
+### Phase 18 — Admin / Role Dashboards
+Full Owner dashboard for the initial three owners, Developer/Test Admin dashboard,
+restricted HR/TL/Worker workspaces. Authorization remains permission-driven.
+
+### Phase 19 — Operations Analytics & Gamification
+Defect trends, cycle time, employee workload-normalized quality metrics and only
+later badges/leaderboards after reliable data exists.
+
+## Stabilization between phases
+
+Before starting Phase 15 implementation, run the current Phase 14 application locally
+on Fedora, test screen-by-screen, collect UX/bug feedback and verify the real operator
+workflow.
+
+See `docs/LOCAL_TESTING_FEDORA.md`.
+
+No AI agent may automatically start the next phase without explicit owner authorization.

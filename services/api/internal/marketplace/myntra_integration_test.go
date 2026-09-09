@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/commerceops/commerceops/services/api/internal/testfixture"
 	"os"
 	"path/filepath"
 	"testing"
@@ -17,7 +18,7 @@ func TestMyntraBatchAPostgreSQLIntegration(t *testing.T) {
 	f := setupPhaseThree(t)
 	ctx := context.Background()
 	mustExecP3(t, f.db, `INSERT INTO module_entitlements(company_id,module_key,enabled) VALUES($1,'myntra',true),($2,'myntra',true)`, f.companyA, f.companyB)
-	mustExecP3(t, f.db, `INSERT INTO sku_mappings(company_id,marketplace_key,product_id,sku) VALUES($1,'myntra',$2,'SANITIZED-SKU_01')`, f.companyA, f.productID)
+	mustExecP3(t, f.db, `INSERT INTO sku_mappings(company_id,marketplace_key,product_id,sku,marketplace_account_id) VALUES($1,'myntra',$2,'SANITIZED-SKU_01',(SELECT id FROM marketplace_accounts WHERE company_id=$1 AND marketplace_key='myntra' AND internal_key='fixture_'||'myntra'))`, f.companyA, f.productID)
 	service, err := newServiceForProcessor(f.db, authorization.NewService(f.db), f.service.storage, nil, myntraProcessor())
 	if err != nil {
 		t.Fatal(err)
@@ -29,7 +30,7 @@ func TestMyntraBatchAPostgreSQLIntegration(t *testing.T) {
 
 	t.Run("authorization precedes persistence", func(t *testing.T) {
 		mustExecP3(t, f.db, `UPDATE module_entitlements SET enabled=false WHERE company_id=$1 AND module_key='myntra'`, f.companyA)
-		if _, uploadErr := service.UploadWithIdempotency(ctx, f.principalA, "orders.csv", data, "denied-import"); !errors.Is(uploadErr, authorization.ErrModuleUnavailable) {
+		if _, uploadErr := service.UploadWithIdempotency(ctx, f.principalA, "orders.csv", data, "denied-import", testfixture.Account(t, f.db, f.principalA.CompanyID, "myntra")); !errors.Is(uploadErr, authorization.ErrModuleUnavailable) {
 			t.Fatalf("upload error=%v", uploadErr)
 		}
 		mustExecP3(t, f.db, `UPDATE module_entitlements SET enabled=true WHERE company_id=$1 AND module_key='myntra'`, f.companyA)
@@ -41,7 +42,7 @@ func TestMyntraBatchAPostgreSQLIntegration(t *testing.T) {
 		var roleID string
 		mustScanP3(t, f.db, `SELECT id FROM roles WHERE company_id=$1 AND name='Flipkart Operator'`, []any{f.companyA}, &roleID)
 		mustExecP3(t, f.db, `DELETE FROM role_permissions WHERE company_id=$1 AND role_id=$2 AND permission_key='labels.process'`, f.companyA, roleID)
-		if _, uploadErr := service.UploadWithIdempotency(ctx, f.principalA, "orders.csv", data, "permission-denied-import"); !errors.Is(uploadErr, authorization.ErrPermissionDenied) {
+		if _, uploadErr := service.UploadWithIdempotency(ctx, f.principalA, "orders.csv", data, "permission-denied-import", testfixture.Account(t, f.db, f.principalA.CompanyID, "myntra")); !errors.Is(uploadErr, authorization.ErrPermissionDenied) {
 			t.Fatalf("permission error=%v", uploadErr)
 		}
 		mustExecP3(t, f.db, `INSERT INTO role_permissions(company_id,role_id,permission_key) VALUES($1,$2,'labels.process')`, f.companyA, roleID)
@@ -53,7 +54,7 @@ func TestMyntraBatchAPostgreSQLIntegration(t *testing.T) {
 
 	var inventoryBefore int
 	mustScanP3(t, f.db, `SELECT count(*) FROM inventory_transactions WHERE company_id=$1`, []any{f.companyA}, &inventoryBefore)
-	uploaded, err := service.UploadWithIdempotency(ctx, f.principalA, "packed-orders.csv", data, "myntra-import-1")
+	uploaded, err := service.UploadWithIdempotency(ctx, f.principalA, "packed-orders.csv", data, "myntra-import-1", testfixture.Account(t, f.db, f.principalA.CompanyID, "myntra"))
 	if err != nil || uploaded.Job.ParserVersion != myntra.ParserVersion {
 		t.Fatalf("upload=%#v err=%v", uploaded, err)
 	}
@@ -89,13 +90,13 @@ func TestMyntraBatchAPostgreSQLIntegration(t *testing.T) {
 	if _, getErr := service.Get(ctx, f.principalB, uploaded.Job.ID); !errors.Is(getErr, ErrNotFound) {
 		t.Fatalf("cross-tenant get=%v", getErr)
 	}
-	replay, err := service.UploadWithIdempotency(ctx, f.principalA, "packed-orders.csv", data, "myntra-import-1")
+	replay, err := service.UploadWithIdempotency(ctx, f.principalA, "packed-orders.csv", data, "myntra-import-1", testfixture.Account(t, f.db, f.principalA.CompanyID, "myntra"))
 	if err != nil || !replay.DuplicateSource || replay.Job.ID != uploaded.Job.ID {
 		t.Fatalf("replay=%#v err=%v", replay, err)
 	}
 	changed := append([]byte{}, data...)
 	changed = append(changed, '\n')
-	if _, conflictErr := service.UploadWithIdempotency(ctx, f.principalA, "packed-orders.csv", changed, "myntra-import-1"); !errors.Is(conflictErr, ErrIdempotencyConflict) {
+	if _, conflictErr := service.UploadWithIdempotency(ctx, f.principalA, "packed-orders.csv", changed, "myntra-import-1", testfixture.Account(t, f.db, f.principalA.CompanyID, "myntra")); !errors.Is(conflictErr, ErrIdempotencyConflict) {
 		t.Fatalf("conflict=%v", conflictErr)
 	}
 	var inventoryAfter int

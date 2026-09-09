@@ -117,13 +117,14 @@ func (h *HTTPHandler) Resolve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var input struct {
-		MarketplaceKey string `json:"marketplace_key"`
-		SKU            string `json:"sku"`
+		MarketplaceKey       string `json:"marketplace_key"`
+		MarketplaceAccountID string `json:"marketplace_account_id"`
+		SKU                  string `json:"sku"`
 	}
 	if !httpserver.DecodeJSON(w, r, &input) {
 		return
 	}
-	result, err := h.service.Resolve(r.Context(), principal(r), input.MarketplaceKey, input.SKU)
+	result, err := h.service.Resolve(r.Context(), principal(r), input.MarketplaceKey, input.SKU, input.MarketplaceAccountID)
 	if writeError(w, err) {
 		return
 	}

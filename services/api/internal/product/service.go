@@ -11,6 +11,7 @@ import (
 	"github.com/commerceops/commerceops/services/api/internal/audit"
 	"github.com/commerceops/commerceops/services/api/internal/auth"
 	"github.com/commerceops/commerceops/services/api/internal/authorization"
+	"github.com/commerceops/commerceops/services/api/internal/marketplaceaccount"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -59,6 +60,7 @@ type Marketplace struct {
 }
 
 type Mapping struct {
+	MarketplaceAccountID   string          `json:"marketplace_account_id"`
 	ID                     string          `json:"id"`
 	MarketplaceKey         string          `json:"marketplace_key"`
 	ProductID              string          `json:"product_id"`
@@ -71,6 +73,7 @@ type Mapping struct {
 }
 
 type MappingInput struct {
+	MarketplaceAccountID   string         `json:"marketplace_account_id"`
 	MarketplaceKey         string         `json:"marketplace_key"`
 	ProductID              string         `json:"product_id"`
 	SKU                    string         `json:"sku"`
@@ -209,7 +212,7 @@ func (s *Service) ListMappings(ctx context.Context, principal auth.Principal, pr
 	if status != "" && status != "active" && status != "inactive" {
 		return nil, ErrInvalidInput
 	}
-	rows, err := s.db.Query(ctx, `SELECT id,marketplace_key,product_id,sku,quantity_multiplier,interpretation_metadata,status,created_at,updated_at FROM sku_mappings WHERE company_id=$1 AND ($2='' OR product_id::text=$2) AND ($3='' OR marketplace_key=$3) AND ($4='' OR status=$4) ORDER BY marketplace_key,sku,id LIMIT 500`, principal.CompanyID, productID, marketplace, status)
+	rows, err := s.db.Query(ctx, `SELECT id,marketplace_key,product_id,sku,quantity_multiplier,interpretation_metadata,status,created_at,updated_at,marketplace_account_id FROM sku_mappings WHERE company_id=$1 AND ($2='' OR product_id::text=$2) AND ($3='' OR marketplace_key=$3) AND ($4='' OR status=$4) ORDER BY marketplace_key,sku,id LIMIT 500`, principal.CompanyID, productID, marketplace, status)
 	if err != nil {
 		return nil, mapDBError(err)
 	}
@@ -232,6 +235,9 @@ func (s *Service) CreateMapping(ctx context.Context, principal auth.Principal, i
 	if !normalizeMappingInput(&input, true) {
 		return Mapping{}, ErrInvalidInput
 	}
+	if err := marketplaceaccount.Validate(ctx, s.db, principal.CompanyID, input.MarketplaceAccountID, input.MarketplaceKey, false); err != nil {
+		return Mapping{}, ErrInvalidInput
+	}
 	metadata, err := json.Marshal(input.InterpretationMetadata)
 	if err != nil {
 		return Mapping{}, ErrInvalidInput
@@ -242,11 +248,11 @@ func (s *Service) CreateMapping(ctx context.Context, principal auth.Principal, i
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
 	var item Mapping
-	err = scanMapping(tx.QueryRow(ctx, `INSERT INTO sku_mappings (company_id,marketplace_key,product_id,sku,quantity_multiplier,interpretation_metadata,status) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id,marketplace_key,product_id,sku,quantity_multiplier,interpretation_metadata,status,created_at,updated_at`, principal.CompanyID, input.MarketplaceKey, input.ProductID, input.SKU, input.QuantityMultiplier, metadata, input.Status), &item)
+	err = scanMapping(tx.QueryRow(ctx, `INSERT INTO sku_mappings (company_id,marketplace_key,product_id,sku,quantity_multiplier,interpretation_metadata,status,marketplace_account_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id,marketplace_key,product_id,sku,quantity_multiplier,interpretation_metadata,status,created_at,updated_at,marketplace_account_id`, principal.CompanyID, input.MarketplaceKey, input.ProductID, input.SKU, input.QuantityMultiplier, metadata, input.Status, input.MarketplaceAccountID), &item)
 	if err != nil {
 		return Mapping{}, mapDBError(err)
 	}
-	if err := s.audit.Record(ctx, tx, principal.CompanyID, principal.UserID, "sku_mapping.created", "sku_mapping", item.ID, map[string]any{"marketplace": item.MarketplaceKey, "sku": item.SKU, "product_id": item.ProductID}); err != nil {
+	if err := s.audit.Record(ctx, tx, principal.CompanyID, principal.UserID, "sku_mapping.created", "sku_mapping", item.ID, map[string]any{"marketplace_account_id": item.MarketplaceAccountID, "marketplace": item.MarketplaceKey, "sku": item.SKU, "product_id": item.ProductID}); err != nil {
 		return Mapping{}, err
 	}
 	return item, tx.Commit(ctx)
@@ -257,6 +263,9 @@ func (s *Service) UpdateMapping(ctx context.Context, principal auth.Principal, i
 		return Mapping{}, err
 	}
 	if !normalizeMappingInput(&input, false) {
+		return Mapping{}, ErrInvalidInput
+	}
+	if err := marketplaceaccount.Validate(ctx, s.db, principal.CompanyID, input.MarketplaceAccountID, input.MarketplaceKey, false); err != nil {
 		return Mapping{}, ErrInvalidInput
 	}
 	metadata, err := json.Marshal(input.InterpretationMetadata)
@@ -273,7 +282,7 @@ func (s *Service) UpdateMapping(ctx context.Context, principal auth.Principal, i
 		return Mapping{}, mapDBError(err)
 	}
 	var item Mapping
-	err = scanMapping(tx.QueryRow(ctx, `UPDATE sku_mappings SET marketplace_key=$1,product_id=$2,sku=$3,quantity_multiplier=$4,interpretation_metadata=$5,status=$6,updated_at=now() WHERE company_id=$7 AND id=$8 RETURNING id,marketplace_key,product_id,sku,quantity_multiplier,interpretation_metadata,status,created_at,updated_at`, input.MarketplaceKey, input.ProductID, input.SKU, input.QuantityMultiplier, metadata, input.Status, principal.CompanyID, id), &item)
+	err = scanMapping(tx.QueryRow(ctx, `UPDATE sku_mappings SET marketplace_key=$1,product_id=$2,sku=$3,quantity_multiplier=$4,interpretation_metadata=$5,status=$6,updated_at=now() WHERE company_id=$7 AND id=$8 AND marketplace_account_id=$9 RETURNING id,marketplace_key,product_id,sku,quantity_multiplier,interpretation_metadata,status,created_at,updated_at,marketplace_account_id`, input.MarketplaceKey, input.ProductID, input.SKU, input.QuantityMultiplier, metadata, input.Status, principal.CompanyID, id, input.MarketplaceAccountID), &item)
 	if err != nil {
 		return Mapping{}, mapDBError(err)
 	}
@@ -281,13 +290,13 @@ func (s *Service) UpdateMapping(ctx context.Context, principal auth.Principal, i
 	if priorStatus != input.Status {
 		action = "sku_mapping.status_changed"
 	}
-	if err := s.audit.Record(ctx, tx, principal.CompanyID, principal.UserID, action, "sku_mapping", item.ID, map[string]any{"marketplace": item.MarketplaceKey, "sku": item.SKU, "product_id": item.ProductID, "status": item.Status, "previous_status": priorStatus}); err != nil {
+	if err := s.audit.Record(ctx, tx, principal.CompanyID, principal.UserID, action, "sku_mapping", item.ID, map[string]any{"marketplace_account_id": item.MarketplaceAccountID, "marketplace": item.MarketplaceKey, "sku": item.SKU, "product_id": item.ProductID, "status": item.Status, "previous_status": priorStatus}); err != nil {
 		return Mapping{}, err
 	}
 	return item, tx.Commit(ctx)
 }
 
-func (s *Service) Resolve(ctx context.Context, principal auth.Principal, marketplace, sku string) (Resolution, error) {
+func (s *Service) Resolve(ctx context.Context, principal auth.Principal, marketplace, sku, accountID string) (Resolution, error) {
 	if err := s.authorizer.RequirePermission(ctx, principal, "products.view"); err != nil {
 		return Resolution{}, err
 	}
@@ -295,9 +304,12 @@ func (s *Service) Resolve(ctx context.Context, principal auth.Principal, marketp
 	if marketplace == "" || sku == "" {
 		return Resolution{}, ErrInvalidInput
 	}
+	if err := marketplaceaccount.Validate(ctx, s.db, principal.CompanyID, accountID, marketplace, false); err != nil {
+		return Resolution{}, ErrInvalidInput
+	}
 	var mapping Mapping
 	var product Product
-	err := s.db.QueryRow(ctx, `SELECT m.id,m.marketplace_key,m.product_id,m.sku,m.quantity_multiplier,m.interpretation_metadata,m.status,m.created_at,m.updated_at,p.id,p.internal_code,p.name,p.brand,p.variant,p.size,p.pack_type,p.unit_count,p.status,p.created_at,p.updated_at FROM sku_mappings m JOIN products p ON p.company_id=m.company_id AND p.id=m.product_id WHERE m.company_id=$1 AND m.marketplace_key=$2 AND m.sku=$3 AND m.status='active' AND p.status='active'`, principal.CompanyID, marketplace, sku).Scan(&mapping.ID, &mapping.MarketplaceKey, &mapping.ProductID, &mapping.SKU, &mapping.QuantityMultiplier, &mapping.InterpretationMetadata, &mapping.Status, &mapping.CreatedAt, &mapping.UpdatedAt, &product.ID, &product.InternalCode, &product.Name, &product.Brand, &product.Variant, &product.Size, &product.PackType, &product.UnitCount, &product.Status, &product.CreatedAt, &product.UpdatedAt)
+	err := s.db.QueryRow(ctx, `SELECT m.id,m.marketplace_key,m.product_id,m.sku,m.quantity_multiplier,m.interpretation_metadata,m.status,m.created_at,m.updated_at,m.marketplace_account_id,p.id,p.internal_code,p.name,p.brand,p.variant,p.size,p.pack_type,p.unit_count,p.status,p.created_at,p.updated_at FROM sku_mappings m JOIN products p ON p.company_id=m.company_id AND p.id=m.product_id WHERE m.company_id=$1 AND m.marketplace_key=$2 AND m.sku=$3 AND m.marketplace_account_id=$4 AND m.status='active' AND p.status='active'`, principal.CompanyID, marketplace, sku, accountID).Scan(&mapping.ID, &mapping.MarketplaceKey, &mapping.ProductID, &mapping.SKU, &mapping.QuantityMultiplier, &mapping.InterpretationMetadata, &mapping.Status, &mapping.CreatedAt, &mapping.UpdatedAt, &mapping.MarketplaceAccountID, &product.ID, &product.InternalCode, &product.Name, &product.Brand, &product.Variant, &product.Size, &product.PackType, &product.UnitCount, &product.Status, &product.CreatedAt, &product.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Resolution{Status: "unresolved"}, nil
 	}
@@ -313,7 +325,7 @@ func scanProduct(row scanner, p *Product) error {
 	return row.Scan(&p.ID, &p.InternalCode, &p.Name, &p.Brand, &p.Variant, &p.Size, &p.PackType, &p.UnitCount, &p.Status, &p.CreatedAt, &p.UpdatedAt)
 }
 func scanMapping(row scanner, m *Mapping) error {
-	return row.Scan(&m.ID, &m.MarketplaceKey, &m.ProductID, &m.SKU, &m.QuantityMultiplier, &m.InterpretationMetadata, &m.Status, &m.CreatedAt, &m.UpdatedAt)
+	return row.Scan(&m.ID, &m.MarketplaceKey, &m.ProductID, &m.SKU, &m.QuantityMultiplier, &m.InterpretationMetadata, &m.Status, &m.CreatedAt, &m.UpdatedAt, &m.MarketplaceAccountID)
 }
 func normalizeProductInput(i *ProductInput, create bool) bool {
 	i.InternalCode, i.Name = strings.TrimSpace(i.InternalCode), strings.TrimSpace(i.Name)

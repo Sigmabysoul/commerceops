@@ -13,6 +13,7 @@ import (
 
 	"github.com/commerceops/commerceops/services/api/internal/auth"
 	"github.com/commerceops/commerceops/services/api/internal/authorization"
+	"github.com/commerceops/commerceops/services/api/internal/testfixture"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -39,7 +40,9 @@ func setup(t *testing.T) *fixture {
 	f := &fixture{db: db}
 	suffix := fmt.Sprint(time.Now().UnixNano())
 	scan(t, db, `INSERT INTO companies(name) VALUES($1) RETURNING id`, []any{"Inventory A " + suffix}, &f.company)
+	testfixture.SeedAccounts(t, db, f.company)
 	scan(t, db, `INSERT INTO companies(name) VALUES($1) RETURNING id`, []any{"Inventory B " + suffix}, &f.otherCompany)
+	testfixture.SeedAccounts(t, db, f.otherCompany)
 	scan(t, db, `INSERT INTO users(email,password_hash) VALUES($1,'test') RETURNING id`, []any{"inventory-" + suffix + "@example.test"}, &f.user)
 	exec(t, db, `INSERT INTO company_users(company_id,user_id) VALUES($1,$3),($2,$3)`, f.company, f.otherCompany, f.user)
 	scan(t, db, `INSERT INTO roles(company_id,name) VALUES($1,'Inventory Operator') RETURNING id`, []any{f.company}, &f.role)
@@ -239,12 +242,12 @@ func TestEcommerceOutboundAtomicAndIdempotent(t *testing.T) {
 	ctx := context.Background()
 	exec(t, f.db, `INSERT INTO module_entitlements(company_id,module_key,enabled) VALUES($1,'flipkart',true)`, f.company)
 	var source, job, order, batch string
-	scan(t, f.db, `INSERT INTO source_files(company_id,marketplace_key,storage_key,original_filename,content_type,size_bytes,sha256,uploaded_by) VALUES($1,'flipkart',$2,'outbound.pdf','application/pdf',1,$3,$4) RETURNING id`, []any{f.company, "outbound-" + f.company, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", f.user}, &source)
+	scan(t, f.db, `INSERT INTO source_files(company_id,marketplace_key,storage_key,original_filename,content_type,size_bytes,sha256,uploaded_by,marketplace_account_id) VALUES($1,'flipkart',$2,'outbound.pdf','application/pdf',1,$3,$4,(SELECT id FROM marketplace_accounts WHERE company_id=$1 AND marketplace_key='flipkart' AND internal_key='fixture_'||'flipkart')) RETURNING id`, []any{f.company, "outbound-" + f.company, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", f.user}, &source)
 	scan(t, f.db, `INSERT INTO processing_jobs(company_id,source_file_id,marketplace_key,status,parser_version,total_pages,processed_pages) VALUES($1,$2,'flipkart','processed','test',1,1) RETURNING id`, []any{f.company, source}, &job)
 	scan(t, f.db, `INSERT INTO marketplace_orders(company_id,marketplace_key,source_file_id,processing_job_id,source_page,marketplace_order_id,status,parser_version) VALUES($1,'flipkart',$2,$3,1,$4,'resolved','test') RETURNING id`, []any{f.company, source, job, "OUT-" + f.company}, &order)
 	exec(t, f.db, `INSERT INTO marketplace_order_items(company_id,order_id,product_id,quantity,quantity_source,resolution_status) VALUES($1,$2,$3,6,'extracted','resolved')`, f.company, order, f.product)
 	exec(t, f.db, `INSERT INTO marketplace_order_items(company_id,order_id,product_id,quantity,quantity_source,resolution_status) VALUES($1,$2,$3,3,'extracted','resolved')`, f.company, order, f.secondProduct)
-	scan(t, f.db, `INSERT INTO batches(company_id,marketplace_key,status,created_by,idempotency_key,request_hash,ready_at) VALUES($1,'flipkart','ready',$2,$3,$4,now()) RETURNING id`, []any{f.company, f.user, "outbound-batch-" + f.company, "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}, &batch)
+	scan(t, f.db, `INSERT INTO batches(company_id,marketplace_key,status,created_by,idempotency_key,request_hash,ready_at,marketplace_account_id) VALUES($1,'flipkart','ready',$2,$3,$4,now(),(SELECT id FROM marketplace_accounts WHERE company_id=$1 AND marketplace_key='flipkart' AND internal_key='fixture_'||'flipkart')) RETURNING id`, []any{f.company, f.user, "outbound-batch-" + f.company, "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}, &batch)
 	exec(t, f.db, `INSERT INTO batch_members(company_id,batch_id,marketplace_order_id,position) VALUES($1,$2,$3,1)`, f.company, batch, order)
 	if _, _, err := f.service.StockIn(ctx, f.principal, CommandInput{ProductID: f.product, Quantity: 10, Reason: "Dispatch stock", IdempotencyKey: "dispatch-stock"}); err != nil {
 		t.Fatal(err)
@@ -268,7 +271,7 @@ func TestEcommerceOutboundAtomicAndIdempotent(t *testing.T) {
 	var order2, batch2 string
 	scan(t, f.db, `INSERT INTO marketplace_orders(company_id,marketplace_key,source_file_id,processing_job_id,source_page,marketplace_order_id,status,parser_version) VALUES($1,'flipkart',$2,$3,2,$4,'resolved','test') RETURNING id`, []any{f.company, source, job, "OUT2-" + f.company}, &order2)
 	exec(t, f.db, `INSERT INTO marketplace_order_items(company_id,order_id,product_id,quantity,quantity_source,resolution_status) VALUES($1,$2,$3,1,'extracted','resolved'),($1,$2,$4,8,'extracted','resolved')`, f.company, order2, f.product, f.secondProduct)
-	scan(t, f.db, `INSERT INTO batches(company_id,marketplace_key,status,created_by,idempotency_key,request_hash,ready_at) VALUES($1,'flipkart','ready',$2,$3,$4,now()) RETURNING id`, []any{f.company, f.user, "outbound-batch-2-" + f.company, "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"}, &batch2)
+	scan(t, f.db, `INSERT INTO batches(company_id,marketplace_key,status,created_by,idempotency_key,request_hash,ready_at,marketplace_account_id) VALUES($1,'flipkart','ready',$2,$3,$4,now(),(SELECT id FROM marketplace_accounts WHERE company_id=$1 AND marketplace_key='flipkart' AND internal_key='fixture_'||'flipkart')) RETURNING id`, []any{f.company, f.user, "outbound-batch-2-" + f.company, "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"}, &batch2)
 	exec(t, f.db, `INSERT INTO batch_members(company_id,batch_id,marketplace_order_id,position) VALUES($1,$2,$3,1)`, f.company, batch2, order2)
 	if _, _, err = f.service.ConfirmEcommerceOutbound(ctx, f.principal, batch2, OutboundInput{IdempotencyKey: "dispatch-insufficient"}); !errors.Is(err, ErrInsufficientStock) {
 		t.Fatalf("atomic insufficient=%v", err)
@@ -287,11 +290,11 @@ func TestAmazonUsesCentralEcommerceOutboundEvent(t *testing.T) {
 	ctx := context.Background()
 	exec(t, f.db, `INSERT INTO module_entitlements(company_id,module_key,enabled) VALUES($1,'amazon',true)`, f.company)
 	var source, job, order, batch string
-	scan(t, f.db, `INSERT INTO source_files(company_id,marketplace_key,storage_key,original_filename,content_type,size_bytes,sha256,uploaded_by) VALUES($1,'amazon',$2,'amazon-outbound.pdf','application/pdf',1,$3,$4) RETURNING id`, []any{f.company, "amazon-outbound-" + f.company, "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", f.user}, &source)
+	scan(t, f.db, `INSERT INTO source_files(company_id,marketplace_key,storage_key,original_filename,content_type,size_bytes,sha256,uploaded_by,marketplace_account_id) VALUES($1,'amazon',$2,'amazon-outbound.pdf','application/pdf',1,$3,$4,(SELECT id FROM marketplace_accounts WHERE company_id=$1 AND marketplace_key='amazon' AND internal_key='fixture_'||'amazon')) RETURNING id`, []any{f.company, "amazon-outbound-" + f.company, "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", f.user}, &source)
 	scan(t, f.db, `INSERT INTO processing_jobs(company_id,source_file_id,marketplace_key,status,parser_version,total_pages,processed_pages) VALUES($1,$2,'amazon','processed','amazon-associated-v3',2,2) RETURNING id`, []any{f.company, source}, &job)
 	scan(t, f.db, `INSERT INTO marketplace_orders(company_id,marketplace_key,source_file_id,processing_job_id,source_page,marketplace_order_id,status,parser_version) VALUES($1,'amazon',$2,$3,1,$4,'resolved','amazon-associated-v3') RETURNING id`, []any{f.company, source, job, "AMAZON-OUT-" + f.company}, &order)
 	exec(t, f.db, `INSERT INTO marketplace_order_items(company_id,order_id,product_id,quantity,quantity_source,resolution_status) VALUES($1,$2,$3,4,'extracted','resolved')`, f.company, order, f.product)
-	scan(t, f.db, `INSERT INTO batches(company_id,marketplace_key,status,created_by,idempotency_key,request_hash,ready_at) VALUES($1,'amazon','ready',$2,$3,$4,now()) RETURNING id`, []any{f.company, f.user, "amazon-outbound-batch-" + f.company, "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"}, &batch)
+	scan(t, f.db, `INSERT INTO batches(company_id,marketplace_key,status,created_by,idempotency_key,request_hash,ready_at,marketplace_account_id) VALUES($1,'amazon','ready',$2,$3,$4,now(),(SELECT id FROM marketplace_accounts WHERE company_id=$1 AND marketplace_key='amazon' AND internal_key='fixture_'||'amazon')) RETURNING id`, []any{f.company, f.user, "amazon-outbound-batch-" + f.company, "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"}, &batch)
 	exec(t, f.db, `INSERT INTO batch_members(company_id,batch_id,marketplace_order_id,position) VALUES($1,$2,$3,1)`, f.company, batch, order)
 	if _, _, err := f.service.StockIn(ctx, f.principal, CommandInput{ProductID: f.product, Quantity: 9, Reason: "Amazon dispatch stock", IdempotencyKey: "amazon-dispatch-stock"}); err != nil {
 		t.Fatal(err)
@@ -315,7 +318,7 @@ func TestAmazonUsesCentralEcommerceOutboundEvent(t *testing.T) {
 	var secondOrder, secondBatch string
 	scan(t, f.db, `INSERT INTO marketplace_orders(company_id,marketplace_key,source_file_id,processing_job_id,source_page,marketplace_order_id,status,parser_version) VALUES($1,'amazon',$2,$3,3,$4,'resolved','amazon-associated-v3') RETURNING id`, []any{f.company, source, job, "AMAZON-OUT-2-" + f.company}, &secondOrder)
 	exec(t, f.db, `INSERT INTO marketplace_order_items(company_id,order_id,product_id,quantity,quantity_source,resolution_status) VALUES($1,$2,$3,6,'extracted','resolved')`, f.company, secondOrder, f.product)
-	scan(t, f.db, `INSERT INTO batches(company_id,marketplace_key,status,created_by,idempotency_key,request_hash,ready_at) VALUES($1,'amazon','ready',$2,$3,$4,now()) RETURNING id`, []any{f.company, f.user, "amazon-outbound-short-" + f.company, "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"}, &secondBatch)
+	scan(t, f.db, `INSERT INTO batches(company_id,marketplace_key,status,created_by,idempotency_key,request_hash,ready_at,marketplace_account_id) VALUES($1,'amazon','ready',$2,$3,$4,now(),(SELECT id FROM marketplace_accounts WHERE company_id=$1 AND marketplace_key='amazon' AND internal_key='fixture_'||'amazon')) RETURNING id`, []any{f.company, f.user, "amazon-outbound-short-" + f.company, "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"}, &secondBatch)
 	exec(t, f.db, `INSERT INTO batch_members(company_id,batch_id,marketplace_order_id,position) VALUES($1,$2,$3,1)`, f.company, secondBatch, secondOrder)
 	if _, _, err = f.service.ConfirmEcommerceOutbound(ctx, f.principal, secondBatch, OutboundInput{IdempotencyKey: "amazon-insufficient"}); !errors.Is(err, ErrInsufficientStock) {
 		t.Fatalf("Amazon insufficient=%v", err)
@@ -333,11 +336,11 @@ func TestMeeshoUsesCentralEcommerceOutboundEvent(t *testing.T) {
 	ctx := context.Background()
 	exec(t, f.db, `INSERT INTO module_entitlements(company_id,module_key,enabled) VALUES($1,'meesho',true)`, f.company)
 	var source, job, order, batch string
-	scan(t, f.db, `INSERT INTO source_files(company_id,marketplace_key,storage_key,original_filename,content_type,size_bytes,sha256,uploaded_by) VALUES($1,'meesho',$2,'meesho-outbound.pdf','application/pdf',1,$3,$4) RETURNING id`, []any{f.company, "meesho-outbound-" + f.company, "abababababababababababababababababababababababababababababababab", f.user}, &source)
+	scan(t, f.db, `INSERT INTO source_files(company_id,marketplace_key,storage_key,original_filename,content_type,size_bytes,sha256,uploaded_by,marketplace_account_id) VALUES($1,'meesho',$2,'meesho-outbound.pdf','application/pdf',1,$3,$4,(SELECT id FROM marketplace_accounts WHERE company_id=$1 AND marketplace_key='meesho' AND internal_key='fixture_'||'meesho')) RETURNING id`, []any{f.company, "meesho-outbound-" + f.company, "abababababababababababababababababababababababababababababababab", f.user}, &source)
 	scan(t, f.db, `INSERT INTO processing_jobs(company_id,source_file_id,marketplace_key,status,parser_version,total_pages,processed_pages) VALUES($1,$2,'meesho','processed','meesho-labeled-v1',1,1) RETURNING id`, []any{f.company, source}, &job)
 	scan(t, f.db, `INSERT INTO marketplace_orders(company_id,marketplace_key,source_file_id,processing_job_id,source_page,marketplace_order_id,status,parser_version) VALUES($1,'meesho',$2,$3,1,$4,'resolved','meesho-labeled-v1') RETURNING id`, []any{f.company, source, job, "MEESHO-OUT-" + f.company}, &order)
 	exec(t, f.db, `INSERT INTO marketplace_order_items(company_id,order_id,product_id,quantity,quantity_source,resolution_status) VALUES($1,$2,$3,5,'extracted','resolved')`, f.company, order, f.product)
-	scan(t, f.db, `INSERT INTO batches(company_id,marketplace_key,status,created_by,idempotency_key,request_hash,ready_at) VALUES($1,'meesho','ready',$2,$3,$4,now()) RETURNING id`, []any{f.company, f.user, "meesho-outbound-batch-" + f.company, "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd"}, &batch)
+	scan(t, f.db, `INSERT INTO batches(company_id,marketplace_key,status,created_by,idempotency_key,request_hash,ready_at,marketplace_account_id) VALUES($1,'meesho','ready',$2,$3,$4,now(),(SELECT id FROM marketplace_accounts WHERE company_id=$1 AND marketplace_key='meesho' AND internal_key='fixture_'||'meesho')) RETURNING id`, []any{f.company, f.user, "meesho-outbound-batch-" + f.company, "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd"}, &batch)
 	exec(t, f.db, `INSERT INTO batch_members(company_id,batch_id,marketplace_order_id,position) VALUES($1,$2,$3,1)`, f.company, batch, order)
 	if _, _, err := f.service.StockIn(ctx, f.principal, CommandInput{ProductID: f.product, Quantity: 8, Reason: "Meesho dispatch stock", IdempotencyKey: "meesho-dispatch-stock"}); err != nil {
 		t.Fatal(err)
@@ -364,11 +367,11 @@ func TestSnapdealUsesCentralEcommerceOutboundExactlyOnce(t *testing.T) {
 	ctx := context.Background()
 	exec(t, f.db, `INSERT INTO module_entitlements(company_id,module_key,enabled) VALUES($1,'snapdeal',true)`, f.company)
 	var source, job, order, batch string
-	scan(t, f.db, `INSERT INTO source_files(company_id,marketplace_key,storage_key,original_filename,content_type,size_bytes,sha256,uploaded_by) VALUES($1,'snapdeal',$2,'snapdeal.pdf','application/pdf',1,$3,$4) RETURNING id`, []any{f.company, "snap-out-" + f.company, "edededededededededededededededededededededededededededededededed", f.user}, &source)
+	scan(t, f.db, `INSERT INTO source_files(company_id,marketplace_key,storage_key,original_filename,content_type,size_bytes,sha256,uploaded_by,marketplace_account_id) VALUES($1,'snapdeal',$2,'snapdeal.pdf','application/pdf',1,$3,$4,(SELECT id FROM marketplace_accounts WHERE company_id=$1 AND marketplace_key='snapdeal' AND internal_key='fixture_'||'snapdeal')) RETURNING id`, []any{f.company, "snap-out-" + f.company, "edededededededededededededededededededededededededededededededed", f.user}, &source)
 	scan(t, f.db, `INSERT INTO processing_jobs(company_id,source_file_id,marketplace_key,status,parser_version,total_pages,processed_pages) VALUES($1,$2,'snapdeal','processed','snapdeal-packslip-v1',2,2) RETURNING id`, []any{f.company, source}, &job)
 	scan(t, f.db, `INSERT INTO marketplace_orders(company_id,marketplace_key,source_file_id,processing_job_id,source_page,marketplace_order_id,status,parser_version) VALUES($1,'snapdeal',$2,$3,1,$4,'resolved','snapdeal-packslip-v1') RETURNING id`, []any{f.company, source, job, "SNAP-OUT-" + f.company}, &order)
 	exec(t, f.db, `INSERT INTO marketplace_order_items(company_id,order_id,product_id,quantity,quantity_source,resolution_status) VALUES($1,$2,$3,4,'extracted','resolved')`, f.company, order, f.product)
-	scan(t, f.db, `INSERT INTO batches(company_id,marketplace_key,status,created_by,idempotency_key,request_hash,ready_at) VALUES($1,'snapdeal','ready',$2,$3,$4,now()) RETURNING id`, []any{f.company, f.user, "snap-batch-" + f.company, "efefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefef"}, &batch)
+	scan(t, f.db, `INSERT INTO batches(company_id,marketplace_key,status,created_by,idempotency_key,request_hash,ready_at,marketplace_account_id) VALUES($1,'snapdeal','ready',$2,$3,$4,now(),(SELECT id FROM marketplace_accounts WHERE company_id=$1 AND marketplace_key='snapdeal' AND internal_key='fixture_'||'snapdeal')) RETURNING id`, []any{f.company, f.user, "snap-batch-" + f.company, "efefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefef"}, &batch)
 	exec(t, f.db, `INSERT INTO batch_members(company_id,batch_id,marketplace_order_id,position) VALUES($1,$2,$3,1)`, f.company, batch, order)
 	if _, _, err := f.service.StockIn(ctx, f.principal, CommandInput{ProductID: f.product, Quantity: 6, Reason: "Snapdeal stock", IdempotencyKey: "snap-stock"}); err != nil {
 		t.Fatal(err)

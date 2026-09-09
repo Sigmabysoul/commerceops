@@ -21,6 +21,7 @@ import (
 	"github.com/commerceops/commerceops/services/api/internal/marketplace"
 	"github.com/commerceops/commerceops/services/api/internal/marketplace/amazon"
 	"github.com/commerceops/commerceops/services/api/internal/marketplace/snapdeal"
+	"github.com/commerceops/commerceops/services/api/internal/marketplaceaccount"
 	"github.com/commerceops/commerceops/services/api/internal/platform/database"
 	"github.com/commerceops/commerceops/services/api/internal/platform/httpserver"
 	"github.com/commerceops/commerceops/services/api/internal/platform/objectstorage"
@@ -44,6 +45,7 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	authService := auth.NewService(db, cfg.SessionLifetime)
 	authHTTP := auth.NewHTTPHandler(authService, cfg.SecureCookies, cfg.SessionLifetime)
 	authorizer := authorization.NewService(db)
+	marketplaceaccount.NewHTTPHandler(marketplaceaccount.NewService(db, authorizer)).Register(mux, authHTTP.RequireSession)
 	coreHTTP := core.NewHTTPHandler(core.NewService(db, authorizer))
 	productHTTP := product.NewHTTPHandler(product.NewService(db, authorizer))
 	inventoryService := inventory.NewService(db, authorizer)

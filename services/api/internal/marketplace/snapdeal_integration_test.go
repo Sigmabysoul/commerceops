@@ -4,6 +4,7 @@ package marketplace
 import (
 	"context"
 	"errors"
+	"github.com/commerceops/commerceops/services/api/internal/testfixture"
 	"os"
 	"path/filepath"
 	"testing"
@@ -17,7 +18,7 @@ func TestSnapdealPostgreSQLIntegration(t *testing.T) {
 	f := setupPhaseThree(t)
 	ctx := context.Background()
 	mustExecP3(t, f.db, `INSERT INTO module_entitlements(company_id,module_key,enabled) VALUES($1,'snapdeal',true),($2,'snapdeal',true)`, f.companyA, f.companyB)
-	mustExecP3(t, f.db, `INSERT INTO sku_mappings(company_id,marketplace_key,product_id,sku) VALUES($1,'snapdeal',$2,'9_SAFE-SKU-R1')`, f.companyA, f.productID)
+	mustExecP3(t, f.db, `INSERT INTO sku_mappings(company_id,marketplace_key,product_id,sku,marketplace_account_id) VALUES($1,'snapdeal',$2,'9_SAFE-SKU-R1',(SELECT id FROM marketplace_accounts WHERE company_id=$1 AND marketplace_key='snapdeal' AND internal_key='fixture_'||'snapdeal'))`, f.companyA, f.productID)
 	service, err := newServiceForProcessor(f.db, authorization.NewService(f.db), f.service.storage, f.extractor, snapdealProcessor())
 	if err != nil {
 		t.Fatal(err)
@@ -25,14 +26,14 @@ func TestSnapdealPostgreSQLIntegration(t *testing.T) {
 	t.Run("entitlement and permission", func(t *testing.T) {
 		pdf := f.register("snap-denied", pdfextractor.Page{Number: 1, Text: snapShipping("88000000011", "SF0000000011DM", "1")}, pdfextractor.Page{Number: 2, Text: snapInvoice("88000000011", "9_SAFE-SKU-R1", "1")})
 		mustExecP3(t, f.db, `UPDATE module_entitlements SET enabled=false WHERE company_id=$1 AND module_key='snapdeal'`, f.companyA)
-		if _, e := service.Upload(ctx, f.principalA, "denied.pdf", pdf); !errors.Is(e, authorization.ErrModuleUnavailable) {
+		if _, e := service.Upload(ctx, f.principalA, "denied.pdf", pdf, testfixture.Account(t, f.db, f.principalA.CompanyID, "snapdeal")); !errors.Is(e, authorization.ErrModuleUnavailable) {
 			t.Fatalf("err=%v", e)
 		}
 		mustExecP3(t, f.db, `UPDATE module_entitlements SET enabled=true WHERE company_id=$1 AND module_key='snapdeal'`, f.companyA)
 		var role string
 		mustScanP3(t, f.db, `SELECT id FROM roles WHERE company_id=$1 AND name='Flipkart Operator'`, []any{f.companyA}, &role)
 		mustExecP3(t, f.db, `DELETE FROM role_permissions WHERE company_id=$1 AND role_id=$2 AND permission_key='labels.process'`, f.companyA, role)
-		if _, e := service.Upload(ctx, f.principalA, "denied.pdf", pdf); !errors.Is(e, authorization.ErrPermissionDenied) {
+		if _, e := service.Upload(ctx, f.principalA, "denied.pdf", pdf, testfixture.Account(t, f.db, f.principalA.CompanyID, "snapdeal")); !errors.Is(e, authorization.ErrPermissionDenied) {
 			t.Fatalf("permission err=%v", e)
 		}
 		mustExecP3(t, f.db, `INSERT INTO role_permissions(company_id,role_id,permission_key) VALUES($1,$2,'labels.process')`, f.companyA, role)
@@ -45,7 +46,7 @@ func TestSnapdealPostgreSQLIntegration(t *testing.T) {
 	pdf := f.register("snap-known", pdfextractor.Page{Number: 1, ExtractionMethod: "text", Text: snapShipping("88000000012", "SF0000000012DM", "2")}, pdfextractor.Page{Number: 2, ExtractionMethod: "text", Text: snapInvoice("88000000012", "9_SAFE-SKU-R1", "2")})
 	var before int
 	mustScanP3(t, f.db, `SELECT count(*) FROM inventory_transactions WHERE company_id=$1`, []any{f.companyA}, &before)
-	uploaded, err := service.Upload(ctx, f.principalA, "snapdeal.pdf", pdf)
+	uploaded, err := service.Upload(ctx, f.principalA, "snapdeal.pdf", pdf, testfixture.Account(t, f.db, f.principalA.CompanyID, "snapdeal"))
 	if err != nil || uploaded.Job.ParserVersion != snapdeal.ParserVersion {
 		t.Fatalf("upload=%#v err=%v", uploaded, err)
 	}
@@ -59,7 +60,7 @@ func TestSnapdealPostgreSQLIntegration(t *testing.T) {
 	if _, e := service.Get(ctx, f.principalB, uploaded.Job.ID); !errors.Is(e, ErrNotFound) {
 		t.Fatalf("cross tenant=%v", e)
 	}
-	duplicate, err := service.Upload(ctx, f.principalA, "same.pdf", pdf)
+	duplicate, err := service.Upload(ctx, f.principalA, "same.pdf", pdf, testfixture.Account(t, f.db, f.principalA.CompanyID, "snapdeal"))
 	if err != nil || !duplicate.DuplicateSource || duplicate.Job.ID != uploaded.Job.ID {
 		t.Fatalf("duplicate=%#v err=%v", duplicate, err)
 	}
@@ -70,7 +71,7 @@ func TestSnapdealPostgreSQLIntegration(t *testing.T) {
 	}
 	t.Run("unknown and conflicting evidence reviews", func(t *testing.T) {
 		reviewPDF := f.register("snap-review", pdfextractor.Page{Number: 1, Text: snapShipping("88000000013", "SF0000000013DM", "1")}, pdfextractor.Page{Number: 2, Text: snapInvoice("88000000013", "9_UNKNOWN", "2")})
-		result, e := service.Upload(ctx, f.principalA, "review.pdf", reviewPDF)
+		result, e := service.Upload(ctx, f.principalA, "review.pdf", reviewPDF, testfixture.Account(t, f.db, f.principalA.CompanyID, "snapdeal"))
 		if e != nil {
 			t.Fatal(e)
 		}

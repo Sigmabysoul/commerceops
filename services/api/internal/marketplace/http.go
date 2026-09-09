@@ -8,6 +8,7 @@ import (
 
 	"github.com/commerceops/commerceops/services/api/internal/auth"
 	"github.com/commerceops/commerceops/services/api/internal/authorization"
+	"github.com/commerceops/commerceops/services/api/internal/marketplaceaccount"
 	"github.com/commerceops/commerceops/services/api/internal/platform/httpserver"
 )
 
@@ -36,7 +37,7 @@ func (h *HTTPHandler) Jobs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	p, _ := auth.PrincipalFromContext(r.Context())
-	result, err := h.service.UploadWithIdempotency(r.Context(), p, header.Filename, data, r.FormValue("idempotency_key"))
+	result, err := h.service.UploadWithIdempotency(r.Context(), p, header.Filename, data, r.FormValue("idempotency_key"), r.FormValue("marketplace_account_id"))
 	if writeError(w, err) {
 		return
 	}
@@ -68,6 +69,8 @@ func writeError(w http.ResponseWriter, err error) bool {
 		return false
 	}
 	switch {
+	case errors.Is(err, marketplaceaccount.ErrInvalidInput), errors.Is(err, marketplaceaccount.ErrNotFound), errors.Is(err, marketplaceaccount.ErrUnavailable):
+		httpserver.WriteError(w, http.StatusBadRequest, "ACCOUNT_REQUIRED", "Select an explicit active seller account for this marketplace")
 	case errors.Is(err, authorization.ErrPermissionDenied), errors.Is(err, authorization.ErrModuleUnavailable):
 		httpserver.WriteError(w, 403, "FORBIDDEN", "Permission or marketplace entitlement denied")
 	case errors.Is(err, ErrInvalidFile):

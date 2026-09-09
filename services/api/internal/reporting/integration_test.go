@@ -13,6 +13,7 @@ import (
 
 	"github.com/commerceops/commerceops/services/api/internal/auth"
 	"github.com/commerceops/commerceops/services/api/internal/authorization"
+	"github.com/commerceops/commerceops/services/api/internal/testfixture"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -22,7 +23,9 @@ func TestDashboardAuthoritativeTotalsBoundariesAndTenantIsolation(t *testing.T) 
 	suffix := fmt.Sprint(time.Now().UnixNano())
 	var company, other, user, role, product, source, job, order string
 	mustScan(t, db, `INSERT INTO companies(name) VALUES($1) RETURNING id`, []any{"Reports A " + suffix}, &company)
+	testfixture.SeedAccounts(t, db, company)
 	mustScan(t, db, `INSERT INTO companies(name) VALUES($1) RETURNING id`, []any{"Reports B " + suffix}, &other)
+	testfixture.SeedAccounts(t, db, other)
 	mustScan(t, db, `INSERT INTO users(email,password_hash) VALUES($1,'test') RETURNING id`, []any{"reports-" + suffix + "@example.test"}, &user)
 	mustExec(t, db, `INSERT INTO company_users(company_id,user_id) VALUES($1,$3),($2,$3)`, company, other, user)
 	mustScan(t, db, `INSERT INTO roles(company_id,name) VALUES($1,'Reporter') RETURNING id`, []any{company}, &role)
@@ -30,7 +33,7 @@ func TestDashboardAuthoritativeTotalsBoundariesAndTenantIsolation(t *testing.T) 
 	mustExec(t, db, `INSERT INTO company_user_roles(company_id,user_id,role_id) VALUES($1,$2,$3)`, company, user, role)
 	mustExec(t, db, `INSERT INTO module_entitlements(company_id,module_key,enabled) VALUES($1,'inventory',true)`, company)
 	mustScan(t, db, `INSERT INTO products(company_id,internal_code,name) VALUES($1,'REP-1','Report product') RETURNING id`, []any{company}, &product)
-	mustScan(t, db, `INSERT INTO source_files(company_id,marketplace_key,storage_key,original_filename,content_type,size_bytes,sha256,uploaded_by) VALUES($1,'flipkart',$2,'report.pdf','application/pdf',1,$3,$4) RETURNING id`, []any{company, "reports/" + suffix, fmt.Sprintf("%064x", time.Now().UnixNano()), user}, &source)
+	mustScan(t, db, `INSERT INTO source_files(company_id,marketplace_key,storage_key,original_filename,content_type,size_bytes,sha256,uploaded_by,marketplace_account_id) VALUES($1,'flipkart',$2,'report.pdf','application/pdf',1,$3,$4,(SELECT id FROM marketplace_accounts WHERE company_id=$1 AND marketplace_key='flipkart' AND internal_key='fixture_'||'flipkart')) RETURNING id`, []any{company, "reports/" + suffix, fmt.Sprintf("%064x", time.Now().UnixNano()), user}, &source)
 	mustScan(t, db, `INSERT INTO processing_jobs(company_id,source_file_id,marketplace_key,status,parser_version,created_at) VALUES($1,$2,'flipkart','processed','test',$3) RETURNING id`, []any{company, source, time.Date(2026, 8, 30, 0, 0, 0, 0, time.UTC)}, &job)
 	mustScan(t, db, `INSERT INTO marketplace_orders(company_id,marketplace_key,source_file_id,processing_job_id,source_page,marketplace_order_id,status,parser_version,created_at) VALUES($1,'flipkart',$2,$3,1,$4,'resolved','test',$5) RETURNING id`, []any{company, source, job, "ORDER-" + suffix, time.Date(2026, 8, 30, 5, 30, 0, 0, time.UTC)}, &order)
 	mustExec(t, db, `INSERT INTO marketplace_order_items(company_id,order_id,raw_sku,product_id,quantity,quantity_source,resolution_status) VALUES($1,$2,'REP-SKU',$3,3,'extracted','resolved')`, company, order, product)
@@ -65,6 +68,7 @@ func TestMarketplaceFilterIsolatesEcommerceMovement(t *testing.T) {
 	mustExec(t, db, `INSERT INTO marketplaces(key,display_name) VALUES($1,'Synthetic reporting marketplace') ON CONFLICT(key) DO NOTHING`, secondMarketplace)
 	var company, user, role, product, flipkartBatch, syntheticBatch string
 	mustScan(t, db, `INSERT INTO companies(name) VALUES($1) RETURNING id`, []any{"Marketplace filter " + suffix}, &company)
+	testfixture.SeedAccounts(t, db, company)
 	mustScan(t, db, `INSERT INTO users(email,password_hash) VALUES($1,'test') RETURNING id`, []any{"market-filter-" + suffix + "@example.test"}, &user)
 	mustExec(t, db, `INSERT INTO company_users(company_id,user_id) VALUES($1,$2)`, company, user)
 	mustScan(t, db, `INSERT INTO roles(company_id,name) VALUES($1,'Marketplace Reporter') RETURNING id`, []any{company}, &role)
@@ -72,8 +76,8 @@ func TestMarketplaceFilterIsolatesEcommerceMovement(t *testing.T) {
 	mustExec(t, db, `INSERT INTO company_user_roles(company_id,user_id,role_id) VALUES($1,$2,$3)`, company, user, role)
 	mustExec(t, db, `INSERT INTO module_entitlements(company_id,module_key,enabled) VALUES($1,'inventory',true)`, company)
 	mustScan(t, db, `INSERT INTO products(company_id,internal_code,name) VALUES($1,'FILTER-1','Marketplace filter product') RETURNING id`, []any{company}, &product)
-	mustScan(t, db, `INSERT INTO batches(company_id,marketplace_key,status,created_by,idempotency_key,request_hash,ready_at) VALUES($1,'flipkart','ready',$2,$3,$4,now()) RETURNING id`, []any{company, user, "flipkart-batch-" + suffix, fmt.Sprintf("%064x", 1)}, &flipkartBatch)
-	mustScan(t, db, `INSERT INTO batches(company_id,marketplace_key,status,created_by,idempotency_key,request_hash,ready_at) VALUES($1,$2,'ready',$3,$4,$5,now()) RETURNING id`, []any{company, secondMarketplace, user, "synthetic-batch-" + suffix, fmt.Sprintf("%064x", 2)}, &syntheticBatch)
+	mustScan(t, db, `INSERT INTO batches(company_id,marketplace_key,status,created_by,idempotency_key,request_hash,ready_at,marketplace_account_id) VALUES($1,'flipkart','ready',$2,$3,$4,now(),(SELECT id FROM marketplace_accounts WHERE company_id=$1 AND marketplace_key='flipkart' AND internal_key='fixture_'||'flipkart')) RETURNING id`, []any{company, user, "flipkart-batch-" + suffix, fmt.Sprintf("%064x", 1)}, &flipkartBatch)
+	mustScan(t, db, `INSERT INTO batches(company_id,marketplace_key,status,created_by,idempotency_key,request_hash,ready_at,marketplace_account_id) VALUES($1,$2,'ready',$3,$4,$5,now(),(SELECT id FROM marketplace_accounts WHERE company_id=$1 AND marketplace_key=$2 AND internal_key='fixture_'||$2)) RETURNING id`, []any{company, secondMarketplace, user, "synthetic-batch-" + suffix, fmt.Sprintf("%064x", 2)}, &syntheticBatch)
 	at := time.Date(2026, 8, 30, 8, 0, 0, 0, time.UTC)
 	mustExec(t, db, `INSERT INTO inventory_balances(company_id,product_id,on_hand) VALUES($1,$2,73)`, company, product)
 	mustExec(t, db, `INSERT INTO inventory_transactions(company_id,product_id,transaction_type,quantity_delta,previous_balance,resulting_balance,reason,reference_type,reference_id,actor_user_id,idempotency_key,request_hash,created_at) VALUES
@@ -118,6 +122,7 @@ func TestMarketplaceDashboardIncludesLaterMarketplacesAndIsolatesEcommerceMoveme
 	at := time.Date(2026, 8, 30, 8, 0, 0, 0, time.UTC)
 	var company, user, role, product string
 	mustScan(t, db, `INSERT INTO companies(name) VALUES($1) RETURNING id`, []any{"Amazon reports " + suffix}, &company)
+	testfixture.SeedAccounts(t, db, company)
 	mustScan(t, db, `INSERT INTO users(email,password_hash) VALUES($1,'test') RETURNING id`, []any{"amazon-reports-" + suffix + "@example.test"}, &user)
 	mustExec(t, db, `INSERT INTO company_users(company_id,user_id) VALUES($1,$2)`, company, user)
 	mustScan(t, db, `INSERT INTO roles(company_id,name) VALUES($1,'Amazon Reporter') RETURNING id`, []any{company}, &role)
@@ -141,11 +146,11 @@ func TestMarketplaceDashboardIncludesLaterMarketplacesAndIsolatesEcommerceMoveme
 	}
 	for _, fixture := range fixtures {
 		var source, job, order, batch, printJob string
-		mustScan(t, db, `INSERT INTO source_files(company_id,marketplace_key,storage_key,original_filename,content_type,size_bytes,sha256,uploaded_by,created_at) VALUES($1,$2,$3,$4,'application/pdf',1,$5,$6,$7) RETURNING id`, []any{company, fixture.key, fixture.key + "/" + suffix, fixture.key + ".pdf", strings.Repeat(fixture.hashByte, 64), user, at}, &source)
+		mustScan(t, db, `INSERT INTO source_files(company_id,marketplace_key,storage_key,original_filename,content_type,size_bytes,sha256,uploaded_by,created_at,marketplace_account_id) VALUES($1,$2,$3,$4,'application/pdf',1,$5,$6,$7,(SELECT id FROM marketplace_accounts WHERE company_id=$1 AND marketplace_key=$2 AND internal_key='fixture_'||$2)) RETURNING id`, []any{company, fixture.key, fixture.key + "/" + suffix, fixture.key + ".pdf", strings.Repeat(fixture.hashByte, 64), user, at}, &source)
 		mustScan(t, db, `INSERT INTO processing_jobs(company_id,source_file_id,marketplace_key,status,parser_version,total_pages,processed_pages,created_at) VALUES($1,$2,$3,'processed',$4,1,1,$5) RETURNING id`, []any{company, source, fixture.key, fixture.key + "-test", at}, &job)
 		mustScan(t, db, `INSERT INTO marketplace_orders(company_id,marketplace_key,source_file_id,processing_job_id,source_page,marketplace_order_id,status,parser_version,created_at) VALUES($1,$2,$3,$4,1,$5,'resolved',$6,$7) RETURNING id`, []any{company, fixture.key, source, job, fixture.key + "-ORDER-" + suffix, fixture.key + "-test", at}, &order)
 		mustExec(t, db, `INSERT INTO marketplace_order_items(company_id,order_id,raw_sku,product_id,quantity,quantity_source,resolution_status) VALUES($1,$2,$3,$4,$5,'extracted','resolved')`, company, order, fixture.key+"-SKU", product, fixture.quantity)
-		mustScan(t, db, `INSERT INTO batches(company_id,marketplace_key,status,created_by,idempotency_key,request_hash,ready_at,created_at) VALUES($1,$2,'ready',$3,$4,$5,$6,$6) RETURNING id`, []any{company, fixture.key, user, fixture.key + "-batch-" + suffix, strings.Repeat(fixture.hashByte, 64), at}, &batch)
+		mustScan(t, db, `INSERT INTO batches(company_id,marketplace_key,status,created_by,idempotency_key,request_hash,ready_at,created_at,marketplace_account_id) VALUES($1,$2,'ready',$3,$4,$5,$6,$6,(SELECT id FROM marketplace_accounts WHERE company_id=$1 AND marketplace_key=$2 AND internal_key='fixture_'||$2)) RETURNING id`, []any{company, fixture.key, user, fixture.key + "-batch-" + suffix, strings.Repeat(fixture.hashByte, 64), at}, &batch)
 		mustExec(t, db, `INSERT INTO batch_members(company_id,batch_id,marketplace_order_id,position) VALUES($1,$2,$3,1)`, company, batch, order)
 		mustScan(t, db, `INSERT INTO print_jobs(company_id,batch_id,requested_by,status,sort_labels,export_invoices,generation_version,idempotency_key,request_hash,completed_at,created_at) VALUES($1,$2,$3,'ready',false,false,$4,$5,$6,$7,$7) RETURNING id`, []any{company, batch, user, fixture.key + "-print-test", fixture.key + "-print-" + suffix, strings.Repeat(fixture.hashByte, 64), at}, &printJob)
 		mustExec(t, db, `INSERT INTO print_artifacts(company_id,print_job_id,kind,storage_key,size_bytes,sha256,page_count,created_at) VALUES($1,$2,'labels',$3,1,$4,1,$5)`, company, printJob, fixture.key+"/artifact/"+suffix, strings.Repeat(fixture.hashByte, 64), at)

@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/commerceops/commerceops/services/api/internal/testfixture"
 	"sync"
 	"testing"
 
@@ -15,7 +16,7 @@ func TestFlipkartQueuedJobHasSingleLeaseOwner(t *testing.T) {
 	f := setupPhaseThree(t)
 	ctx := context.Background()
 	pdf := f.register("lease-single-owner", pdfextractor.Page{Number: 1, Text: "Flipkart AWB: AWBLEASE1 Order ID: ODLEASE1 SKU: KNOWN-SKU Qty: 1"})
-	uploaded, err := f.service.Upload(ctx, f.principalA, "lease.pdf", pdf)
+	uploaded, err := f.service.Upload(ctx, f.principalA, "lease.pdf", pdf, testfixture.Account(t, f.db, f.principalA.CompanyID, "flipkart"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -73,7 +74,7 @@ func TestFlipkartLeaseExpiryAndRenewal(t *testing.T) {
 	f := setupPhaseThree(t)
 	ctx := context.Background()
 	pdf := f.register("lease-expiry", pdfextractor.Page{Number: 1, Text: "Flipkart AWB: AWBLEASE2 Order ID: ODLEASE2 SKU: KNOWN-SKU Qty: 1"})
-	uploaded, err := f.service.Upload(ctx, f.principalA, "lease-expiry.pdf", pdf)
+	uploaded, err := f.service.Upload(ctx, f.principalA, "lease-expiry.pdf", pdf, testfixture.Account(t, f.db, f.principalA.CompanyID, "flipkart"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -132,7 +133,7 @@ func TestFlipkartRecoveryIsLeaseAwareAndMarketplaceScoped(t *testing.T) {
 	var sourceFlipkart, sourceAmazon, jobFlipkart, jobAmazon string
 	insert := func(marketplace, owner string, sourceID, jobID *string) {
 		t.Helper()
-		mustScanP3(t, f.db, `INSERT INTO source_files(company_id,marketplace_key,storage_key,original_filename,content_type,size_bytes,sha256,uploaded_by) VALUES($1,$2,$3,'x.pdf','application/pdf',1,$4,$5) RETURNING id`, []any{f.companyA, marketplace, "x/" + marketplace, fmt.Sprintf("%064x", marketplace), f.userID}, sourceID)
+		mustScanP3(t, f.db, `INSERT INTO source_files(company_id,marketplace_key,storage_key,original_filename,content_type,size_bytes,sha256,uploaded_by,marketplace_account_id) VALUES($1,$2,$3,'x.pdf','application/pdf',1,$4,$5,(SELECT id FROM marketplace_accounts WHERE company_id=$1 AND marketplace_key=$2 AND internal_key='fixture_'||$2)) RETURNING id`, []any{f.companyA, marketplace, "x/" + marketplace, fmt.Sprintf("%064x", marketplace), f.userID}, sourceID)
 		mustScanP3(t, f.db, `INSERT INTO processing_jobs(company_id,source_file_id,marketplace_key,status,parser_version,started_at,worker_id,lease_expires_at) VALUES($1,$2,$3,'processing','test',now(),$4,now()+interval '10 minutes') RETURNING id`, []any{f.companyA, *sourceID, marketplace, owner}, jobID)
 	}
 	insert("flipkart", "healthy-flipkart-worker", &sourceFlipkart, &jobFlipkart)
@@ -159,7 +160,7 @@ func TestConcurrentFlipkartWorkersCreateOneAuthoritativeOrder(t *testing.T) {
 	f := setupPhaseThree(t)
 	ctx := context.Background()
 	pdf := f.register("lease-concurrent-process", pdfextractor.Page{Number: 1, Text: "Flipkart AWB: AWBLEASE3 Order ID: ODLEASE3 SKU: KNOWN-SKU Qty: 1"})
-	uploaded, err := f.service.Upload(ctx, f.principalA, "concurrent.pdf", pdf)
+	uploaded, err := f.service.Upload(ctx, f.principalA, "concurrent.pdf", pdf, testfixture.Account(t, f.db, f.principalA.CompanyID, "flipkart"))
 	if err != nil {
 		t.Fatal(err)
 	}

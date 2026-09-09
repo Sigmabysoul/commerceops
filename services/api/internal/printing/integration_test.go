@@ -17,6 +17,7 @@ import (
 	"github.com/commerceops/commerceops/services/api/internal/auth"
 	"github.com/commerceops/commerceops/services/api/internal/authorization"
 	"github.com/commerceops/commerceops/services/api/internal/platform/objectstorage"
+	"github.com/commerceops/commerceops/services/api/internal/testfixture"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -46,7 +47,9 @@ func setup(t *testing.T) *fixture {
 	suffix := fmt.Sprint(time.Now().UnixNano())
 	f := &fixture{db: db}
 	scan(t, db, `INSERT INTO companies(name) VALUES($1) RETURNING id`, "Printing "+suffix, &f.company)
+	testfixture.SeedAccounts(t, db, f.company)
 	scan(t, db, `INSERT INTO companies(name) VALUES($1) RETURNING id`, "Printing other "+suffix, &f.other)
+	testfixture.SeedAccounts(t, db, f.other)
 	scan(t, db, `INSERT INTO users(email,password_hash) VALUES($1,'test') RETURNING id`, "printing-"+suffix+"@example.test", &f.user)
 	execSQL(t, db, `INSERT INTO company_users(company_id,user_id) VALUES($1,$3),($2,$3)`, f.company, f.other, f.user)
 	scan(t, db, `INSERT INTO roles(company_id,name) VALUES($1,'Printing operator') RETURNING id`, f.company, &f.role)
@@ -230,7 +233,7 @@ func TestExistingBatchArtifactUsesCanonicalQueue(t *testing.T) {
 	f := setup(t)
 	ctx := context.Background()
 	var batchID, generationJobID, artifactID string
-	scan(t, f.db, `INSERT INTO batches(company_id,marketplace_key,created_by,status,idempotency_key,request_hash,ready_at) VALUES($1,'flipkart',$2,'ready',$3,repeat('b',64),now()) RETURNING id`, f.company, f.user, "batch-artifact-"+fmt.Sprint(time.Now().UnixNano()), &batchID)
+	scan(t, f.db, `INSERT INTO batches(company_id,marketplace_key,created_by,status,idempotency_key,request_hash,ready_at,marketplace_account_id) VALUES($1,'flipkart',$2,'ready',$3,repeat('b',64),now(),(SELECT id FROM marketplace_accounts WHERE company_id=$1 AND marketplace_key='flipkart' AND internal_key='fixture_'||'flipkart')) RETURNING id`, f.company, f.user, "batch-artifact-"+fmt.Sprint(time.Now().UnixNano()), &batchID)
 	scan(t, f.db, `INSERT INTO print_jobs(company_id,batch_id,requested_by,status,sort_labels,export_invoices,generation_version,idempotency_key,request_hash,completed_at) VALUES($1,$2,$3,'ready',false,false,'test-v1',$4,repeat('a',64),now()) RETURNING id`, f.company, batchID, f.user, "generation-"+batchID, &generationJobID)
 	key := f.company + "/print-jobs/" + generationJobID + "/labels.pdf"
 	if err := f.storage.Put(ctx, key, bytes.NewReader(f.pdf), int64(len(f.pdf)), "application/pdf"); err != nil {

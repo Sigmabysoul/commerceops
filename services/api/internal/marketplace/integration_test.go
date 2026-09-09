@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/commerceops/commerceops/services/api/internal/testfixture"
 	"os"
 	"path/filepath"
 	"sync"
@@ -76,7 +77,7 @@ func setupPhaseThree(t *testing.T) *phaseThreeFixture {
 		mustExecP3(t, db, `INSERT INTO module_entitlements(company_id,module_key,enabled) VALUES($1,'flipkart',true)`, company)
 	}
 	scan(`INSERT INTO products(company_id,internal_code,name) VALUES($1,'KNOWN','Known Product') RETURNING id`, []any{f.companyA}, &f.productID)
-	mustExecP3(t, db, `INSERT INTO sku_mappings(company_id,marketplace_key,product_id,sku) VALUES($1,'flipkart',$2,'KNOWN-SKU')`, f.companyA, f.productID)
+	mustExecP3(t, db, `INSERT INTO sku_mappings(company_id,marketplace_key,product_id,sku,marketplace_account_id) VALUES($1,'flipkart',$2,'KNOWN-SKU',(SELECT id FROM marketplace_accounts WHERE company_id=$1 AND marketplace_key='flipkart' AND internal_key='fixture_'||'flipkart'))`, f.companyA, f.productID)
 	store, err := objectstorage.NewLocal(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -122,7 +123,7 @@ func TestPhaseThreePostgreSQLBehavior(t *testing.T) {
 		assertDeniedWithoutPersistence := func(t *testing.T, expected error) {
 			t.Helper()
 			before := sourceFileCount()
-			if _, err := f.service.Upload(ctx, f.principalA, "denied.pdf", pdf); !errors.Is(err, expected) {
+			if _, err := f.service.Upload(ctx, f.principalA, "denied.pdf", pdf, testfixture.Account(t, f.db, f.principalA.CompanyID, "flipkart")); !errors.Is(err, expected) {
 				t.Fatalf("upload error = %v, want %v", err, expected)
 			}
 			if after := sourceFileCount(); after != before {
@@ -151,7 +152,7 @@ func TestPhaseThreePostgreSQLBehavior(t *testing.T) {
 		}
 	})
 	known := f.register("known", pdfextractor.Page{Number: 1, Text: "Flipkart AWB: AWBKNOWN1 Order ID: ODKNOWN1 SKU: KNOWN-SKU Qty: 2"})
-	uploaded, err := f.service.Upload(ctx, f.principalA, "known.pdf", known)
+	uploaded, err := f.service.Upload(ctx, f.principalA, "known.pdf", known, testfixture.Account(t, f.db, f.principalA.CompanyID, "flipkart"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -173,11 +174,11 @@ func TestPhaseThreePostgreSQLBehavior(t *testing.T) {
 		}
 	})
 	t.Run("source duplicate is per tenant", func(t *testing.T) {
-		duplicate, err := f.service.Upload(ctx, f.principalA, "again.pdf", known)
+		duplicate, err := f.service.Upload(ctx, f.principalA, "again.pdf", known, testfixture.Account(t, f.db, f.principalA.CompanyID, "flipkart"))
 		if err != nil || !duplicate.DuplicateSource || duplicate.Job.ID != uploaded.Job.ID {
 			t.Fatalf("same tenant duplicate=%#v err=%v", duplicate, err)
 		}
-		other, err := f.service.Upload(ctx, f.principalB, "same.pdf", known)
+		other, err := f.service.Upload(ctx, f.principalB, "same.pdf", known, testfixture.Account(t, f.db, f.principalB.CompanyID, "flipkart"))
 		if err != nil || other.DuplicateSource || other.Job.ID == uploaded.Job.ID {
 			t.Fatalf("other tenant=%#v err=%v", other, err)
 		}
@@ -193,7 +194,7 @@ func TestPhaseThreePostgreSQLBehavior(t *testing.T) {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				result, err := f.service.Upload(ctx, f.principalA, "race.pdf", pdf)
+				result, err := f.service.Upload(ctx, f.principalA, "race.pdf", pdf, testfixture.Account(t, f.db, f.principalA.CompanyID, "flipkart"))
 				if err != nil {
 					errs <- err
 					return
@@ -222,7 +223,7 @@ func TestPhaseThreePostgreSQLBehavior(t *testing.T) {
 	})
 	t.Run("unresolved and missing quantity remain review null", func(t *testing.T) {
 		pdf := f.register("unresolved", pdfextractor.Page{Number: 3, Text: "Flipkart AWB: AWBUNKNOWN Order ID: ODUNKNOWN SKU: UNKNOWN"})
-		result, err := f.service.Upload(ctx, f.principalA, "unknown.pdf", pdf)
+		result, err := f.service.Upload(ctx, f.principalA, "unknown.pdf", pdf, testfixture.Account(t, f.db, f.principalA.CompanyID, "flipkart"))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -239,7 +240,7 @@ func TestPhaseThreePostgreSQLBehavior(t *testing.T) {
 	t.Run("duplicate AWB and order identifiers are visible", func(t *testing.T) {
 		for index, text := range []string{"Flipkart AWB: AWBKNOWN1 Order ID: ODOTHER1 SKU: KNOWN-SKU Qty: 1", "Flipkart AWB: AWBOTHER1 Order ID: ODKNOWN1 SKU: KNOWN-SKU Qty: 1"} {
 			pdf := f.register(fmt.Sprintf("duplicate-%d", index), pdfextractor.Page{Number: index + 1, Text: text})
-			result, err := f.service.Upload(ctx, f.principalA, "duplicate.pdf", pdf)
+			result, err := f.service.Upload(ctx, f.principalA, "duplicate.pdf", pdf, testfixture.Account(t, f.db, f.principalA.CompanyID, "flipkart"))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -255,7 +256,7 @@ func TestPhaseThreePostgreSQLBehavior(t *testing.T) {
 	})
 	t.Run("safe retry and worker transitions", func(t *testing.T) {
 		pdf := f.register("retry", pdfextractor.Page{Number: 1, Text: "Flipkart AWB: AWBRETRY1 Order ID: ODRETRY1 SKU: RETRY-SKU Qty: 1"})
-		result, err := f.service.Upload(ctx, f.principalA, "retry.pdf", pdf)
+		result, err := f.service.Upload(ctx, f.principalA, "retry.pdf", pdf, testfixture.Account(t, f.db, f.principalA.CompanyID, "flipkart"))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -264,7 +265,7 @@ func TestPhaseThreePostgreSQLBehavior(t *testing.T) {
 		if before.Job.Status != "needs_review" {
 			t.Fatalf("before=%s", before.Job.Status)
 		}
-		mustExecP3(t, f.db, `INSERT INTO sku_mappings(company_id,marketplace_key,product_id,sku) VALUES($1,'flipkart',$2,'RETRY-SKU')`, f.companyA, f.productID)
+		mustExecP3(t, f.db, `INSERT INTO sku_mappings(company_id,marketplace_key,product_id,sku,marketplace_account_id) VALUES($1,'flipkart',$2,'RETRY-SKU',(SELECT id FROM marketplace_accounts WHERE company_id=$1 AND marketplace_key='flipkart' AND internal_key='fixture_'||'flipkart'))`, f.companyA, f.productID)
 		retried, err := f.service.Retry(ctx, f.principalA, result.Job.ID)
 		if err != nil || retried.Status != "queued" {
 			t.Fatalf("retry=%#v err=%v", retried, err)
@@ -282,7 +283,7 @@ func TestPhaseThreePostgreSQLBehavior(t *testing.T) {
 		f.extractor.mu.Lock()
 		f.extractor.fail[string(pdf)] = errors.New("broken fixture")
 		f.extractor.mu.Unlock()
-		result, err := f.service.Upload(ctx, f.principalA, "failure.pdf", pdf)
+		result, err := f.service.Upload(ctx, f.principalA, "failure.pdf", pdf, testfixture.Account(t, f.db, f.principalA.CompanyID, "flipkart"))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -385,7 +386,7 @@ func cleanupPhaseThree(t *testing.T, f *phaseThreeFixture) {
 	t.Helper()
 	ctx := context.Background()
 	companies := []string{f.companyA, f.companyB}
-	for _, table := range []string{"marketplace_order_items", "processing_errors", "marketplace_orders", "processing_jobs", "source_files", "sku_mappings", "products", "audit_logs", "sessions", "module_entitlements", "company_user_roles", "role_permissions", "employees", "roles", "company_users"} {
+	for _, table := range []string{"marketplace_order_items", "processing_errors", "marketplace_orders", "processing_jobs", "source_files", "sku_mappings", "products", "audit_logs", "sessions", "module_entitlements", "company_user_roles", "role_permissions", "employees", "roles", "company_users", "marketplace_accounts", "business_identities"} {
 		query := "DELETE FROM " + table + " WHERE company_id=ANY($1::uuid[])"
 		if table == "marketplace_order_items" {
 			query = `DELETE FROM marketplace_order_items WHERE order_id IN(SELECT id FROM marketplace_orders WHERE company_id=ANY($1::uuid[]))`
