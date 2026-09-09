@@ -45,9 +45,9 @@ The `core` entitlement is always enabled. Entitlements represent technical modul
 
 Business/trading identities and marketplace seller accounts belong to the authenticated
 company. They are separate from printer agents and workstations. `marketplace_accounts.view`
-lists them; `marketplace_accounts.manage` creates or updates them. The initial Phase 16
-foundation records account configuration only; a subsequent Phase 16 migration attaches
-explicit account provenance to marketplace uploads and SKU mappings.
+lists them; `marketplace_accounts.manage` creates or updates them. Seller account provenance
+is required for new marketplace uploads and SKU mappings, and remains visible on batches,
+returns, and cancellations. Batch creation accepts orders from one seller account only.
 
 | Method | Path | Permission | Purpose |
 | --- | --- | --- | --- |

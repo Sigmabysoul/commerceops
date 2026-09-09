@@ -132,3 +132,9 @@ mappings, source files, processing jobs, and normalized marketplace orders. Exis
 backfilled to dormant unassigned-legacy accounts; this preserves history without guessing a
 seller. New account-aware uniqueness rules scope SKU, source-file, idempotency, AWB, and order
 deduplication by seller account, while partial legacy indexes retain historical duplicate safety.
+
+Migration `000025_marketplace_account_workflow_provenance` carries that immutable account
+context into batches, batch members, cancellations, return cases, and marketplace-order
+documents. Child records inherit the account only from their normalized marketplace order;
+batches reject a mixed-account order selection. Composite foreign keys keep each workflow
+record aligned with its parent account without changing inventory ownership or movement rules.

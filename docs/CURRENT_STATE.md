@@ -2,11 +2,11 @@
 
 ## Active phase
 
-Phase 15 — Repository Architecture Consolidation.
-Status: IMPLEMENTATION_COMPLETE_LOCAL_VERIFIED.
-The owner approved the complete five-batch plan on 2026-09-07 and authorized conditional
-progression on 2026-09-09 after a fresh full verification gate.
-Branch: me/phase-15-repository-architecture.
+Phase 16 — Single-business operating model and seller accounts.
+Status: IMPLEMENTATION_IN_PROGRESS.
+The owner authorized conditional progression on 2026-09-09 after Phase 15's fresh full
+verification gate. Phase 16 remains incomplete until its own full verification gate passes.
+Branch: me/phase-16-single-business-seller-accounts.
 Checkout: /home/sigma/work/commerceops-next.
 
 ## Selected implementation baseline
@@ -27,11 +27,12 @@ patch is backed up separately. Source/history backups live outside this reposito
 
 Myntra remains CSV-only/review-required without authoritative quantity or real print
 payload evidence. Meesho representative production evidence collection remains useful.
-No seller accounts, new login model, departments or traceability feature is implemented
-by Phase 15. Company scope, entitlements and permissions remain intact.
+Phase 16 establishes a server-selected operating company for a sole active access, and
+records seller-account provenance for marketplace ingestion, mappings, batches, returns,
+cancellations, and order documents. Company scope, entitlements and permissions remain intact.
+Departments and traceability remain future work.
 
 ## Next gate
 
-Phase 16 — Single-business operating model and seller accounts is active. Reassess the
-preserved WIP against the Phase 16 plan; do not cherry-pick it blindly. No production
-deployment or production-readiness claim is authorized.
+Complete Phase 16's full PostgreSQL-backed verification, then record evidence before assessing
+Phase 17. No production deployment or production-readiness claim is authorized.
