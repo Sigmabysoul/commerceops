@@ -126,3 +126,9 @@ Migration `000023_marketplace_seller_accounts` introduces company-scoped
 them. Accounts are bound to an existing marketplace key and a business identity through a
 composite company foreign key. They are configuration records only in this initial migration:
 they neither identify a workstation nor change inventory, printing, or marketplace parsing.
+
+Migration `000024_marketplace_account_provenance` records an explicit account ID on SKU
+mappings, source files, processing jobs, and normalized marketplace orders. Existing data is
+backfilled to dormant unassigned-legacy accounts; this preserves history without guessing a
+seller. New account-aware uniqueness rules scope SKU, source-file, idempotency, AWB, and order
+deduplication by seller account, while partial legacy indexes retain historical duplicate safety.
