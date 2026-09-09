@@ -5,7 +5,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/commerceops/commerceops/services/api/internal/config"
+	"github.com/commerceops/commerceops/services/api/internal/platform/config"
 	"github.com/commerceops/commerceops/services/api/internal/platform/objectstorage"
 )
 

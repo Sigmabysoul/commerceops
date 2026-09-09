@@ -1,0 +1,5 @@
+f22caab922685604997000ebe4886cd31b908dbe77df45d679a15229a2f0f9e3  docs/openapi.yaml
+ac4dd994f4d79903ec2fa95e13100c783b24c2904e59fe6c2031ba4e231d6045  services/api/go.mod
+530f905c59bc4c5021eb40a3a8eea79aa0c4b801267444b182e9de118ffd157e  services/api/go.sum
+3034f4c2b1adb1b6a64f04aaf79a6f9379b3f7d73153c8d30893d4687e8fa1f8  apps/web/package.json
+c8fcac33b24450a0c9aa14f5a64d52c3e026064e3a009283e8ddc29a418fceaa  apps/web/pnpm-lock.yaml

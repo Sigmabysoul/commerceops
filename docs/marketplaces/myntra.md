@@ -1,6 +1,6 @@
 # Myntra packed-orders adapter — Phase 11 Batch A
 
-The isolated adapter under `internal/marketplace/myntra` accepts only the
+The isolated adapter under `internal/domain/marketplace/myntra` accepts only the
 evidence-backed UTF-8 packed-orders CSV form. It does not parse or generate PDF
 labels.
 

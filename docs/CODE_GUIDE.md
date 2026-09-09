@@ -24,23 +24,23 @@ never authorization.
 - `cmd/server`: loads validated configuration and starts the modular monolith.
 - `cmd/printer-agent`: local Phase 13 process; it has no business-domain logic.
 - `internal/app`: dependency and route wiring. Domain rules do not belong here.
-- `internal/auth`, `internal/authorization`: sessions, principals, live role
+- `internal/platform/auth`, `internal/platform/authorization`: sessions, principals, live role
   permissions, and module entitlements.
-- `internal/core`: companies, employees, roles, access, settings, and audit view.
-- `internal/product`: canonical Product Master and exact marketplace SKU maps.
-- `internal/marketplace`: shared upload/job/normalization orchestration. Each
+- `internal/domain/core`: companies, employees, roles, access, settings, and audit view.
+- `internal/domain/product`: canonical Product Master and exact marketplace SKU maps.
+- `internal/domain/marketplace`: shared upload/job/normalization orchestration. Each
   marketplace subpackage owns only its evidence-specific parsing/printing rules.
-- `internal/batch`: order grouping, assignment snapshots, PDF generation records,
+- `internal/domain/batch`: order grouping, assignment snapshots, PDF generation records,
   immutable artifacts, and document-level reprints.
-- `internal/printing`: reusable assets, agents/printers, and every physical print
+- `internal/domain/printing`: reusable assets, agents/printers, and every physical print
   request. It must never depend on Inventory.
-- `internal/printeragent`: polling client, hash verification, durable at-most-once
+- `internal/platform/printeragent`: polling client, hash verification, durable at-most-once
   journal, and OS backend interface. `cups.go` is the Linux implementation seam.
-- `internal/inventory`: the only authority for balances, reservations, and ledger
+- `internal/domain/inventory`: the only authority for balances, reservations, and ledger
   mutations.
-- `internal/returns`, `internal/consignment`: lifecycle owners that call explicit
+- `internal/domain/returns`, `internal/domain/consignment`: lifecycle owners that call explicit
   Inventory boundaries only at approved stock transitions.
-- `internal/reporting`: read models derived from authoritative domain tables.
+- `internal/domain/reporting`: read models derived from authoritative domain tables.
 - `internal/platform`: database, HTTP envelope, object storage, PDF extraction,
   and PDF generation infrastructure without business ownership.
 
@@ -82,3 +82,10 @@ server-generated keys, hashes, sizes, and traceability—not PDF blobs.
 5. Treat reprints and all physical printing as Inventory-neutral.
 6. Add a regression test, update OpenAPI/docs, and run `make verify-full` against
    a migrated disposable PostgreSQL database.
+
+## Phase 15 navigation
+
+Look under internal/app for composition, internal/domain for business ownership and
+internal/platform for technical mechanisms. CODEX/MIGRATION_MAP.md records the exact
+before/after paths and dependencies. Tests/fixtures remain colocated; no framework layers
+or empty future packages are introduced. Package names and public interfaces are preserved.

@@ -107,3 +107,34 @@ tenant foreign keys protect rule/asset/printer/event/job relationships. Unique
 rule occurrence keys and job identities prevent duplicate queue creation. No
 Inventory or reporting counter schema changes. Down migration refuses to erase
 origins of existing automation jobs. See `workflows/automation.md`.
+
+## Phase 15 migration freeze
+
+The selected baseline is d90e4f7c0ceab032bc33a0618e1ceabdc20906b5, through migration 000022.
+All migration names and bytes are frozen for Phase 15. Compare CODEX/BASELINE_MIGRATIONS.sha256
+before and after consolidation. The deferred seller-account migration 000023 is preserved
+on a separate branch and is not part of this baseline. Do not apply it to Phase 15 tests.
+
+The single-business product direction preserves company-scoped constraints and existing
+entitlements. Later schema changes require new migrations in their approved phase. Use
+only a dedicated disposable migrated database for verify-full; startup never migrates.
+
+## Phase 16 seller-account foundation
+
+Migration `000023_marketplace_seller_accounts` introduces company-scoped
+`business_identities` and `marketplace_accounts`, with permissions for viewing and managing
+them. Accounts are bound to an existing marketplace key and a business identity through a
+composite company foreign key. They are configuration records only in this initial migration:
+they neither identify a workstation nor change inventory, printing, or marketplace parsing.
+
+Migration `000024_marketplace_account_provenance` records an explicit account ID on SKU
+mappings, source files, processing jobs, and normalized marketplace orders. Existing data is
+backfilled to dormant unassigned-legacy accounts; this preserves history without guessing a
+seller. New account-aware uniqueness rules scope SKU, source-file, idempotency, AWB, and order
+deduplication by seller account, while partial legacy indexes retain historical duplicate safety.
+
+Migration `000025_marketplace_account_workflow_provenance` carries that immutable account
+context into batches, batch members, cancellations, return cases, and marketplace-order
+documents. Child records inherit the account only from their normalized marketplace order;
+batches reject a mixed-account order selection. Composite foreign keys keep each workflow
+record aligned with its parent account without changing inventory ownership or movement rules.

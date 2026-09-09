@@ -19,7 +19,7 @@ Other methods receive HTTP 405 with the standard error envelope. The endpoint is
 
 ## Core Platform
 
-Authentication uses an opaque server-side session in an `HttpOnly`, `SameSite=Lax` cookie. Except for login and health, all endpoints require that session. Login's `company_id` selects one of the user's company memberships; the server verifies that membership and establishes the tenant stored on the session. Tenant APIs never accept a company identifier.
+Authentication uses an opaque server-side session in an `HttpOnly`, `SameSite=Lax` cookie. Except for login and health, all endpoints require that session. Login accepts email and password only: the server establishes the company from the user's sole active company access. Zero active accesses are rejected; multiple active accesses return a conflict until an explicit operating-company policy is approved. Tenant APIs never accept a company identifier.
 
 | Method | Path | Required permission | Purpose |
 | --- | --- | --- | --- |
@@ -41,6 +41,21 @@ Authentication uses an opaque server-side session in an `HttpOnly`, `SameSite=La
 
 The `core` entitlement is always enabled. Entitlements represent technical module access only and contain no billing or pricing behavior.
 
+## Marketplace seller accounts
+
+Business/trading identities and marketplace seller accounts belong to the authenticated
+company. They are separate from printer agents and workstations. `marketplace_accounts.view`
+lists them; `marketplace_accounts.manage` creates or updates them. Seller account provenance
+is required for new marketplace uploads and SKU mappings, and remains visible on batches,
+returns, and cancellations. Batch creation accepts orders from one seller account only.
+
+| Method | Path | Permission | Purpose |
+| --- | --- | --- | --- |
+| GET, POST | `/api/v1/business-identities` | `marketplace_accounts.view/manage` | List or create trading identities |
+| PUT | `/api/v1/business-identities/{identity_id}` | `marketplace_accounts.manage` | Update an identity |
+| GET, POST | `/api/v1/marketplace-accounts` | `marketplace_accounts.view/manage` | List or create seller accounts |
+| PUT | `/api/v1/marketplace-accounts/{account_id}` | `marketplace_accounts.manage` | Update a seller account |
+
 ## Product Master
 
 Product Master endpoints use only the authenticated session company. No request accepts `company_id`.
@@ -54,7 +69,7 @@ Product Master endpoints use only the authenticated session company. No request 
 | PATCH | `/api/v1/sku-mappings/{mapping_id}` | `products.manage` | Edit or deactivate a mapping |
 | POST | `/api/v1/sku-mappings/resolve` | `products.view` | Resolve one exact marketplace/SKU identifier |
 
-SKU resolution trims surrounding whitespace and then performs a case-sensitive exact match within the authenticated company and marketplace. It never performs fuzzy, substring, case-insensitive, or fallback matching. A successful lookup returns `status: "resolved"` with its mapping and product; every unknown, inactive, or differently-cased identifier returns `status: "unresolved"` without guessing.
+SKU training and resolution require an active seller account matching the selected marketplace. Resolution trims surrounding whitespace and then performs a case-sensitive exact match within the authenticated company, seller account, and marketplace. It never performs fuzzy, substring, case-insensitive, or fallback matching. A successful lookup returns `status: "resolved"` with its mapping and product; every unknown, inactive, or differently-cased identifier returns `status: "unresolved"` without guessing.
 
 The OpenAPI source is `docs/openapi.yaml`. It must be updated whenever the public API contract changes.
 

@@ -9,27 +9,28 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/commerceops/commerceops/services/api/internal/auth"
-	"github.com/commerceops/commerceops/services/api/internal/authorization"
-	"github.com/commerceops/commerceops/services/api/internal/automation"
-	"github.com/commerceops/commerceops/services/api/internal/batch"
-	"github.com/commerceops/commerceops/services/api/internal/config"
-	"github.com/commerceops/commerceops/services/api/internal/consignment"
-	"github.com/commerceops/commerceops/services/api/internal/core"
-	"github.com/commerceops/commerceops/services/api/internal/health"
-	"github.com/commerceops/commerceops/services/api/internal/inventory"
-	"github.com/commerceops/commerceops/services/api/internal/marketplace"
-	"github.com/commerceops/commerceops/services/api/internal/marketplace/amazon"
-	"github.com/commerceops/commerceops/services/api/internal/marketplace/snapdeal"
+	"github.com/commerceops/commerceops/services/api/internal/domain/automation"
+	"github.com/commerceops/commerceops/services/api/internal/domain/batch"
+	"github.com/commerceops/commerceops/services/api/internal/domain/consignment"
+	"github.com/commerceops/commerceops/services/api/internal/domain/core"
+	"github.com/commerceops/commerceops/services/api/internal/domain/inventory"
+	"github.com/commerceops/commerceops/services/api/internal/domain/marketplace"
+	"github.com/commerceops/commerceops/services/api/internal/domain/marketplace/amazon"
+	"github.com/commerceops/commerceops/services/api/internal/domain/marketplace/snapdeal"
+	"github.com/commerceops/commerceops/services/api/internal/domain/marketplaceaccount"
+	"github.com/commerceops/commerceops/services/api/internal/domain/printing"
+	"github.com/commerceops/commerceops/services/api/internal/domain/product"
+	"github.com/commerceops/commerceops/services/api/internal/domain/reporting"
+	returnsdomain "github.com/commerceops/commerceops/services/api/internal/domain/returns"
+	"github.com/commerceops/commerceops/services/api/internal/platform/auth"
+	"github.com/commerceops/commerceops/services/api/internal/platform/authorization"
+	"github.com/commerceops/commerceops/services/api/internal/platform/config"
 	"github.com/commerceops/commerceops/services/api/internal/platform/database"
+	"github.com/commerceops/commerceops/services/api/internal/platform/documents/pdf/extractor"
+	"github.com/commerceops/commerceops/services/api/internal/platform/documents/pdf/generator"
+	"github.com/commerceops/commerceops/services/api/internal/platform/health"
 	"github.com/commerceops/commerceops/services/api/internal/platform/httpserver"
 	"github.com/commerceops/commerceops/services/api/internal/platform/objectstorage"
-	"github.com/commerceops/commerceops/services/api/internal/platform/pdfextractor"
-	"github.com/commerceops/commerceops/services/api/internal/platform/pdfgenerator"
-	"github.com/commerceops/commerceops/services/api/internal/printing"
-	"github.com/commerceops/commerceops/services/api/internal/product"
-	"github.com/commerceops/commerceops/services/api/internal/reporting"
-	returnsdomain "github.com/commerceops/commerceops/services/api/internal/returns"
 )
 
 func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
@@ -46,6 +47,7 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	authorizer := authorization.NewService(db)
 	coreHTTP := core.NewHTTPHandler(core.NewService(db, authorizer))
 	productHTTP := product.NewHTTPHandler(product.NewService(db, authorizer))
+	marketplaceAccountHTTP := marketplaceaccount.NewHTTPHandler(marketplaceaccount.NewService(db, authorizer))
 	inventoryService := inventory.NewService(db, authorizer)
 	inventoryHTTP := inventory.NewHTTPHandler(inventoryService)
 	reportingHTTP := reporting.NewHTTPHandler(reporting.NewService(db, authorizer))
@@ -109,6 +111,10 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	mux.Handle("/api/v1/module-entitlements/{module_key}", authHTTP.RequireSession(http.HandlerFunc(coreHTTP.Entitlement)))
 	mux.Handle("/api/v1/audit-logs", authHTTP.RequireSession(http.HandlerFunc(coreHTTP.AuditLogs)))
 	mux.Handle("/api/v1/marketplaces", authHTTP.RequireSession(http.HandlerFunc(productHTTP.Marketplaces)))
+	mux.Handle("/api/v1/business-identities", authHTTP.RequireSession(http.HandlerFunc(marketplaceAccountHTTP.Identities)))
+	mux.Handle("/api/v1/business-identities/{identity_id}", authHTTP.RequireSession(http.HandlerFunc(marketplaceAccountHTTP.Identity)))
+	mux.Handle("/api/v1/marketplace-accounts", authHTTP.RequireSession(http.HandlerFunc(marketplaceAccountHTTP.Accounts)))
+	mux.Handle("/api/v1/marketplace-accounts/{account_id}", authHTTP.RequireSession(http.HandlerFunc(marketplaceAccountHTTP.Account)))
 	mux.Handle("/api/v1/products", authHTTP.RequireSession(http.HandlerFunc(productHTTP.Products)))
 	mux.Handle("/api/v1/products/{product_id}", authHTTP.RequireSession(http.HandlerFunc(productHTTP.Product)))
 	mux.Handle("/api/v1/sku-mappings", authHTTP.RequireSession(http.HandlerFunc(productHTTP.Mappings)))

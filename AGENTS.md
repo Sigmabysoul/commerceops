@@ -306,3 +306,19 @@ Never claim an unexecuted or skipped test as passing.
 - branch
 - commit SHA
 - working tree status
+
+## Phase 15–25 product and repository direction
+
+Read docs/CURRENT_STATE.md, the active phase and approved ADRs before implementation.
+ADR-0005 makes the product single-business-first through Phases 15–25; existing company
+isolation, server-established principals and entitlements remain mandatory.
+ADR-0006 organizes the backend into internal/app, internal/domain and internal/platform.
+
+Phase 15 permits package/import/test-path/documentation/CI changes only. No schema,
+migration, OpenAPI, authentication, permission, company-scope or domain behavior changes.
+Do not create future feature packages, merge PDF extraction/generation, or transfer
+scheduler ownership out of Automation. Preserve existing domain-specific rules above.
+
+The approved Phase 15 plan covers all five move batches; test and commit each before the
+next. Do not require repeated authorization for those approved batches. Stop at the
+Phase 15 completion gate; never begin Phase 16 without explicit owner authorization.

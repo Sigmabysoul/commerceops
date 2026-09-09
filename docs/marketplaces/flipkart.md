@@ -25,7 +25,7 @@ Scanned/image-only PDFs, encrypted PDFs, OCR, and coordinate-based multi-label s
 
 Multi-product tables and layouts without enough validated label signals are not treated as fully supported. If a table row cannot be interpreted unambiguously within the existing normalized single-item boundary, SKU and/or quantity remain missing for manual review rather than selecting a guessed value. No OCR is required for the representative modern text PDFs.
 
-Sanitized A4 and CropBox regression PDFs live under `services/api/internal/marketplace/flipkart/testdata`. Private production files remain outside the repository. Maintainers with authorized local samples can run the same Poppler/parser validation by setting `FLIPKART_PRIVATE_SAMPLES_DIR`; the test only selects `invoice_labels_*.pdf` and `flipkart_cropped*.pdf` and never logs extracted identifiers.
+Sanitized A4 and CropBox regression PDFs live under `services/api/internal/domain/marketplace/flipkart/testdata`. Private production files remain outside the repository. Maintainers with authorized local samples can run the same Poppler/parser validation by setting `FLIPKART_PRIVATE_SAMPLES_DIR`; the test only selects `invoice_labels_*.pdf` and `flipkart_cropped*.pdf` and never logs extracted identifiers.
 
 ## Processing
 

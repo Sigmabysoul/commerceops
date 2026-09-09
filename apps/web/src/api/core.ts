@@ -25,7 +25,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const coreAPI = {
   session: () => request<{ user: Principal }>("/auth/session"),
-  login: (email: string, password: string, companyID: string) => request<{ user: Principal }>("/auth/login", { method: "POST", body: JSON.stringify({ email, password, company_id: companyID }) }),
+  login: (email: string, password: string) => request<{ user: Principal }>("/auth/login", { method: "POST", body: JSON.stringify({ email, password }) }),
   logout: () => request<void>("/auth/logout", { method: "POST" }),
   company: () => request<{ company: Company }>("/company"),
   employees: () => request<{ employees: Employee[] }>("/employees"),
