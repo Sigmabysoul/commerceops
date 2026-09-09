@@ -85,6 +85,10 @@ func (h *HTTPHandler) Mappings(w http.ResponseWriter, r *http.Request) {
 		if !httpserver.DecodeJSON(w, r, &input) {
 			return
 		}
+		if input.MarketplaceAccountID == "" {
+			httpserver.WriteError(w, http.StatusBadRequest, "INVALID_REQUEST", "Marketplace seller account is required")
+			return
+		}
 		item, err := h.service.CreateMapping(r.Context(), principal(r), input)
 		if writeError(w, err) {
 			return
@@ -117,13 +121,14 @@ func (h *HTTPHandler) Resolve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var input struct {
-		MarketplaceKey string `json:"marketplace_key"`
-		SKU            string `json:"sku"`
+		MarketplaceAccountID string `json:"marketplace_account_id"`
+		MarketplaceKey       string `json:"marketplace_key"`
+		SKU                  string `json:"sku"`
 	}
 	if !httpserver.DecodeJSON(w, r, &input) {
 		return
 	}
-	result, err := h.service.Resolve(r.Context(), principal(r), input.MarketplaceKey, input.SKU)
+	result, err := h.service.ResolveForAccount(r.Context(), principal(r), input.MarketplaceKey, input.SKU, input.MarketplaceAccountID)
 	if writeError(w, err) {
 		return
 	}

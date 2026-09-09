@@ -80,19 +80,20 @@ type processor struct {
 	requireIdempotency                       bool
 	allowMissingAWB                          bool
 }
-type work struct{ CompanyID, UserID, JobID, StorageKey, WorkerID string }
+type work struct{ CompanyID, UserID, JobID, StorageKey, WorkerID, AccountID string }
 type UploadResult struct {
 	Job             Job  `json:"job"`
 	DuplicateSource bool `json:"duplicate_source"`
 }
 type Job struct {
-	ID             string    `json:"id"`
-	Status         string    `json:"status"`
-	ParserVersion  string    `json:"parser_version"`
-	TotalPages     int       `json:"total_pages"`
-	ProcessedPages int       `json:"processed_pages"`
-	CreatedAt      time.Time `json:"created_at"`
-	UpdatedAt      time.Time `json:"updated_at"`
+	MarketplaceAccountID string    `json:"marketplace_account_id,omitempty"`
+	ID                   string    `json:"id"`
+	Status               string    `json:"status"`
+	ParserVersion        string    `json:"parser_version"`
+	TotalPages           int       `json:"total_pages"`
+	ProcessedPages       int       `json:"processed_pages"`
+	CreatedAt            time.Time `json:"created_at"`
+	UpdatedAt            time.Time `json:"updated_at"`
 }
 type ErrorItem struct {
 	Page     *int   `json:"source_page"`
@@ -109,14 +110,15 @@ type Item struct {
 	Warnings         json.RawMessage `json:"warnings"`
 }
 type Order struct {
-	ID                 string          `json:"id"`
-	SourcePage         int             `json:"source_page"`
-	MarketplaceOrderID *string         `json:"marketplace_order_id"`
-	AWB                *string         `json:"awb"`
-	Status             string          `json:"status"`
-	Items              []Item          `json:"items"`
-	Documents          []Document      `json:"documents"`
-	Metadata           json.RawMessage `json:"metadata"`
+	MarketplaceAccountID string          `json:"marketplace_account_id,omitempty"`
+	ID                   string          `json:"id"`
+	SourcePage           int             `json:"source_page"`
+	MarketplaceOrderID   *string         `json:"marketplace_order_id"`
+	AWB                  *string         `json:"awb"`
+	Status               string          `json:"status"`
+	Items                []Item          `json:"items"`
+	Documents            []Document      `json:"documents"`
+	Metadata             json.RawMessage `json:"metadata"`
 }
 type Document struct {
 	SourcePage       int    `json:"source_page"`
@@ -261,6 +263,12 @@ func (s *Service) Upload(ctx context.Context, p auth.Principal, filename string,
 	return s.UploadWithIdempotency(ctx, p, filename, data, "")
 }
 func (s *Service) UploadWithIdempotency(ctx context.Context, p auth.Principal, filename string, data []byte, idempotencyKey string) (UploadResult, error) {
+	return s.uploadWithIdempotency(ctx, p, filename, data, idempotencyKey, "")
+}
+func (s *Service) UploadForAccount(ctx context.Context, p auth.Principal, filename string, data []byte, idempotencyKey, accountID string) (UploadResult, error) {
+	return s.uploadWithIdempotency(ctx, p, filename, data, idempotencyKey, strings.TrimSpace(accountID))
+}
+func (s *Service) uploadWithIdempotency(ctx context.Context, p auth.Principal, filename string, data []byte, idempotencyKey, accountID string) (UploadResult, error) {
 	if err := s.authorizer.RequireModule(ctx, p, s.processor.marketplace); err != nil {
 		return UploadResult{}, err
 	}
@@ -269,6 +277,16 @@ func (s *Service) UploadWithIdempotency(ctx context.Context, p auth.Principal, f
 	}
 	if err := s.authorizer.RequirePermission(ctx, p, "labels.process"); err != nil {
 		return UploadResult{}, err
+	}
+	if accountID != "" {
+		var active bool
+		err := s.db.QueryRow(ctx, `SELECT a.status='active' AND b.status='active' AND NOT a.legacy_unassigned FROM marketplace_accounts a JOIN business_identities b ON b.company_id=a.company_id AND b.id=a.business_identity_id WHERE a.company_id=$1 AND a.id=$2 AND a.marketplace_key=$3`, p.CompanyID, accountID, s.processor.marketplace).Scan(&active)
+		if errors.Is(err, pgx.ErrNoRows) || !active {
+			return UploadResult{}, ErrInvalidFile
+		}
+		if err != nil {
+			return UploadResult{}, err
+		}
 	}
 	idempotencyKey = strings.TrimSpace(idempotencyKey)
 	if s.processor.requireIdempotency && (idempotencyKey == "" || len(idempotencyKey) > 128) {
@@ -283,7 +301,7 @@ func (s *Service) UploadWithIdempotency(ctx context.Context, p auth.Principal, f
 	if idempotencyKey != "" {
 		var existing Job
 		var existingHash string
-		err := s.db.QueryRow(ctx, `SELECT j.id,j.status,j.parser_version,j.total_pages,j.processed_pages,j.created_at,j.updated_at,f.sha256 FROM processing_jobs j JOIN source_files f ON f.company_id=j.company_id AND f.id=j.source_file_id WHERE j.company_id=$1 AND j.marketplace_key=$2 AND j.upload_idempotency_key=$3`, p.CompanyID, s.processor.marketplace, idempotencyKey).Scan(&existing.ID, &existing.Status, &existing.ParserVersion, &existing.TotalPages, &existing.ProcessedPages, &existing.CreatedAt, &existing.UpdatedAt, &existingHash)
+		err := s.db.QueryRow(ctx, `SELECT j.id,j.status,j.parser_version,j.total_pages,j.processed_pages,j.created_at,j.updated_at,COALESCE(j.marketplace_account_id::text,''),f.sha256 FROM processing_jobs j JOIN source_files f ON f.company_id=j.company_id AND f.id=j.source_file_id WHERE j.company_id=$1 AND j.marketplace_key=$2 AND j.upload_idempotency_key=$3 AND ($4='' OR j.marketplace_account_id=$4::uuid)`, p.CompanyID, s.processor.marketplace, idempotencyKey, accountID).Scan(&existing.ID, &existing.Status, &existing.ParserVersion, &existing.TotalPages, &existing.ProcessedPages, &existing.CreatedAt, &existing.UpdatedAt, &existing.MarketplaceAccountID, &existingHash)
 		if err == nil {
 			if existingHash != hash {
 				return UploadResult{}, ErrIdempotencyConflict
@@ -294,7 +312,7 @@ func (s *Service) UploadWithIdempotency(ctx context.Context, p auth.Principal, f
 			return UploadResult{}, err
 		}
 	}
-	if existing, err := s.findDuplicate(ctx, p.CompanyID, hash); err == nil {
+	if existing, err := s.findDuplicate(ctx, p.CompanyID, hash, accountID); err == nil {
 		return UploadResult{Job: existing, DuplicateSource: true}, nil
 	} else if !errors.Is(err, ErrNotFound) {
 		return UploadResult{}, err
@@ -325,10 +343,10 @@ func (s *Service) UploadWithIdempotency(ctx context.Context, p auth.Principal, f
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
 	var inserted string
-	err = tx.QueryRow(ctx, `INSERT INTO source_files(id,company_id,marketplace_key,storage_key,original_filename,content_type,size_bytes,sha256,uploaded_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT(company_id,marketplace_key,sha256) DO NOTHING RETURNING id`, sourceID, p.CompanyID, s.processor.marketplace, storageKey, safeFilename(filename), contentType, len(data), hash, p.UserID).Scan(&inserted)
+	err = tx.QueryRow(ctx, `INSERT INTO source_files(id,company_id,marketplace_key,storage_key,original_filename,content_type,size_bytes,sha256,uploaded_by,marketplace_account_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,NULLIF($10,'')::uuid) ON CONFLICT DO NOTHING RETURNING id`, sourceID, p.CompanyID, s.processor.marketplace, storageKey, safeFilename(filename), contentType, len(data), hash, p.UserID, accountID).Scan(&inserted)
 	if errors.Is(err, pgx.ErrNoRows) {
 		_ = tx.Rollback(ctx)
-		existing, findErr := s.findDuplicate(ctx, p.CompanyID, hash)
+		existing, findErr := s.findDuplicate(ctx, p.CompanyID, hash, accountID)
 		if findErr != nil {
 			return UploadResult{}, findErr
 		}
@@ -342,11 +360,11 @@ func (s *Service) UploadWithIdempotency(ctx context.Context, p auth.Principal, f
 	if idempotencyKey != "" {
 		uploadRequestHash = hash
 	}
-	err = tx.QueryRow(ctx, `INSERT INTO processing_jobs(company_id,source_file_id,marketplace_key,status,parser_version,upload_idempotency_key,upload_request_hash) VALUES($1,$2,$3,'queued',$4,NULLIF($5,''),NULLIF($6,'')) RETURNING id,status,parser_version,total_pages,processed_pages,created_at,updated_at`, p.CompanyID, sourceID, s.processor.marketplace, s.processor.parserVersion, idempotencyKey, uploadRequestHash).Scan(&job.ID, &job.Status, &job.ParserVersion, &job.TotalPages, &job.ProcessedPages, &job.CreatedAt, &job.UpdatedAt)
+	err = tx.QueryRow(ctx, `INSERT INTO processing_jobs(company_id,source_file_id,marketplace_key,status,parser_version,upload_idempotency_key,upload_request_hash,marketplace_account_id) VALUES($1,$2,$3,'queued',$4,NULLIF($5,''),NULLIF($6,''),NULLIF($7,'')::uuid) RETURNING id,status,parser_version,total_pages,processed_pages,created_at,updated_at,COALESCE(marketplace_account_id::text,'')`, p.CompanyID, sourceID, s.processor.marketplace, s.processor.parserVersion, idempotencyKey, uploadRequestHash, accountID).Scan(&job.ID, &job.Status, &job.ParserVersion, &job.TotalPages, &job.ProcessedPages, &job.CreatedAt, &job.UpdatedAt, &job.MarketplaceAccountID)
 	if err != nil {
 		return UploadResult{}, err
 	}
-	if err = s.audit.Record(ctx, tx, p.CompanyID, p.UserID, s.processor.marketplace+".file_uploaded", "processing_job", job.ID, map[string]any{"source_file_id": sourceID, "sha256": hash, "size_bytes": len(data)}); err != nil {
+	if err = s.audit.Record(ctx, tx, p.CompanyID, p.UserID, s.processor.marketplace+".file_uploaded", "processing_job", job.ID, map[string]any{"marketplace_account_id": accountID, "source_file_id": sourceID, "sha256": hash, "size_bytes": len(data)}); err != nil {
 		return UploadResult{}, err
 	}
 	if err = tx.Commit(ctx); err != nil {
@@ -356,9 +374,9 @@ func (s *Service) UploadWithIdempotency(ctx context.Context, p auth.Principal, f
 	s.signal()
 	return UploadResult{Job: job}, nil
 }
-func (s *Service) findDuplicate(ctx context.Context, companyID, hash string) (Job, error) {
+func (s *Service) findDuplicate(ctx context.Context, companyID, hash, accountID string) (Job, error) {
 	var job Job
-	err := s.db.QueryRow(ctx, `SELECT j.id,j.status,j.parser_version,j.total_pages,j.processed_pages,j.created_at,j.updated_at FROM source_files f JOIN processing_jobs j ON j.company_id=f.company_id AND j.source_file_id=f.id WHERE f.company_id=$1 AND f.marketplace_key=$2 AND f.sha256=$3 AND j.marketplace_key=$2 ORDER BY j.created_at DESC LIMIT 1`, companyID, s.processor.marketplace, hash).Scan(&job.ID, &job.Status, &job.ParserVersion, &job.TotalPages, &job.ProcessedPages, &job.CreatedAt, &job.UpdatedAt)
+	err := s.db.QueryRow(ctx, `SELECT j.id,j.status,j.parser_version,j.total_pages,j.processed_pages,j.created_at,j.updated_at,COALESCE(j.marketplace_account_id::text,'') FROM source_files f JOIN processing_jobs j ON j.company_id=f.company_id AND j.source_file_id=f.id WHERE f.company_id=$1 AND f.marketplace_key=$2 AND f.sha256=$3 AND ($4='' OR f.marketplace_account_id=$4::uuid) AND j.marketplace_key=$2 ORDER BY j.created_at DESC LIMIT 1`, companyID, s.processor.marketplace, hash, accountID).Scan(&job.ID, &job.Status, &job.ParserVersion, &job.TotalPages, &job.ProcessedPages, &job.CreatedAt, &job.UpdatedAt, &job.MarketplaceAccountID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Job{}, ErrNotFound
 	}
@@ -373,14 +391,14 @@ func (s *Service) Get(ctx context.Context, p auth.Principal, id string) (JobDeta
 		return JobDetails{}, err
 	}
 	var out JobDetails
-	err := s.db.QueryRow(ctx, `SELECT id,status,parser_version,total_pages,processed_pages,created_at,updated_at FROM processing_jobs WHERE company_id=$1 AND id=$2 AND marketplace_key=$3`, p.CompanyID, id, s.processor.marketplace).Scan(&out.Job.ID, &out.Job.Status, &out.Job.ParserVersion, &out.Job.TotalPages, &out.Job.ProcessedPages, &out.Job.CreatedAt, &out.Job.UpdatedAt)
+	err := s.db.QueryRow(ctx, `SELECT id,status,parser_version,total_pages,processed_pages,created_at,updated_at,COALESCE(marketplace_account_id::text,'') FROM processing_jobs WHERE company_id=$1 AND id=$2 AND marketplace_key=$3`, p.CompanyID, id, s.processor.marketplace).Scan(&out.Job.ID, &out.Job.Status, &out.Job.ParserVersion, &out.Job.TotalPages, &out.Job.ProcessedPages, &out.Job.CreatedAt, &out.Job.UpdatedAt, &out.Job.MarketplaceAccountID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return JobDetails{}, ErrNotFound
 	}
 	if err != nil {
 		return JobDetails{}, err
 	}
-	rows, err := s.db.Query(ctx, `SELECT id,source_page,marketplace_order_id,awb,status,extraction_metadata FROM marketplace_orders WHERE company_id=$1 AND processing_job_id=$2 AND marketplace_key=$3 ORDER BY source_page,id`, p.CompanyID, id, s.processor.marketplace)
+	rows, err := s.db.Query(ctx, `SELECT id,source_page,marketplace_order_id,awb,status,extraction_metadata,COALESCE(marketplace_account_id::text,'') FROM marketplace_orders WHERE company_id=$1 AND processing_job_id=$2 AND marketplace_key=$3 ORDER BY source_page,id`, p.CompanyID, id, s.processor.marketplace)
 	if err != nil {
 		return JobDetails{}, err
 	}
@@ -388,7 +406,7 @@ func (s *Service) Get(ctx context.Context, p auth.Principal, id string) (JobDeta
 	out.Orders = []Order{}
 	for rows.Next() {
 		var o Order
-		if err = rows.Scan(&o.ID, &o.SourcePage, &o.MarketplaceOrderID, &o.AWB, &o.Status, &o.Metadata); err != nil {
+		if err = rows.Scan(&o.ID, &o.SourcePage, &o.MarketplaceOrderID, &o.AWB, &o.Status, &o.Metadata, &o.MarketplaceAccountID); err != nil {
 			return JobDetails{}, err
 		}
 		ir, queryErr := s.db.Query(ctx, `SELECT raw_sku,product_id,quantity,quantity_source,resolution_status,warnings FROM marketplace_order_items WHERE company_id=$1 AND order_id=$2`, p.CompanyID, o.ID)
@@ -530,7 +548,7 @@ func (s *Service) claim(ctx context.Context) (work, bool, error) {
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
 	var item work
-	err = tx.QueryRow(ctx, `SELECT j.company_id,f.uploaded_by,j.id,f.storage_key FROM processing_jobs j JOIN source_files f ON f.company_id=j.company_id AND f.id=j.source_file_id AND f.marketplace_key=$1 WHERE j.marketplace_key=$1 AND (j.status='queued' OR (j.status='processing' AND (j.lease_expires_at IS NULL OR j.lease_expires_at<=now()))) ORDER BY j.created_at,j.id FOR UPDATE OF j SKIP LOCKED LIMIT 1`, s.processor.marketplace).Scan(&item.CompanyID, &item.UserID, &item.JobID, &item.StorageKey)
+	err = tx.QueryRow(ctx, `SELECT j.company_id,f.uploaded_by,j.id,f.storage_key,COALESCE(j.marketplace_account_id::text,'') FROM processing_jobs j JOIN source_files f ON f.company_id=j.company_id AND f.id=j.source_file_id AND f.marketplace_key=$1 WHERE j.marketplace_key=$1 AND (j.status='queued' OR (j.status='processing' AND (j.lease_expires_at IS NULL OR j.lease_expires_at<=now()))) ORDER BY j.created_at,j.id FOR UPDATE OF j SKIP LOCKED LIMIT 1`, s.processor.marketplace).Scan(&item.CompanyID, &item.UserID, &item.JobID, &item.StorageKey, &item.AccountID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return work{}, false, nil
 	}
@@ -654,7 +672,7 @@ func (s *Service) execute(ctx context.Context, w work) error {
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
 	var sourceID string
-	if err = tx.QueryRow(ctx, `SELECT source_file_id FROM processing_jobs WHERE company_id=$1 AND id=$2 AND marketplace_key=$4 AND status='processing' AND worker_id=$3 AND lease_expires_at>now() FOR UPDATE`, w.CompanyID, w.JobID, w.WorkerID, s.processor.marketplace).Scan(&sourceID); errors.Is(err, pgx.ErrNoRows) {
+	if err = tx.QueryRow(ctx, `SELECT source_file_id,COALESCE(marketplace_account_id::text,'') FROM processing_jobs WHERE company_id=$1 AND id=$2 AND marketplace_key=$4 AND status='processing' AND worker_id=$3 AND lease_expires_at>now() FOR UPDATE`, w.CompanyID, w.JobID, w.WorkerID, s.processor.marketplace).Scan(&sourceID, &w.AccountID); errors.Is(err, pgx.ErrNoRows) {
 		return ErrLeaseLost
 	} else if err != nil {
 		return err
@@ -687,7 +705,7 @@ func (s *Service) execute(ctx context.Context, w work) error {
 			warnings = append(warnings, "missing_sku")
 		} else {
 			var id string
-			resolutionErr := tx.QueryRow(ctx, `SELECT m.product_id FROM sku_mappings m JOIN products p ON p.company_id=m.company_id AND p.id=m.product_id WHERE m.company_id=$1 AND m.marketplace_key=$2 AND m.sku=$3 AND m.status='active' AND p.status='active'`, w.CompanyID, s.processor.marketplace, label.SKU).Scan(&id)
+			resolutionErr := tx.QueryRow(ctx, `SELECT m.product_id FROM sku_mappings m JOIN products p ON p.company_id=m.company_id AND p.id=m.product_id WHERE m.company_id=$1 AND m.marketplace_key=$2 AND m.sku=$3 AND ($4='' OR m.marketplace_account_id=$4::uuid) AND m.status='active' AND p.status='active'`, w.CompanyID, s.processor.marketplace, label.SKU, w.AccountID).Scan(&id)
 			if resolutionErr == nil {
 				productID = &id
 			} else if errors.Is(resolutionErr, pgx.ErrNoRows) {
@@ -710,7 +728,7 @@ func (s *Service) execute(ctx context.Context, w work) error {
 		}
 		var duplicate bool
 		if label.AWB != "" || label.OrderID != "" {
-			if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM marketplace_orders WHERE company_id=$1 AND marketplace_key=$2 AND status<>'duplicate' AND (($3<>'' AND awb=$3) OR ($4<>'' AND marketplace_order_id=$4)))`, w.CompanyID, s.processor.marketplace, label.AWB, label.OrderID).Scan(&duplicate); err != nil {
+			if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM marketplace_orders WHERE company_id=$1 AND marketplace_key=$2 AND ($5='' OR marketplace_account_id=$5::uuid) AND status<>'duplicate' AND (($3<>'' AND awb=$3) OR ($4<>'' AND marketplace_order_id=$4)))`, w.CompanyID, s.processor.marketplace, label.AWB, label.OrderID, w.AccountID).Scan(&duplicate); err != nil {
 				return err
 			}
 		}
@@ -730,7 +748,7 @@ func (s *Service) execute(ctx context.Context, w work) error {
 		}
 		metadata, _ := json.Marshal(metadataValues)
 		var orderID string
-		if err = tx.QueryRow(ctx, `INSERT INTO marketplace_orders(company_id,marketplace_key,source_file_id,processing_job_id,source_page,marketplace_order_id,awb,status,parser_version,extraction_metadata) VALUES($1,$2,$3,$4,$5,NULLIF($6,''),NULLIF($7,''),$8,$9,$10) RETURNING id`, w.CompanyID, s.processor.marketplace, sourceID, w.JobID, label.Page, label.OrderID, label.AWB, status, s.processor.parserVersion, metadata).Scan(&orderID); err != nil {
+		if err = tx.QueryRow(ctx, `INSERT INTO marketplace_orders(company_id,marketplace_key,source_file_id,processing_job_id,source_page,marketplace_order_id,awb,status,parser_version,extraction_metadata,marketplace_account_id) VALUES($1,$2,$3,$4,$5,NULLIF($6,''),NULLIF($7,''),$8,$9,$10,NULLIF($11,'')::uuid) RETURNING id`, w.CompanyID, s.processor.marketplace, sourceID, w.JobID, label.Page, label.OrderID, label.AWB, status, s.processor.parserVersion, metadata, w.AccountID).Scan(&orderID); err != nil {
 			return err
 		}
 		warningJSON, _ := json.Marshal(warnings)

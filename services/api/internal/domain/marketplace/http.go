@@ -36,7 +36,12 @@ func (h *HTTPHandler) Jobs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	p, _ := auth.PrincipalFromContext(r.Context())
-	result, err := h.service.UploadWithIdempotency(r.Context(), p, header.Filename, data, r.FormValue("idempotency_key"))
+	accountID := r.FormValue("marketplace_account_id")
+	if accountID == "" {
+		httpserver.WriteError(w, 400, "INVALID_UPLOAD", "An active marketplace seller account is required")
+		return
+	}
+	result, err := h.service.UploadForAccount(r.Context(), p, header.Filename, data, r.FormValue("idempotency_key"), accountID)
 	if writeError(w, err) {
 		return
 	}
