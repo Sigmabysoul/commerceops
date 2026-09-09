@@ -30,6 +30,9 @@ Existing marketplace evidence limitations are preserved.
   shipping-label/invoice PDF establishes authoritative identifiers, quantity, seller-account
   provenance, association and any printable geometry. Supplied Flipkart, Snapdeal, Amazon and
   Myntra files must not be used to infer the JioMart contract.
+- Phase 19 Myntra PDF parsing and print enrichment are deferred until the actual browser/OS
+  print payload is captured. The production packed-orders CSV verifies Batch A but contains no
+  quantity and cannot establish page association or geometry.
 
 ## Gates
 

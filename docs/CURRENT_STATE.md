@@ -3,7 +3,7 @@
 ## Active phase
 
 Phase 19 — Myntra print-capture completion.
-Status: IMPLEMENTATION_IN_PROGRESS — PRINT_PAYLOAD_EVIDENCE_REQUIRED.
+Status: EVIDENCE_PREPARATION_VERIFIED — PRINT_PAYLOAD_RUNTIME_WORK_DEFERRED.
 Phase 17 completed its local PostgreSQL-backed full verification gate on 2026-09-10. Phase 18
 JioMart work is deferred on the evidence backlog at the owner's direction. Phase 19 starts
 from the same verified Product department-ownership runtime baseline.
@@ -34,7 +34,8 @@ patch is backed up separately. Source/history backups live outside this reposito
 
 Myntra remains CSV-only/review-required without authoritative quantity or real print
 payload evidence. The supplied private Myntra CSV has 34 structurally valid rows and no
-quantity column; it does not establish PDF behavior. Meesho representative production
+quantity column; an optional private-fixture regression verifies that evidence without
+committing order data. It does not establish PDF behavior. Meesho representative production
 evidence collection remains useful.
 Phase 16 establishes a server-selected operating company for a sole active access, and
 records seller-account provenance for marketplace ingestion, mappings, batches, returns,
@@ -43,7 +44,7 @@ Departments and traceability remain future work.
 
 ## Next gate
 
-Capture the actual Myntra browser/OS print payload, preferably through print-to-file or a
-controlled virtual CUPS printer. Establish authoritative quantity and deterministic page
-association before implementing PDF parsing or enrichment. Photos do not establish geometry.
-No production deployment or production-readiness claim is authorized.
+Phase 18 JioMart and the runtime portion of Phase 19 remain on ROADMAP.md's deferred evidence
+backlog. Capture the actual Myntra browser/OS print payload using
+`marketplaces/MYNTRA_PRINT_CAPTURE.md` before resuming PDF parsing or enrichment. Phase 20 has
+not started. No production deployment or production-readiness claim is authorized.
