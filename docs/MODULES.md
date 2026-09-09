@@ -62,6 +62,18 @@ inside one application; it does not imply microservices.
   isolated adapters; marketplace processing must not mutate inventory or
   implement future marketplace adapters outside the active phase.
 
+## Marketplace seller accounts (`internal/domain/marketplaceaccount`)
+
+- **Owns:** company-scoped business/trading identities and marketplace seller-account
+  configuration.
+- **Does not own:** workstation or printer-agent identity, parsing, Product Master records,
+  inventory, or hardware routing.
+- **Allowed dependencies:** authenticated principals, centralized authorization, audit, and
+  PostgreSQL.
+- **Forbidden leakage:** account ownership must be supplied explicitly by the approved
+  marketplace workflow; it must never be inferred from a workstation, SKU, filename, or
+  marketplace-only fallback.
+
 ## Inventory (`internal/domain/inventory`)
 
 - **Owns:** stock ledger transactions, balances, source-linked reservations,

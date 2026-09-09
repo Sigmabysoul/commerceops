@@ -41,6 +41,21 @@ Authentication uses an opaque server-side session in an `HttpOnly`, `SameSite=La
 
 The `core` entitlement is always enabled. Entitlements represent technical module access only and contain no billing or pricing behavior.
 
+## Marketplace seller accounts
+
+Business/trading identities and marketplace seller accounts belong to the authenticated
+company. They are separate from printer agents and workstations. `marketplace_accounts.view`
+lists them; `marketplace_accounts.manage` creates or updates them. The initial Phase 16
+foundation records account configuration only; a subsequent Phase 16 migration attaches
+explicit account provenance to marketplace uploads and SKU mappings.
+
+| Method | Path | Permission | Purpose |
+| --- | --- | --- | --- |
+| GET, POST | `/api/v1/business-identities` | `marketplace_accounts.view/manage` | List or create trading identities |
+| PUT | `/api/v1/business-identities/{identity_id}` | `marketplace_accounts.manage` | Update an identity |
+| GET, POST | `/api/v1/marketplace-accounts` | `marketplace_accounts.view/manage` | List or create seller accounts |
+| PUT | `/api/v1/marketplace-accounts/{account_id}` | `marketplace_accounts.manage` | Update a seller account |
+
 ## Product Master
 
 Product Master endpoints use only the authenticated session company. No request accepts `company_id`.

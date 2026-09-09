@@ -118,3 +118,11 @@ on a separate branch and is not part of this baseline. Do not apply it to Phase 
 The single-business product direction preserves company-scoped constraints and existing
 entitlements. Later schema changes require new migrations in their approved phase. Use
 only a dedicated disposable migrated database for verify-full; startup never migrates.
+
+## Phase 16 seller-account foundation
+
+Migration `000023_marketplace_seller_accounts` introduces company-scoped
+`business_identities` and `marketplace_accounts`, with permissions for viewing and managing
+them. Accounts are bound to an existing marketplace key and a business identity through a
+composite company foreign key. They are configuration records only in this initial migration:
+they neither identify a workstation nor change inventory, printing, or marketplace parsing.
