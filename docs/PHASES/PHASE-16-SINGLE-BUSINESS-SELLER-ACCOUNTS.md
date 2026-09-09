@@ -1,6 +1,6 @@
 # Phase 16 — Single-business operating model and seller accounts
 
-Status: In progress. Owner authorized conditional progression on 2026-09-09 after Phase 15 verification.
+Status: IMPLEMENTATION_COMPLETE_LOCAL_VERIFIED on 2026-09-09.
 Revision: 2026-09-09.
 
 ## Goal and work
@@ -23,3 +23,8 @@ Auth edge cases, permissions, company isolation, account-aware mappings/deduplic
 
 Every implementation plan must specify schema/API changes, owning modules and regression
 coverage before editing. Stop after this phase; update CURRENT_STATE only with real evidence.
+
+Verification evidence: a disposable PostgreSQL database was migrated through `000025`; the
+full `make verify-full` gate passed with `TEST_DATABASE_URL` set, including `go vet`, uncached
+backend tests, both executable builds, frontend typecheck, lint, production build, and
+`git diff --check`. Private fixtures, hardware tests, and remote CI were not run.

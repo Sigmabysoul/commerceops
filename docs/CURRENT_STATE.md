@@ -2,10 +2,10 @@
 
 ## Active phase
 
-Phase 16 — Single-business operating model and seller accounts.
+Phase 17 — Department ownership and operating boundaries.
 Status: IMPLEMENTATION_IN_PROGRESS.
-The owner authorized conditional progression on 2026-09-09 after Phase 15's fresh full
-verification gate. Phase 16 remains incomplete until its own full verification gate passes.
+Phase 16 completed its local full verification gate on 2026-09-09. Phase 17 starts from that
+verified seller-account baseline and must complete its own verification before Phase 18.
 Branch: me/phase-16-single-business-seller-accounts.
 Checkout: /home/sigma/work/commerceops-next.
 
@@ -34,5 +34,5 @@ Departments and traceability remain future work.
 
 ## Next gate
 
-Complete Phase 16's full PostgreSQL-backed verification, then record evidence before assessing
-Phase 17. No production deployment or production-readiness claim is authorized.
+Implement and verify Phase 17's approved department-ownership scope. No production deployment
+or production-readiness claim is authorized.
