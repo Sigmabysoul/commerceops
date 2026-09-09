@@ -4,7 +4,7 @@ Preserved from the pre-consolidation working tree on 2026-09-07. Phase numbers a
 
 # Phase 16 — JioMart
 
-**Status:** PLANNED / NOT IMPLEMENTED  
+**Status:** PLANNED / NOT IMPLEMENTED
 **Depends on:** Phase 15 Marketplace Seller Accounts
 
 ## Goal

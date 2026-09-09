@@ -4,7 +4,7 @@ Preserved from the pre-consolidation working tree on 2026-09-07. Phase numbers a
 
 # Phase 15 — Multi-ID Business Model / Marketplace Seller Accounts
 
-**Status:** PLANNED / NOT IMPLEMENTED  
+**Status:** PLANNED / NOT IMPLEMENTED
 **Depends on:** approved Phase 14 baseline
 
 ## Goal

@@ -1,7 +1,7 @@
 # Phase 15 verification record
 
 Baseline: d90e4f7c0ceab032bc33a0618e1ceabdc20906b5, migration 000022.
-Verification dates: 2026-09-07 through 2026-09-08.
+Verification dates: 2026-09-07 through 2026-09-09.
 
 ## Baseline gate
 
@@ -41,6 +41,12 @@ The retained final log is:
 
 SHA-256: `1b30d0979b9adad6e273fbc2765cc1f57338cc1dc8d871e48937d0ecab933f17`
 
+The complete final gate was repeated on 2026-09-09 using a new isolated PostgreSQL
+cluster after applying migrations `000001` through `000022`. It passed with PostgreSQL
+integration tests enabled, both executable builds, frontend typecheck, lint, production
+build, and `git diff --check`. This repeat did not use private fixtures, hardware, or
+remote CI.
+
 ## Integrity and review
 
 - All migration filenames and bytes through 000022 match the Phase 14 manifest.
@@ -58,5 +64,5 @@ were not supplied: two Amazon, two Flipkart (parser and generator), one Meesho a
 Snapdeal. Sanitized fixture tests passed. Physical printer hardware, interactive browser
 behavior, real Myntra print capture and remote CI were not tested. No deployment occurred.
 
-Phase 15 implementation is locally verified and awaits owner approval. Phase 16 remains
-unauthorized.
+Phase 15 is locally verified. The owner authorized conditional progression on 2026-09-09
+after this fresh verification gate; Phase 16 begins from this completed branch.
