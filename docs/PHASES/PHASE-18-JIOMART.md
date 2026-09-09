@@ -1,6 +1,6 @@
 # Phase 18 — JioMart
 
-Status: BLOCKED_AWAITING_REPRESENTATIVE_EVIDENCE.
+Status: DEFERRED_AWAITING_REPRESENTATIVE_EVIDENCE.
 Revision: 2026-09-10.
 
 ## Goal and work
@@ -12,6 +12,9 @@ Phase 17 is locally verified and the owner has authorized Phase 18. An evidence 
 Myntra material. None establishes a JioMart source format, field authority, page association
 or printable layout. Implementation therefore remains blocked before adapter or contract
 changes; no JioMart package has been created.
+
+The owner directed that this remaining work stay on the deferred evidence backlog while
+Phase 19 proceeds. Deferral is not an implementation-completion claim.
 
 ## Boundaries
 

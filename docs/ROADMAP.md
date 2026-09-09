@@ -24,6 +24,13 @@ Existing marketplace evidence limitations are preserved.
 | 24 | [Data lifecycle and archival](PHASES/PHASE-24-DATA-LIFECYCLE-ARCHIVAL.md) |
 | 25 | [Production hardening and internal rollout](PHASES/PHASE-25-PRODUCTION-HARDENING.md) |
 
+## Deferred evidence backlog
+
+- Phase 18 JioMart implementation is deferred until an original JioMart order export or
+  shipping-label/invoice PDF establishes authoritative identifiers, quantity, seller-account
+  provenance, association and any printable geometry. Supplied Flipkart, Snapdeal, Amazon and
+  Myntra files must not be used to infer the JioMart contract.
+
 ## Gates
 
 CURRENT_STATE.md determines the active phase. The owner authorized roadmap adoption and

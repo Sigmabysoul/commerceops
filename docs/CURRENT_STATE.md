@@ -2,17 +2,19 @@
 
 ## Active phase
 
-Phase 18 — JioMart marketplace integration.
-Status: BLOCKED_AWAITING_REPRESENTATIVE_EVIDENCE.
+Phase 19 — Myntra print-capture completion.
+Status: IMPLEMENTATION_IN_PROGRESS — PRINT_PAYLOAD_EVIDENCE_REQUIRED.
 Phase 17 completed its local PostgreSQL-backed full verification gate on 2026-09-10. Phase 18
-starts from that verified Product department-ownership baseline.
-Branch: me/phase-18-jiomart.
+JioMart work is deferred on the evidence backlog at the owner's direction. Phase 19 starts
+from the same verified Product department-ownership runtime baseline.
+Branch: me/phase-19-myntra-print-capture.
 Checkout: /home/sigma/work/commerceops-next.
 
 The Phase 17 baseline was reproduced on 2026-09-10 using a fresh disposable PostgreSQL
 database migrated through `000026`; PostgreSQL-backed `make verify-full` passed. Supplied
 private files were classified as Flipkart, Snapdeal, Amazon and Myntra evidence. None is an
 authoritative JioMart source, so no JioMart parser, API, schema or UI change has been made.
+That work remains listed in ROADMAP.md's deferred evidence backlog.
 
 ## Selected implementation baseline
 
@@ -31,7 +33,9 @@ patch is backed up separately. Source/history backups live outside this reposito
 ## Current limits
 
 Myntra remains CSV-only/review-required without authoritative quantity or real print
-payload evidence. Meesho representative production evidence collection remains useful.
+payload evidence. The supplied private Myntra CSV has 34 structurally valid rows and no
+quantity column; it does not establish PDF behavior. Meesho representative production
+evidence collection remains useful.
 Phase 16 establishes a server-selected operating company for a sole active access, and
 records seller-account provenance for marketplace ingestion, mappings, batches, returns,
 cancellations, and order documents. Company scope, entitlements and permissions remain intact.
@@ -39,7 +43,7 @@ Departments and traceability remain future work.
 
 ## Next gate
 
-Obtain a representative original JioMart order export or shipping-label/invoice PDF, sanitize
-it into committed regression fixtures, then implement and verify Phase 18's approved scope.
-Do not infer fields or geometry from other marketplaces. No production deployment or
-production-readiness claim is authorized.
+Capture the actual Myntra browser/OS print payload, preferably through print-to-file or a
+controlled virtual CUPS printer. Establish authoritative quantity and deterministic page
+association before implementing PDF parsing or enrichment. Photos do not establish geometry.
+No production deployment or production-readiness claim is authorized.
