@@ -17,6 +17,7 @@ import (
 	"github.com/commerceops/commerceops/services/api/internal/domain/marketplace"
 	"github.com/commerceops/commerceops/services/api/internal/domain/marketplace/amazon"
 	"github.com/commerceops/commerceops/services/api/internal/domain/marketplace/snapdeal"
+	"github.com/commerceops/commerceops/services/api/internal/domain/marketplaceaccount"
 	"github.com/commerceops/commerceops/services/api/internal/domain/printing"
 	"github.com/commerceops/commerceops/services/api/internal/domain/product"
 	"github.com/commerceops/commerceops/services/api/internal/domain/reporting"
@@ -46,6 +47,7 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	authorizer := authorization.NewService(db)
 	coreHTTP := core.NewHTTPHandler(core.NewService(db, authorizer))
 	productHTTP := product.NewHTTPHandler(product.NewService(db, authorizer))
+	marketplaceAccountHTTP := marketplaceaccount.NewHTTPHandler(marketplaceaccount.NewService(db, authorizer))
 	inventoryService := inventory.NewService(db, authorizer)
 	inventoryHTTP := inventory.NewHTTPHandler(inventoryService)
 	reportingHTTP := reporting.NewHTTPHandler(reporting.NewService(db, authorizer))
@@ -109,6 +111,10 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	mux.Handle("/api/v1/module-entitlements/{module_key}", authHTTP.RequireSession(http.HandlerFunc(coreHTTP.Entitlement)))
 	mux.Handle("/api/v1/audit-logs", authHTTP.RequireSession(http.HandlerFunc(coreHTTP.AuditLogs)))
 	mux.Handle("/api/v1/marketplaces", authHTTP.RequireSession(http.HandlerFunc(productHTTP.Marketplaces)))
+	mux.Handle("/api/v1/business-identities", authHTTP.RequireSession(http.HandlerFunc(marketplaceAccountHTTP.Identities)))
+	mux.Handle("/api/v1/business-identities/{identity_id}", authHTTP.RequireSession(http.HandlerFunc(marketplaceAccountHTTP.Identity)))
+	mux.Handle("/api/v1/marketplace-accounts", authHTTP.RequireSession(http.HandlerFunc(marketplaceAccountHTTP.Accounts)))
+	mux.Handle("/api/v1/marketplace-accounts/{account_id}", authHTTP.RequireSession(http.HandlerFunc(marketplaceAccountHTTP.Account)))
 	mux.Handle("/api/v1/products", authHTTP.RequireSession(http.HandlerFunc(productHTTP.Products)))
 	mux.Handle("/api/v1/products/{product_id}", authHTTP.RequireSession(http.HandlerFunc(productHTTP.Product)))
 	mux.Handle("/api/v1/sku-mappings", authHTTP.RequireSession(http.HandlerFunc(productHTTP.Mappings)))
