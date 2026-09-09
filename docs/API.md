@@ -19,7 +19,7 @@ Other methods receive HTTP 405 with the standard error envelope. The endpoint is
 
 ## Core Platform
 
-Authentication uses an opaque server-side session in an `HttpOnly`, `SameSite=Lax` cookie. Except for login and health, all endpoints require that session. Login's `company_id` selects one of the user's company memberships; the server verifies that membership and establishes the tenant stored on the session. Tenant APIs never accept a company identifier.
+Authentication uses an opaque server-side session in an `HttpOnly`, `SameSite=Lax` cookie. Except for login and health, all endpoints require that session. Login accepts email and password only: the server establishes the company from the user's sole active company access. Zero active accesses are rejected; multiple active accesses return a conflict until an explicit operating-company policy is approved. Tenant APIs never accept a company identifier.
 
 | Method | Path | Required permission | Purpose |
 | --- | --- | --- | --- |

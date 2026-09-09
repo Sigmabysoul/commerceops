@@ -18,6 +18,7 @@ import (
 var (
 	ErrInvalidCredentials = errors.New("invalid credentials")
 	ErrInactiveAccess     = errors.New("inactive user or company access")
+	ErrAmbiguousAccess    = errors.New("multiple active company accesses require an operating-company policy")
 	ErrInvalidSession     = errors.New("invalid session")
 )
 
@@ -46,22 +47,19 @@ func HashPassword(password string) (string, error) {
 	return string(hash), err
 }
 
-func (s *Service) Login(ctx context.Context, email, password, companyID string) (string, Principal, error) {
+func (s *Service) Login(ctx context.Context, email, password string) (string, Principal, error) {
 	email = strings.ToLower(strings.TrimSpace(email))
-	companyID = strings.TrimSpace(companyID)
-	if email == "" || password == "" || companyID == "" {
+	if email == "" || password == "" {
 		return "", Principal{}, ErrInvalidCredentials
 	}
 
 	var principal Principal
-	var passwordHash, userStatus, accessStatus, companyStatus string
+	var passwordHash, userStatus string
 	err := s.db.QueryRow(ctx, `
-		SELECT u.id, u.email, u.password_hash, u.status, cu.status, c.status
+		SELECT u.id, u.email, u.password_hash, u.status
 		FROM users u
-		JOIN company_users cu ON cu.user_id = u.id
-		JOIN companies c ON c.id = cu.company_id
-		WHERE u.email = $1 AND cu.company_id = $2`, email, companyID,
-	).Scan(&principal.UserID, &principal.Email, &passwordHash, &userStatus, &accessStatus, &companyStatus)
+		WHERE u.email = $1`, email,
+	).Scan(&principal.UserID, &principal.Email, &passwordHash, &userStatus)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return "", Principal{}, ErrInvalidCredentials
 	}
@@ -71,15 +69,43 @@ func (s *Service) Login(ctx context.Context, email, password, companyID string) 
 	if bcrypt.CompareHashAndPassword([]byte(passwordHash), []byte(password)) != nil {
 		return "", Principal{}, ErrInvalidCredentials
 	}
-	if userStatus != "active" || accessStatus != "active" || companyStatus != "active" {
+	if userStatus != "active" {
 		return "", Principal{}, ErrInactiveAccess
+	}
+	rows, err := s.db.Query(ctx, `
+		SELECT c.id
+		FROM company_users cu
+		JOIN companies c ON c.id = cu.company_id
+		WHERE cu.user_id = $1 AND cu.status = 'active' AND c.status = 'active'
+		ORDER BY c.id`, principal.UserID)
+	if err != nil {
+		return "", Principal{}, err
+	}
+	defer rows.Close()
+	companyIDs := []string{}
+	for rows.Next() {
+		var companyID string
+		if err = rows.Scan(&companyID); err != nil {
+			return "", Principal{}, err
+		}
+		companyIDs = append(companyIDs, companyID)
+	}
+	if err = rows.Err(); err != nil {
+		return "", Principal{}, err
+	}
+	switch len(companyIDs) {
+	case 0:
+		return "", Principal{}, ErrInactiveAccess
+	case 1:
+		principal.CompanyID = companyIDs[0]
+	default:
+		return "", Principal{}, ErrAmbiguousAccess
 	}
 
 	token, tokenHash, err := newToken()
 	if err != nil {
 		return "", Principal{}, err
 	}
-	principal.CompanyID = companyID
 	expiresAt := s.now().Add(s.lifetime)
 	err = s.db.QueryRow(ctx, `
 		INSERT INTO sessions (user_id, company_id, token_hash, expires_at)

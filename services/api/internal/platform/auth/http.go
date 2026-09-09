@@ -27,20 +27,21 @@ func (h *HTTPHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var request struct {
-		Email     string `json:"email"`
-		Password  string `json:"password"`
-		CompanyID string `json:"company_id"`
+		Email    string `json:"email"`
+		Password string `json:"password"`
 	}
 	if !httpserver.DecodeJSON(w, r, &request) {
 		return
 	}
-	token, principal, err := h.service.Login(r.Context(), request.Email, request.Password, request.CompanyID)
+	token, principal, err := h.service.Login(r.Context(), request.Email, request.Password)
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrInvalidCredentials):
-			httpserver.WriteError(w, http.StatusUnauthorized, "INVALID_CREDENTIALS", "Email, password, or company is invalid")
+			httpserver.WriteError(w, http.StatusUnauthorized, "INVALID_CREDENTIALS", "Email or password is invalid")
 		case errors.Is(err, ErrInactiveAccess):
 			httpserver.WriteError(w, http.StatusForbidden, "ACCESS_INACTIVE", "User or company access is inactive")
+		case errors.Is(err, ErrAmbiguousAccess):
+			httpserver.WriteError(w, http.StatusConflict, "OPERATING_COMPANY_AMBIGUOUS", "Multiple active company accesses require an operating-company policy")
 		default:
 			httpserver.WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Something went wrong")
 		}

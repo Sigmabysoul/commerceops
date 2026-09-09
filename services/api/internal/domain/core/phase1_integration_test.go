@@ -40,7 +40,8 @@ func TestPhaseOneSecurityAndTenantBehavior(t *testing.T) {
 	mustScan(t, db, `INSERT INTO users (email, password_hash) VALUES ($1, $2) RETURNING id`, []any{"limited-" + suffix + "@example.test", hash}, &limitedID)
 	defer cleanupFixture(t, db, companyOne, companyTwo, adminID, disabledID, limitedID)
 
-	mustExec(t, db, `INSERT INTO company_users (company_id, user_id) VALUES ($1,$2),($1,$3),($1,$4),($5,$2)`, companyOne, adminID, disabledID, limitedID, companyTwo)
+	mustExec(t, db, `INSERT INTO company_users (company_id, user_id) VALUES ($1,$2),($1,$3),($1,$4)`, companyOne, adminID, disabledID, limitedID)
+	mustExec(t, db, `INSERT INTO company_users (company_id, user_id, status) VALUES ($1,$2,'disabled')`, companyTwo, adminID)
 	mustScan(t, db, `INSERT INTO roles (company_id, name) VALUES ($1, 'Administrator') RETURNING id`, []any{companyOne}, &adminRole)
 	mustScan(t, db, `INSERT INTO roles (company_id, name) VALUES ($1, 'Limited') RETURNING id`, []any{companyOne}, &limitedRole)
 	mustExec(t, db, `INSERT INTO role_permissions (company_id, role_id, permission_key) SELECT $1,$2,key FROM permissions`, companyOne, adminRole)
@@ -52,7 +53,7 @@ func TestPhaseOneSecurityAndTenantBehavior(t *testing.T) {
 	service := NewService(db, authorizer)
 
 	t.Run("successful login and session tenant", func(t *testing.T) {
-		token, principal, err := authService.Login(ctx, "ADMIN-"+suffix+"@EXAMPLE.TEST", password, companyOne)
+		token, principal, err := authService.Login(ctx, "ADMIN-"+suffix+"@EXAMPLE.TEST", password)
 		if err != nil {
 			t.Fatalf("login: %v", err)
 		}
@@ -72,10 +73,10 @@ func TestPhaseOneSecurityAndTenantBehavior(t *testing.T) {
 	})
 
 	t.Run("wrong password and disabled user", func(t *testing.T) {
-		if _, _, err := authService.Login(ctx, "admin-"+suffix+"@example.test", "wrong-password", companyOne); !errors.Is(err, auth.ErrInvalidCredentials) {
+		if _, _, err := authService.Login(ctx, "admin-"+suffix+"@example.test", "wrong-password"); !errors.Is(err, auth.ErrInvalidCredentials) {
 			t.Fatalf("wrong password result: %v", err)
 		}
-		if _, _, err := authService.Login(ctx, "disabled-"+suffix+"@example.test", password, companyOne); !errors.Is(err, auth.ErrInactiveAccess) {
+		if _, _, err := authService.Login(ctx, "disabled-"+suffix+"@example.test", password); !errors.Is(err, auth.ErrInactiveAccess) {
 			t.Fatalf("disabled user result: %v", err)
 		}
 	})
@@ -138,7 +139,7 @@ func TestPhaseOneSecurityAndTenantBehavior(t *testing.T) {
 	})
 
 	t.Run("disabled company access invalidates session", func(t *testing.T) {
-		token, _, err := authService.Login(ctx, "limited-"+suffix+"@example.test", password, companyOne)
+		token, _, err := authService.Login(ctx, "limited-"+suffix+"@example.test", password)
 		if err != nil {
 			t.Fatalf("login before disable: %v", err)
 		}
@@ -147,6 +148,14 @@ func TestPhaseOneSecurityAndTenantBehavior(t *testing.T) {
 		}
 		if _, err := authService.Authenticate(ctx, token); !errors.Is(err, auth.ErrInvalidSession) {
 			t.Fatalf("disabled access session accepted: %v", err)
+		}
+	})
+
+	t.Run("multiple active accesses require an explicit operating-company policy", func(t *testing.T) {
+		mustExec(t, db, `UPDATE company_users SET status='active' WHERE company_id=$1 AND user_id=$2`, companyTwo, adminID)
+		defer mustExec(t, db, `UPDATE company_users SET status='disabled' WHERE company_id=$1 AND user_id=$2`, companyTwo, adminID)
+		if _, _, err := authService.Login(ctx, "admin-"+suffix+"@example.test", password); !errors.Is(err, auth.ErrAmbiguousAccess) {
+			t.Fatalf("multiple active accesses result: %v", err)
 		}
 	})
 }
