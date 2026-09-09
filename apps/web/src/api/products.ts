@@ -2,7 +2,7 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8
 
 export type Product = { id: string; internal_code: string; name: string; brand: string | null; variant: string | null; size: string | null; pack_type: string | null; unit_count: number | null; status: "active" | "inactive" };
 export type Marketplace = { key: string; display_name: string };
-export type SKUMapping = { id: string; marketplace_key: string; product_id: string; sku: string; quantity_multiplier: number; interpretation_metadata: Record<string, unknown>; status: "active" | "inactive" };
+export type SKUMapping = { id: string; marketplace_account_id: string; marketplace_key: string; product_id: string; sku: string; quantity_multiplier: number; interpretation_metadata: Record<string, unknown>; status: "active" | "inactive" };
 export type Resolution = { status: "resolved" | "unresolved"; product?: Product; mapping?: SKUMapping };
 type ProductInput = Omit<Product, "id">;
 type MappingInput = Omit<SKUMapping, "id">;
@@ -21,5 +21,5 @@ export const productAPI = {
   mappings: () => request<{ sku_mappings: SKUMapping[] }>("/sku-mappings"),
   createMapping: (input: MappingInput) => request<{ sku_mapping: SKUMapping }>("/sku-mappings", { method: "POST", body: JSON.stringify(input) }),
   updateMapping: (id: string, input: MappingInput) => request<{ sku_mapping: SKUMapping }>(`/sku-mappings/${id}`, { method: "PATCH", body: JSON.stringify(input) }),
-  resolve: (marketplaceKey: string, sku: string) => request<Resolution>("/sku-mappings/resolve", { method: "POST", body: JSON.stringify({ marketplace_key: marketplaceKey, sku }) }),
+  resolve: (marketplaceAccountID: string, marketplaceKey: string, sku: string) => request<Resolution>("/sku-mappings/resolve", { method: "POST", body: JSON.stringify({ marketplace_account_id: marketplaceAccountID, marketplace_key: marketplaceKey, sku }) }),
 };
