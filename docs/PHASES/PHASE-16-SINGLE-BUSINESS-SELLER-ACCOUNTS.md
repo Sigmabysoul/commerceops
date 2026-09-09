@@ -1,6 +1,6 @@
 # Phase 16 — Single-business operating model and seller accounts
 
-Status: Future planning only — requires preceding verification and explicit owner authorization.
+Status: In progress. Owner authorized conditional progression on 2026-09-09 after Phase 15 verification.
 Revision: 2026-09-07.
 
 ## Goal and work
