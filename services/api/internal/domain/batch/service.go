@@ -49,19 +49,20 @@ type printGenerator struct {
 }
 
 type Batch struct {
-	ID              string         `json:"id"`
-	MarketplaceKey  string         `json:"marketplace_key"`
-	Status          string         `json:"status"`
-	CreatedBy       string         `json:"created_by"`
-	OrderCount      int            `json:"order_count"`
-	UnresolvedCount int            `json:"unresolved_count"`
-	ReadyAt         *time.Time     `json:"ready_at"`
-	CancelledAt     *time.Time     `json:"cancelled_at"`
-	CreatedAt       time.Time      `json:"created_at"`
-	UpdatedAt       time.Time      `json:"updated_at"`
-	Members         []Member       `json:"members,omitempty"`
-	ProductTotals   []ProductTotal `json:"product_totals,omitempty"`
-	WorkerTotals    []WorkerTotal  `json:"worker_totals,omitempty"`
+	ID                   string         `json:"id"`
+	MarketplaceKey       string         `json:"marketplace_key"`
+	MarketplaceAccountID string         `json:"marketplace_account_id,omitempty"`
+	Status               string         `json:"status"`
+	CreatedBy            string         `json:"created_by"`
+	OrderCount           int            `json:"order_count"`
+	UnresolvedCount      int            `json:"unresolved_count"`
+	ReadyAt              *time.Time     `json:"ready_at"`
+	CancelledAt          *time.Time     `json:"cancelled_at"`
+	CreatedAt            time.Time      `json:"created_at"`
+	UpdatedAt            time.Time      `json:"updated_at"`
+	Members              []Member       `json:"members,omitempty"`
+	ProductTotals        []ProductTotal `json:"product_totals,omitempty"`
+	WorkerTotals         []WorkerTotal  `json:"worker_totals,omitempty"`
 }
 
 type Member struct {
@@ -84,14 +85,15 @@ type ProductTotal struct {
 }
 
 type EligibleOrder struct {
-	OrderID            string  `json:"order_id"`
-	SourceFileID       string  `json:"source_file_id"`
-	ProcessingJobID    string  `json:"processing_job_id"`
-	SourcePage         int     `json:"source_page"`
-	MarketplaceOrderID *string `json:"marketplace_order_id"`
-	AWB                *string `json:"awb"`
-	Status             string  `json:"status"`
-	UnresolvedCount    int     `json:"unresolved_count"`
+	OrderID              string  `json:"order_id"`
+	MarketplaceAccountID string  `json:"marketplace_account_id,omitempty"`
+	SourceFileID         string  `json:"source_file_id"`
+	ProcessingJobID      string  `json:"processing_job_id"`
+	SourcePage           int     `json:"source_page"`
+	MarketplaceOrderID   *string `json:"marketplace_order_id"`
+	AWB                  *string `json:"awb"`
+	Status               string  `json:"status"`
+	UnresolvedCount      int     `json:"unresolved_count"`
 }
 
 type CreateInput struct {
@@ -121,7 +123,7 @@ func (s *Service) List(ctx context.Context, principal auth.Principal) ([]Batch, 
 		return nil, err
 	}
 	rows, err := s.db.Query(ctx, `
-		SELECT b.id,b.marketplace_key,b.status,b.created_by,count(DISTINCT bm.marketplace_order_id),
+		SELECT b.id,b.marketplace_key,COALESCE(b.marketplace_account_id::text,''),b.status,b.created_by,count(DISTINCT bm.marketplace_order_id),
 		       count(*) FILTER (WHERE mo.id IS NOT NULL AND (mo.status<>'resolved' OR moi.id IS NULL OR moi.product_id IS NULL OR moi.quantity IS NULL OR moi.resolution_status<>'resolved')),
 		       b.ready_at,b.cancelled_at,b.created_at,b.updated_at
 		FROM batches b
@@ -157,7 +159,7 @@ func (s *Service) EligibleOrders(ctx context.Context, principal auth.Principal, 
 		return nil, err
 	}
 	rows, err := s.db.Query(ctx, `
-		SELECT mo.id,mo.source_file_id,mo.processing_job_id,mo.source_page,mo.marketplace_order_id,mo.awb,mo.status,
+		SELECT mo.id,COALESCE(mo.marketplace_account_id::text,''),mo.source_file_id,mo.processing_job_id,mo.source_page,mo.marketplace_order_id,mo.awb,mo.status,
 		       count(*) FILTER (WHERE moi.id IS NULL OR moi.product_id IS NULL OR moi.quantity IS NULL OR moi.resolution_status<>'resolved')
 		FROM marketplace_orders mo
 		JOIN processing_jobs pj ON pj.company_id=mo.company_id AND pj.id=mo.processing_job_id
@@ -174,7 +176,7 @@ func (s *Service) EligibleOrders(ctx context.Context, principal auth.Principal, 
 	items := make([]EligibleOrder, 0)
 	for rows.Next() {
 		var item EligibleOrder
-		if err := rows.Scan(&item.OrderID, &item.SourceFileID, &item.ProcessingJobID, &item.SourcePage, &item.MarketplaceOrderID, &item.AWB, &item.Status, &item.UnresolvedCount); err != nil {
+		if err := rows.Scan(&item.OrderID, &item.MarketplaceAccountID, &item.SourceFileID, &item.ProcessingJobID, &item.SourcePage, &item.MarketplaceOrderID, &item.AWB, &item.Status, &item.UnresolvedCount); err != nil {
 			return nil, err
 		}
 		items = append(items, item)
@@ -201,8 +203,16 @@ func (s *Service) Create(ctx context.Context, principal auth.Principal, input Cr
 		return Batch{}, false, err
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
+	var accountID string
+	var selectedCount, accountCount int
+	if err = tx.QueryRow(ctx, `SELECT count(*),count(DISTINCT marketplace_account_id),COALESCE(min(marketplace_account_id::text),'') FROM marketplace_orders WHERE company_id=$1 AND marketplace_key=$2 AND id=ANY($3::uuid[])`, principal.CompanyID, input.MarketplaceKey, input.OrderIDs).Scan(&selectedCount, &accountCount, &accountID); err != nil {
+		return Batch{}, false, err
+	}
+	if selectedCount != len(input.OrderIDs) || accountCount > 1 {
+		return Batch{}, false, ErrIneligible
+	}
 	var batchID string
-	err = tx.QueryRow(ctx, `INSERT INTO batches(company_id,marketplace_key,created_by,idempotency_key,request_hash) VALUES($1,$2,$3,$4,$5) ON CONFLICT(company_id,idempotency_key) DO NOTHING RETURNING id`, principal.CompanyID, input.MarketplaceKey, principal.UserID, input.IdempotencyKey, requestHash).Scan(&batchID)
+	err = tx.QueryRow(ctx, `INSERT INTO batches(company_id,marketplace_key,marketplace_account_id,created_by,idempotency_key,request_hash) VALUES($1,$2,NULLIF($3,'')::uuid,$4,$5,$6) ON CONFLICT(company_id,idempotency_key) DO NOTHING RETURNING id`, principal.CompanyID, input.MarketplaceKey, accountID, principal.UserID, input.IdempotencyKey, requestHash).Scan(&batchID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		var existingHash string
 		if err = tx.QueryRow(ctx, `SELECT id,request_hash FROM batches WHERE company_id=$1 AND idempotency_key=$2`, principal.CompanyID, input.IdempotencyKey).Scan(&batchID, &existingHash); err != nil {
@@ -232,7 +242,7 @@ func (s *Service) Create(ctx context.Context, principal auth.Principal, input Cr
 			return Batch{}, false, mapDBError(err)
 		}
 	}
-	if err = s.audit.Record(ctx, tx, principal.CompanyID, principal.UserID, "batch.created", "batch", batchID, map[string]any{"marketplace": input.MarketplaceKey, "order_count": len(input.OrderIDs)}); err != nil {
+	if err = s.audit.Record(ctx, tx, principal.CompanyID, principal.UserID, "batch.created", "batch", batchID, map[string]any{"marketplace": input.MarketplaceKey, "marketplace_account_id": accountID, "order_count": len(input.OrderIDs)}); err != nil {
 		return Batch{}, false, err
 	}
 	if err = tx.Commit(ctx); err != nil {
@@ -259,7 +269,7 @@ func (s *Service) Get(ctx context.Context, principal auth.Principal, id string) 
 func (s *Service) get(ctx context.Context, companyID, id string) (Batch, error) {
 	var item Batch
 	err := scanBatch(s.db.QueryRow(ctx, `
-		SELECT b.id,b.marketplace_key,b.status,b.created_by,count(DISTINCT bm.marketplace_order_id),
+		SELECT b.id,b.marketplace_key,COALESCE(b.marketplace_account_id::text,''),b.status,b.created_by,count(DISTINCT bm.marketplace_order_id),
 		       count(*) FILTER (WHERE mo.id IS NOT NULL AND (mo.status<>'resolved' OR moi.id IS NULL OR moi.product_id IS NULL OR moi.quantity IS NULL OR moi.resolution_status<>'resolved')),
 		       b.ready_at,b.cancelled_at,b.created_at,b.updated_at
 		FROM batches b
@@ -410,7 +420,7 @@ func (s *Service) productTotals(ctx context.Context, companyID, batchID string) 
 }
 
 func scanBatch(row interface{ Scan(...any) error }, item *Batch) error {
-	return row.Scan(&item.ID, &item.MarketplaceKey, &item.Status, &item.CreatedBy, &item.OrderCount, &item.UnresolvedCount, &item.ReadyAt, &item.CancelledAt, &item.CreatedAt, &item.UpdatedAt)
+	return row.Scan(&item.ID, &item.MarketplaceKey, &item.MarketplaceAccountID, &item.Status, &item.CreatedBy, &item.OrderCount, &item.UnresolvedCount, &item.ReadyAt, &item.CancelledAt, &item.CreatedAt, &item.UpdatedAt)
 }
 
 func normalizeCreateInput(input *CreateInput) bool {
