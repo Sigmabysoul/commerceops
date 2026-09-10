@@ -1,0 +1,10 @@
+DELETE FROM role_permissions WHERE permission_key IN ('traceability.view','traceability.manage');
+DELETE FROM permissions WHERE key IN ('traceability.view','traceability.manage');
+DROP TRIGGER IF EXISTS trace_box_custody_changes_immutable ON trace_box_custody_changes;
+DROP TRIGGER IF EXISTS trace_box_content_changes_immutable ON trace_box_content_changes;
+DROP TRIGGER IF EXISTS trace_box_events_immutable ON trace_box_events;
+DROP FUNCTION IF EXISTS protect_traceability_history();
+DROP TABLE IF EXISTS trace_box_custody_changes;
+DROP TABLE IF EXISTS trace_box_content_changes;
+DROP TABLE IF EXISTS trace_box_events;
+DROP TABLE IF EXISTS trace_boxes;
