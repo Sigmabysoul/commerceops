@@ -2,12 +2,12 @@
 
 ## Active phase
 
-Phase 19 — Myntra print-capture completion.
-Status: EVIDENCE_PREPARATION_VERIFIED — PRINT_PAYLOAD_RUNTIME_WORK_DEFERRED.
+Phase 20 — Traceability foundation.
+Status: ACTIVE — IMPLEMENTATION IN PROGRESS.
 Phase 17 completed its local PostgreSQL-backed full verification gate on 2026-09-10. Phase 18
 JioMart work is deferred on the evidence backlog at the owner's direction. Phase 19 starts
 from the same verified Product department-ownership runtime baseline.
-Branch: me/phase-19-myntra-print-capture.
+Branch: me/phase-20-traceability-foundation.
 Checkout: /home/sigma/work/commerceops-next.
 
 The Phase 17 baseline was reproduced on 2026-09-10 using a fresh disposable PostgreSQL
@@ -40,11 +40,11 @@ evidence collection remains useful.
 Phase 16 establishes a server-selected operating company for a sole active access, and
 records seller-account provenance for marketplace ingestion, mappings, batches, returns,
 cancellations, and order documents. Company scope, entitlements and permissions remain intact.
-Departments and traceability remain future work.
+Departments are implemented. Traceability foundation implementation is active; QC/rework,
+handover, packing, Returns integration and Consignment integration remain future work.
 
 ## Next gate
 
 Phase 18 JioMart and the runtime portion of Phase 19 remain on ROADMAP.md's deferred evidence
-backlog. Capture the actual Myntra browser/OS print payload using
-`marketplaces/MYNTRA_PRINT_CAPTURE.md` before resuming PDF parsing or enrichment. Phase 20 has
-not started. No production deployment or production-readiness claim is authorized.
+backlog. Phase 20 is authorized and active. Stop after its PostgreSQL-backed completion gate;
+Phase 21 and production deployment are not authorized by this phase.
