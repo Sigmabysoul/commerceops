@@ -1,6 +1,6 @@
 SHELL := /bin/sh
 
-.PHONY: dev dev-infra dev-backend dev-frontend migrate test verify verify-full down \
+.PHONY: dev dev-infra dev-backend dev-frontend local-launcher migrate test verify verify-full down \
 	backend-format backend-vet backend-test backend-build \
 	frontend-typecheck frontend-lint frontend-build repository-check
 
@@ -17,6 +17,9 @@ dev-backend:
 
 dev-frontend:
 	cd apps/web && pnpm dev
+
+local-launcher:
+	cd services/api && go build -o ../../CommerceOps ./cmd/local-launcher
 
 migrate:
 	@test -f .env || { echo ".env is required; copy .env.example and set a local password"; exit 1; }
@@ -53,7 +56,7 @@ backend-test:
 	cd services/api && go test ./... -count=1
 
 backend-build:
-	cd services/api && go build ./cmd/server ./cmd/printer-agent
+	cd services/api && go build ./cmd/server ./cmd/printer-agent ./cmd/local-launcher
 
 frontend-typecheck:
 	cd apps/web && pnpm typecheck

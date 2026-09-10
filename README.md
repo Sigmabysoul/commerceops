@@ -43,6 +43,25 @@ Docker group is effectively root-level access.
 
 ## Local setup on Linux
 
+### One-click launcher
+
+Build the local launcher once:
+
+```bash
+make local-launcher
+```
+
+Then double-click the `CommerceOps` executable in the repository root. On its first run it
+creates an uncommitted development configuration, starts PostgreSQL, applies migrations,
+prepares a local administrator when the database is empty, starts both applications and opens
+the browser. Later launches open the running app without starting duplicate processes.
+
+The launcher targets Linux desktop development and still requires the prerequisite toolchain
+listed above. See [`docs/LOCAL_LAUNCHER.md`](docs/LOCAL_LAUNCHER.md) for credentials, logs,
+stopping the app and safety boundaries.
+
+### Manual setup
+
 From the repository root:
 
 ```bash

@@ -19,7 +19,7 @@ services:
     image: migrate/migrate:v4.18.3
     profiles: ["tools"]
     volumes:
-      - ./services/api/migrations:/migrations:ro
+      - ./services/api/migrations:/migrations:ro,z
     entrypoint: ["migrate"]
     command: ["-path=/migrations", "-database=${DATABASE_URL:?set DATABASE_URL in .env}", "up"]
 

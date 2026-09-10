@@ -10,6 +10,8 @@ services/api/coverage.out
 services/api/printer-agent-journal.jsonl
 .cache/
 .pnpm-store/
+.commerceops-local/
+/CommerceOps
 
 # Next.js / pnpm
 apps/web/node_modules/
