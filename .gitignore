@@ -2,6 +2,8 @@
 .env.local
 .env.*.local
 !.env.example
+deploy/*.env
+!deploy/*.env.example
 
 # Go
 services/api/bin/

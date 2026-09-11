@@ -3,7 +3,8 @@ SHELL := /bin/sh
 .PHONY: dev dev-infra dev-backend dev-frontend local-launcher migrate test verify verify-full down \
 	backend-format backend-vet backend-test backend-build \
 	frontend-typecheck frontend-lint frontend-build repository-check lifecycle-test \
-	lifecycle-backup lifecycle-validate lifecycle-restore lifecycle-archive-plan
+	lifecycle-backup lifecycle-validate lifecycle-restore lifecycle-archive-plan \
+	operations-test production-images production-config-check production-smoke
 
 dev: dev-infra
 
@@ -32,7 +33,7 @@ migrate:
 
 test: backend-test frontend-typecheck
 
-verify: backend-format backend-vet backend-test backend-build frontend-typecheck frontend-lint frontend-build lifecycle-test repository-check
+verify: backend-format backend-vet backend-test backend-build frontend-typecheck frontend-lint frontend-build lifecycle-test operations-test repository-check
 
 verify-full:
 	@if [ -z "$${TEST_DATABASE_URL:-}" ]; then \
@@ -97,6 +98,23 @@ lifecycle-archive-plan:
 	@test -n "$(ARCHIVE_PLAN)" || { echo "ARCHIVE_PLAN is required"; exit 1; }
 	PYTHONDONTWRITEBYTECODE=1 python3 scripts/lifecycle/lifecycle.py plan-archive "$(BACKUP_DIR)" \
 		--restore-receipt "$(RESTORE_RECEIPT)" --before "$(ARCHIVE_BEFORE)" --output "$(ARCHIVE_PLAN)"
+
+operations-test:
+	PYTHONDONTWRITEBYTECODE=1 python3 -m unittest scripts/operations/test_readiness.py -v
+
+production-images:
+	@test -n "$(NEXT_PUBLIC_API_BASE_URL)" || { echo "NEXT_PUBLIC_API_BASE_URL is required"; exit 1; }
+	docker build -t commerceops-api:local services/api
+	docker build --build-arg NEXT_PUBLIC_API_BASE_URL="$(NEXT_PUBLIC_API_BASE_URL)" -t commerceops-web:local apps/web
+
+production-config-check:
+	@test -n "$(PRODUCTION_ENV_FILE)" || { echo "PRODUCTION_ENV_FILE is required"; exit 1; }
+	PYTHONDONTWRITEBYTECODE=1 python3 scripts/operations/readiness.py check-config "$(PRODUCTION_ENV_FILE)"
+
+production-smoke:
+	@test -n "$(API_BASE_URL)" || { echo "API_BASE_URL is required"; exit 1; }
+	PYTHONDONTWRITEBYTECODE=1 python3 scripts/operations/readiness.py smoke "$(API_BASE_URL)" \
+		--requests "$${SMOKE_REQUESTS:-100}" --concurrency "$${SMOKE_CONCURRENCY:-10}" $(if $(CORS_ORIGIN),--origin "$(CORS_ORIGIN)")
 
 down:
 	docker compose down
