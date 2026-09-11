@@ -191,7 +191,15 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	mux.Handle("/api/v1/consignments/{consignment_id}/cancel", authHTTP.RequireSession(http.HandlerFunc(consignmentHTTP.Cancel)))
 	registerConsignmentTraceRoutes(mux, authHTTP, consignmentHTTP)
 	registerTraceabilityRoutes(mux, authHTTP, traceabilityHTTP)
-	server := &http.Server{Addr: cfg.HTTPAddr, Handler: httpserver.Middleware(logger, cfg.AllowedOrigins, mux), ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 60 * time.Second}
+	server := &http.Server{
+		Addr:              cfg.HTTPAddr,
+		Handler:           httpserver.Middleware(logger, cfg.AllowedOrigins, mux),
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       cfg.HTTPReadTimeout,
+		WriteTimeout:      cfg.HTTPWriteTimeout,
+		IdleTimeout:       cfg.HTTPIdleTimeout,
+		MaxHeaderBytes:    cfg.HTTPMaxHeaderBytes,
+	}
 
 	errCh := make(chan error, 1)
 	go func() {

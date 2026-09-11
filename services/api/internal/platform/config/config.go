@@ -18,6 +18,10 @@ type Config struct {
 	ShutdownTimeout        time.Duration
 	DatabaseTimeout        time.Duration
 	SessionLifetime        time.Duration
+	HTTPReadTimeout        time.Duration
+	HTTPWriteTimeout       time.Duration
+	HTTPIdleTimeout        time.Duration
+	HTTPMaxHeaderBytes     int
 	SecureCookies          bool
 	FileStorageDir         string
 	ObjectStorageDriver    string
@@ -40,15 +44,39 @@ func Load() (Config, error) {
 		return Config{}, fmt.Errorf("OBJECT_STORAGE_PATH_STYLE must be true or false: %w", err)
 	}
 
+	environment := strings.ToLower(valueOrDefault("APP_ENV", "development"))
+	if environment != "development" && environment != "test" && environment != "production" {
+		return Config{}, fmt.Errorf("APP_ENV must be development, test, or production")
+	}
+	durations := map[string]time.Duration{}
+	for key, fallback := range map[string]string{
+		"SHUTDOWN_TIMEOUT": "15s", "DATABASE_TIMEOUT": "2s", "SESSION_LIFETIME": "24h",
+		"HTTP_READ_TIMEOUT": "2m", "HTTP_WRITE_TIMEOUT": "5m", "HTTP_IDLE_TIMEOUT": "60s",
+	} {
+		value, parseErr := time.ParseDuration(valueOrDefault(key, fallback))
+		if parseErr != nil || value <= 0 {
+			return Config{}, fmt.Errorf("%s must be a positive duration", key)
+		}
+		durations[key] = value
+	}
+	maxHeaderBytes, err := strconv.Atoi(valueOrDefault("HTTP_MAX_HEADER_BYTES", "1048576"))
+	if err != nil || maxHeaderBytes < 8192 || maxHeaderBytes > 1048576 {
+		return Config{}, fmt.Errorf("HTTP_MAX_HEADER_BYTES must be between 8192 and 1048576")
+	}
+
 	cfg := Config{
-		Environment:            valueOrDefault("APP_ENV", "development"),
+		Environment:            environment,
 		HTTPAddr:               valueOrDefault("HTTP_ADDR", ":8080"),
 		DatabaseURL:            databaseURL,
 		AllowedOrigins:         splitCSV(valueOrDefault("CORS_ALLOWED_ORIGINS", "http://localhost:3000")),
-		ShutdownTimeout:        10 * time.Second,
-		DatabaseTimeout:        2 * time.Second,
-		SessionLifetime:        24 * time.Hour,
-		SecureCookies:          valueOrDefault("APP_ENV", "development") != "development",
+		ShutdownTimeout:        durations["SHUTDOWN_TIMEOUT"],
+		DatabaseTimeout:        durations["DATABASE_TIMEOUT"],
+		SessionLifetime:        durations["SESSION_LIFETIME"],
+		HTTPReadTimeout:        durations["HTTP_READ_TIMEOUT"],
+		HTTPWriteTimeout:       durations["HTTP_WRITE_TIMEOUT"],
+		HTTPIdleTimeout:        durations["HTTP_IDLE_TIMEOUT"],
+		HTTPMaxHeaderBytes:     maxHeaderBytes,
+		SecureCookies:          environment != "development",
 		FileStorageDir:         valueOrDefault("FILE_STORAGE_DIR", "./data/uploads"),
 		ObjectStorageDriver:    strings.ToLower(valueOrDefault("OBJECT_STORAGE_DRIVER", "local")),
 		ObjectStorageEndpoint:  strings.TrimSpace(os.Getenv("OBJECT_STORAGE_ENDPOINT")),
@@ -61,7 +89,53 @@ func Load() (Config, error) {
 	if err = cfg.validateObjectStorage(); err != nil {
 		return Config{}, err
 	}
+	if err = cfg.validateOrigins(); err != nil {
+		return Config{}, err
+	}
+	if cfg.Environment == "production" && cfg.ObjectStorageDriver != "s3" {
+		return Config{}, fmt.Errorf("OBJECT_STORAGE_DRIVER must be s3 in production")
+	}
+	if cfg.Environment == "production" {
+		database, parseErr := url.Parse(cfg.DatabaseURL)
+		if parseErr != nil || (database.Scheme != "postgres" && database.Scheme != "postgresql") || database.Host == "" {
+			return Config{}, fmt.Errorf("DATABASE_URL must be an absolute PostgreSQL URL in production")
+		}
+		if database.Query().Get("sslmode") == "disable" {
+			return Config{}, fmt.Errorf("DATABASE_URL must not disable TLS in production")
+		}
+		if cfg.ObjectStorageEndpoint != "" {
+			endpoint, _ := url.Parse(cfg.ObjectStorageEndpoint)
+			if endpoint.Scheme != "https" {
+				return Config{}, fmt.Errorf("OBJECT_STORAGE_ENDPOINT must use HTTPS in production")
+			}
+		}
+	}
 	return cfg, nil
+}
+
+func (c Config) validateOrigins() error {
+	if len(c.AllowedOrigins) == 0 {
+		return fmt.Errorf("CORS_ALLOWED_ORIGINS must contain at least one origin")
+	}
+	seen := make(map[string]struct{}, len(c.AllowedOrigins))
+	for _, raw := range c.AllowedOrigins {
+		origin, err := url.Parse(raw)
+		if err != nil || origin.Host == "" || (origin.Scheme != "http" && origin.Scheme != "https") || origin.User != nil || origin.RawQuery != "" || origin.Fragment != "" || (origin.Path != "" && origin.Path != "/") {
+			return fmt.Errorf("CORS_ALLOWED_ORIGINS contains invalid origin %q", raw)
+		}
+		if c.Environment == "production" && origin.Scheme != "https" {
+			return fmt.Errorf("CORS_ALLOWED_ORIGINS must use HTTPS in production")
+		}
+		canonical := strings.TrimSuffix(origin.String(), "/")
+		if canonical != raw {
+			return fmt.Errorf("CORS_ALLOWED_ORIGINS must use canonical origins without a trailing slash")
+		}
+		if _, duplicate := seen[canonical]; duplicate {
+			return fmt.Errorf("CORS_ALLOWED_ORIGINS contains duplicate origin %q", canonical)
+		}
+		seen[canonical] = struct{}{}
+	}
+	return nil
 }
 
 func (c Config) validateObjectStorage() error {

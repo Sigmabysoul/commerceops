@@ -4,6 +4,7 @@ package config
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestLoadRequiresDatabaseURL(t *testing.T) {
@@ -138,6 +139,81 @@ func TestLocalStorageRequiresDirectory(t *testing.T) {
 	err := (Config{ObjectStorageDriver: "local"}).validateObjectStorage()
 	if err == nil || !strings.Contains(err.Error(), "FILE_STORAGE_DIR is required") {
 		t.Fatalf("validateObjectStorage() error = %v", err)
+	}
+}
+
+func TestLoadProductionRequiresHTTPSOriginsAndS3(t *testing.T) {
+	clearStorageEnvironment(t)
+	t.Setenv("DATABASE_URL", "postgres://database.example.test/commerceops?sslmode=require")
+	t.Setenv("APP_ENV", "production")
+	t.Setenv("CORS_ALLOWED_ORIGINS", "http://ops.example.test")
+	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "HTTPS") {
+		t.Fatalf("HTTP production origin error = %v", err)
+	}
+
+	t.Setenv("CORS_ALLOWED_ORIGINS", "https://ops.example.test")
+	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "must be s3") {
+		t.Fatalf("local production storage error = %v", err)
+	}
+
+	t.Setenv("OBJECT_STORAGE_DRIVER", "s3")
+	t.Setenv("OBJECT_STORAGE_BUCKET", "commerceops")
+	t.Setenv("OBJECT_STORAGE_REGION", "us-east-1")
+	t.Setenv("OBJECT_STORAGE_ACCESS_KEY", "test-access")
+	t.Setenv("OBJECT_STORAGE_SECRET_KEY", "test-secret")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.SecureCookies || cfg.Environment != "production" {
+		t.Fatalf("production config = %#v", cfg)
+	}
+	t.Setenv("DATABASE_URL", "postgres://database.example.test/commerceops?sslmode=disable")
+	if _, err = Load(); err == nil || !strings.Contains(err.Error(), "must not disable TLS") {
+		t.Fatalf("database TLS error = %v", err)
+	}
+	t.Setenv("DATABASE_URL", "postgres://database.example.test/commerceops?sslmode=require")
+	t.Setenv("OBJECT_STORAGE_ENDPOINT", "http://objects.example.test")
+	if _, err = Load(); err == nil || !strings.Contains(err.Error(), "must use HTTPS") {
+		t.Fatalf("object storage TLS error = %v", err)
+	}
+}
+
+func TestLoadRejectsInvalidOriginsAndRuntimeLimits(t *testing.T) {
+	for _, origin := range []string{"*", "https://example.test/path", "https://example.test/", "https://user@example.test", "https://example.test?query=yes"} {
+		t.Run(origin, func(t *testing.T) {
+			clearStorageEnvironment(t)
+			t.Setenv("DATABASE_URL", "postgres://example")
+			t.Setenv("CORS_ALLOWED_ORIGINS", origin)
+			if _, err := Load(); err == nil || !strings.Contains(err.Error(), "CORS_ALLOWED_ORIGINS") {
+				t.Fatalf("origin %q error = %v", origin, err)
+			}
+		})
+	}
+	clearStorageEnvironment(t)
+	t.Setenv("DATABASE_URL", "postgres://example")
+	t.Setenv("HTTP_WRITE_TIMEOUT", "0s")
+	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "HTTP_WRITE_TIMEOUT") {
+		t.Fatalf("timeout error = %v", err)
+	}
+}
+
+func TestLoadParsesRuntimeLimits(t *testing.T) {
+	clearStorageEnvironment(t)
+	t.Setenv("DATABASE_URL", "postgres://example")
+	t.Setenv("SHUTDOWN_TIMEOUT", "20s")
+	t.Setenv("DATABASE_TIMEOUT", "3s")
+	t.Setenv("SESSION_LIFETIME", "12h")
+	t.Setenv("HTTP_READ_TIMEOUT", "90s")
+	t.Setenv("HTTP_WRITE_TIMEOUT", "4m")
+	t.Setenv("HTTP_IDLE_TIMEOUT", "45s")
+	t.Setenv("HTTP_MAX_HEADER_BYTES", "65536")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.ShutdownTimeout != 20*time.Second || cfg.DatabaseTimeout != 3*time.Second || cfg.SessionLifetime != 12*time.Hour || cfg.HTTPReadTimeout != 90*time.Second || cfg.HTTPWriteTimeout != 4*time.Minute || cfg.HTTPIdleTimeout != 45*time.Second || cfg.HTTPMaxHeaderBytes != 65536 {
+		t.Fatalf("runtime limits = %#v", cfg)
 	}
 }
 
