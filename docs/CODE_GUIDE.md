@@ -48,6 +48,8 @@ never authorization.
   It derives operational state without importing or mutating Inventory.
 - `internal/platform`: database, HTTP envelope, object storage, PDF extraction,
   and PDF generation infrastructure without business ownership.
+- `scripts/lifecycle`: Phase 24 operator-only database/object backup, verification, empty-target
+  restore and archive dry-run tooling. It is not linked into the server and cannot delete data.
 
 ## Printing terms that look similar
 

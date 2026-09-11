@@ -179,3 +179,11 @@ Migration `000030_operations_analytics_indexes` adds
 reporting cohorts. It adds no tables, counters, permissions or data mutations. Reporting reads
 typed immutable QC, work, handover and gate facts in a read-only repeatable-read transaction.
 Earlier migrations remain unchanged; rolling down `000030` removes only this index.
+
+## Phase 24 data lifecycle
+
+Phase 24 adds no migration or database object. `scripts/lifecycle/lifecycle.py` uses a
+serializable custom-format `pg_dump`, records every public table row count and the complete
+`schema_migrations` ledger, and verifies those values after restoring into an empty disposable
+database. It also compares database object references with the restored byte inventory before
+writing a receipt. The procedure is documented in `operations/data-lifecycle.md`.

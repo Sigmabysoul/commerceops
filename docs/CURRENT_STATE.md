@@ -2,12 +2,12 @@
 
 ## Active phase
 
-Phase 23 — Operations and workforce analytics.
-Status: COMPLETE — LOCAL POSTGRESQL-BACKED VERIFICATION PASSED 2026-09-11.
+Phase 24 — Data lifecycle and archival.
+Status: ACTIVE — implementation and final verification in progress.
 Phase 17 completed its local PostgreSQL-backed full verification gate on 2026-09-10. Phase 18
 JioMart work is deferred on the evidence backlog at the owner's direction. Phase 19 evidence
 preparation is verified while its print-payload runtime work remains deferred.
-Branch: me/phase-23-operations-analytics.
+Branch: me/phase-24-data-lifecycle-archival.
 Checkout: /home/sigma/work/commerceops-next.
 
 The Phase 23 result was verified on 2026-09-11 using a fresh disposable PostgreSQL 17 database
@@ -50,9 +50,14 @@ evidence is append-only and company-scoped. Returns association remains future w
 Reporting now derives permission-scoped QC workload and defect trends, elapsed rework, handover
 and first-readiness cycles, and separate employee activity measures from immutable Traceability
 history. Rates retain denominators and do not assign defect blame. No analytics counters exist.
+Phase 24 adds an operator-run database and local-object snapshot with manifests and checksums,
+strict validation, empty-target restoration and a backup-bound restore receipt. Archive planning
+is a dry run gated by that receipt. There is no deletion path, retention duration or production
+schedule in Phase 24.
 
 ## Next gate
 
 Phase 18 JioMart and the runtime portion of Phase 19 remain on ROADMAP.md's deferred evidence
 backlog. Phase 23 is complete; its evidence is in `PHASES/PHASE-23-VERIFICATION.md`. Phase 24
-has not started and requires separate authorization. Production deployment remains Phase 25.
+must pass its disposable restore drill and PostgreSQL-backed full gate before completion.
+Production deployment remains Phase 25 and has not started.

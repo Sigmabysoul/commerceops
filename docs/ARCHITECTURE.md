@@ -146,6 +146,13 @@ employee joins. A read-only repeatable-read transaction keeps response sections 
 bounded range/pagination and a company/time index support reporting. The backend defines all
 rates and cohorts. No workflow authority or Inventory writes move into Reporting.
 
+Phase 24 lifecycle operations live outside runtime composition in `scripts/lifecycle`. The tool
+uses PostgreSQL-native dump/restore plus a verified snapshot of the configured object root. Its
+manifests join database object references to exact bytes without moving ownership from Source
+Files, Printing or the Print Library. Restore evidence is required before archive analysis, and
+the analysis cannot mutate either store. Production scheduling and storage-provider controls
+remain deployment concerns for Phase 25.
+
 ## Phase 15 target and compatibility
 
 The backend uses internal/app (composition), internal/domain (business ownership), and

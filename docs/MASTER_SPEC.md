@@ -53,8 +53,10 @@ subscription billing, SaaS pricing or cross-customer administration in these pha
 
 The roadmap adds seller accounts, product department history, JioMart, Myntra print
 completion, Trace Boxes, QC/rework/handovers/packing, Consignment traceability, analytics,
-backup/restore/archive and production hardening. These are future capabilities until
-implemented and verified under their individual phase gates.
+backup/restore/archive and production hardening. Phase 24 implements an operator-run protected
+database/object snapshot, verification, empty-target restore drill and receipt-gated archive dry
+run. It contains no deletion mechanism. Other capabilities remain future work until implemented
+and verified under their individual phase gates.
 
 Exactly one active operational department per Product is the Phase 17 target. Reuse
 existing departments; assignment changes affect future routing while preserving historical
@@ -773,6 +775,12 @@ times and employee inspection/work/final-check activity. Rates keep their worklo
 the inspecting employee is not assumed to have caused a defect. Reports use immutable event
 history, company scope, reporting and Traceability permissions, explicit time ranges and local-day
 buckets. Gamification, labor-hour productivity and inferred worker blame remain outside this phase.
+
+Phase 24 protects a PostgreSQL dump and stable object snapshot with manifests and SHA-256
+checksums. Restore accepts only an empty database and absent object destination, then compares
+table counts, migration state, object references and object bytes before issuing a backup-bound
+receipt. Archive planning requires that receipt and remains dry-run only. Audit logs, Inventory
+transactions and Trace Box events remain preserved.
 
 ---
 
