@@ -4,5 +4,5 @@ See ../ROADMAP.md for the approved sequence and ../CURRENT_STATE.md for the acti
 Phases 0–14 are historical implementation specifications. Phases 15–17 are complete. Phase 18
 and the runtime portion of Phase 19 are deferred on evidence; Phase 19 evidence preparation is
 verified. Phases 20 and 21 are complete with evidence in their verification records. Phases 22–25 remain future planning. SUPERSEDED retains
-old drafts without authorizing them. Historical Phase 14
+old drafts without authorizing them. Phase 22 implementation is active pending verification. Historical Phase 14
 verification remains in PHASE-14-VERIFICATION.md and PHASE-14-CURRENT-STATE-HISTORY.md.

@@ -1024,6 +1024,38 @@ paths:
         "201": {description: Pre-outbound consignment cancelled and reservations released}
         "200": {description: Exact replay}
         "409": {$ref: "#/components/responses/Error"}
+  /api/v1/consignments/{consignment_id}/trace-box-links:
+    parameters: [{name: consignment_id, in: path, required: true, schema: {type: string, format: uuid}}]
+    post:
+      operationId: linkConsignmentTraceBox
+      security: [{sessionCookie: []}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/ConsignmentTraceLink"}}}}
+      responses:
+        "201": {description: Verified Trace Box quantity linked to a Consignment line}
+        "200": {description: Exact replay}
+        "409": {$ref: "#/components/responses/Error"}
+  /api/v1/consignments/{consignment_id}/trace-box-links/{allocation_event_id}/remove:
+    parameters:
+      - {name: consignment_id, in: path, required: true, schema: {type: string, format: uuid}}
+      - {name: allocation_event_id, in: path, required: true, schema: {type: string, format: uuid}}
+    post:
+      operationId: unlinkConsignmentTraceBox
+      security: [{sessionCookie: []}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/ConsignmentAction"}}}}
+      responses:
+        "201": {description: Immutable full allocation reversal recorded}
+        "200": {description: Exact replay}
+        "409": {$ref: "#/components/responses/Error"}
+  /api/v1/consignments/{consignment_id}/trace-evidence:
+    parameters: [{name: consignment_id, in: path, required: true, schema: {type: string, format: uuid}}]
+    post:
+      operationId: recordConsignmentTraceEvidence
+      security: [{sessionCookie: []}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/ConsignmentTraceEvidence"}}}}
+      responses:
+        "201": {description: Non-unique pouch or file reference evidence recorded}
+        "200": {description: Exact replay}
+        "409": {$ref: "#/components/responses/Error"}
   /api/v1/reports/dashboard:
     get:
       operationId: getOperationalDashboard
@@ -2330,6 +2362,7 @@ components:
         source_type: {type: string, enum: [manual, import]}
         source_reference: {type: [string, "null"], minLength: 1, maxLength: 500}
         notes: {type: [string, "null"], minLength: 1, maxLength: 2000}
+        traceability_required: {type: boolean, default: false}
         lines:
           type: array
           minItems: 1
@@ -2369,6 +2402,28 @@ components:
         packed_quantity: {type: integer, format: int64, minimum: 0}
         expected_version: {type: integer, minimum: 1}
         notes: {type: [string, "null"], minLength: 1, maxLength: 2000}
+        idempotency_key: {type: string, minLength: 1, maxLength: 128}
+    ConsignmentTraceLink:
+      type: object
+      additionalProperties: false
+      required: [line_id, trace_box_identifier, quantity, expected_version, idempotency_key]
+      properties:
+        line_id: {type: string, format: uuid}
+        trace_box_identifier: {type: string, pattern: "^TBX_[A-Z2-7]{26}$"}
+        quantity: {type: integer, format: int64, minimum: 1}
+        expected_version: {type: integer, minimum: 1}
+        notes: {type: [string, "null"], maxLength: 2000}
+        idempotency_key: {type: string, minLength: 1, maxLength: 128}
+    ConsignmentTraceEvidence:
+      type: object
+      additionalProperties: false
+      required: [evidence_type, reference_value, expected_version, idempotency_key]
+      properties:
+        evidence_type: {type: string, enum: [pouch_reference, file_reference]}
+        reference_value: {type: string, minLength: 1, maxLength: 500}
+        trace_box_identifier: {type: [string, "null"], pattern: "^TBX_[A-Z2-7]{26}$"}
+        expected_version: {type: integer, minimum: 1}
+        notes: {type: [string, "null"], maxLength: 2000}
         idempotency_key: {type: string, minLength: 1, maxLength: 128}
     ErrorEnvelope:
       type: object

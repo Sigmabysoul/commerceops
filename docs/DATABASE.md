@@ -164,3 +164,10 @@ name both a rejection reason and required work. A unique work completion and han
 prevents duplicate mobile retries. Receipt also appends the existing custody history in the same
 transaction. Box row locks serialize transition checks. Current workflow state is derived; no
 Inventory table or balance changes.
+
+## Phase 22 Consignment traceability integration
+
+Migration `000029_consignment_traceability_integration` adds an opt-in Consignment traceability
+flag, immutable signed Trace Box allocations tied to canonical line Product snapshots, and
+append-only pouch/file evidence. Active allocations are derived from link and unlink events.
+Reference indexes are non-unique by design. No Inventory schema or ledger rule changes.

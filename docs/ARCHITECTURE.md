@@ -135,6 +135,10 @@ Returns, Consignment workflow or Printing dependency; later integrations remain 
 Phase 21 keeps QC, rework requirements, two-step handovers and packing gates in that same owner.
 PostgreSQL validates typed records while the service locks each box and enforces transition order.
 The React workspace submits commands and renders derived state; it is not a workflow authority.
+Phase 22 adds a one-way Consignment dependency on a narrow transaction-scoped Traceability
+verification boundary. Consignment owns signed line allocations, department progress and packing
+gates; Traceability locks and verifies current shipment-ready Product quantity. Inventory ownership
+and the existing reservation/outbound transaction remain unchanged.
 
 ## Phase 15 target and compatibility
 

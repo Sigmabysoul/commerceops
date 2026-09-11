@@ -1029,6 +1029,12 @@ rework, and completed work requires a fresh passing QC before packing. Handovers
 until the target employee or a member of the target department records receipt. Packing, final
 verification and shipment readiness are distinct audited gates owned by Traceability.
 
+Consignments may opt into verified Trace Box evidence. In that mode, each line's ready and packed
+quantity must be covered by currently shipment-ready Trace Box quantity, and ready, packed and
+outbound gates revalidate complete coverage. Allocations preserve the line's Product and department
+snapshot, cannot double-count physical quantity across consignments, and retain immutable reversals.
+Pouch and file evidence references are auditable but are not unique identities.
+
 This document remains the product-level source of truth, subject to explicit owner
 instructions and approved ADRs.
 

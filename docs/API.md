@@ -113,6 +113,14 @@ A sent handover blocks content and workflow mutations until its target receives 
 atomically records employee custody. These transitions append history and audit records only;
 they do not call Inventory, Returns or Consignment.
 
+Traceability-required Consignments add three idempotent commands:
+
+| Method | Path | Permission | Purpose |
+| --- | --- | --- | --- |
+| POST | `/api/v1/consignments/{consignment_id}/trace-box-links` | `consignments.work/manage` | Link bounded verified box quantity to one authorized line |
+| POST | `/api/v1/consignments/{consignment_id}/trace-box-links/{allocation_event_id}/remove` | `consignments.work/manage` | Append a full allocation reversal before progress depends on it |
+| POST | `/api/v1/consignments/{consignment_id}/trace-evidence` | `consignments.manage` | Record a non-unique pouch or file reference, optionally tied to a box |
+
 ## Printing platform
 
 Marketplace `print_jobs` continue to generate immutable PDFs. Physical delivery
