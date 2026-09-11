@@ -1830,6 +1830,87 @@ paths:
         "403": {$ref: "#/components/responses/Error"}
         "404": {$ref: "#/components/responses/Error"}
         "409": {$ref: "#/components/responses/Error"}
+  /api/v1/trace-boxes/{trace_box_id}/qc:
+    post:
+      operationId: completeTraceBoxQC
+      security: [{sessionCookie: []}]
+      parameters: [{$ref: "#/components/parameters/TraceBoxID"}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/TraceBoxQCCommand"}}}}
+      responses:
+        "201": {description: Full current-content QC snapshot and any required work recorded}
+        "400": {$ref: "#/components/responses/Error"}
+        "403": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+        "409": {$ref: "#/components/responses/Error"}
+  /api/v1/trace-boxes/{trace_box_id}/work-requirements/{work_requirement_id}/complete:
+    post:
+      operationId: completeTraceBoxWork
+      security: [{sessionCookie: []}]
+      parameters: [{$ref: "#/components/parameters/TraceBoxID"}, {$ref: "#/components/parameters/WorkRequirementID"}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/TraceBoxNoteCommand"}}}}
+      responses:
+        "201": {description: Required work completion recorded; fresh QC remains required}
+        "400": {$ref: "#/components/responses/Error"}
+        "403": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+        "409": {$ref: "#/components/responses/Error"}
+  /api/v1/trace-boxes/{trace_box_id}/handovers:
+    post:
+      operationId: sendTraceBoxHandover
+      security: [{sessionCookie: []}]
+      parameters: [{$ref: "#/components/parameters/TraceBoxID"}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/TraceBoxHandoverCommand"}}}}
+      responses:
+        "201": {description: Box placed in transit to one employee or department}
+        "400": {$ref: "#/components/responses/Error"}
+        "403": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+        "409": {$ref: "#/components/responses/Error"}
+  /api/v1/trace-boxes/{trace_box_id}/handovers/{handover_id}/receive:
+    post:
+      operationId: receiveTraceBoxHandover
+      security: [{sessionCookie: []}]
+      parameters: [{$ref: "#/components/parameters/TraceBoxID"}, {$ref: "#/components/parameters/HandoverID"}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/TraceBoxNoteCommand"}}}}
+      responses:
+        "201": {description: Target worker receipt and employee custody recorded atomically}
+        "400": {$ref: "#/components/responses/Error"}
+        "403": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+        "409": {$ref: "#/components/responses/Error"}
+  /api/v1/trace-boxes/{trace_box_id}/packing/complete:
+    post:
+      operationId: completeTraceBoxPacking
+      security: [{sessionCookie: []}]
+      parameters: [{$ref: "#/components/parameters/TraceBoxID"}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/TraceBoxNoteCommand"}}}}
+      responses:
+        "201": {description: Packing recorded after clear work and passing fresh QC}
+        "400": {$ref: "#/components/responses/Error"}
+        "403": {$ref: "#/components/responses/Error"}
+        "409": {$ref: "#/components/responses/Error"}
+  /api/v1/trace-boxes/{trace_box_id}/final-checks:
+    post:
+      operationId: completeTraceBoxFinalCheck
+      security: [{sessionCookie: []}]
+      parameters: [{$ref: "#/components/parameters/TraceBoxID"}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/TraceBoxFinalCheckCommand"}}}}
+      responses:
+        "201": {description: Passed or failed final packing check recorded}
+        "400": {$ref: "#/components/responses/Error"}
+        "403": {$ref: "#/components/responses/Error"}
+        "409": {$ref: "#/components/responses/Error"}
+  /api/v1/trace-boxes/{trace_box_id}/shipment-readiness:
+    post:
+      operationId: markTraceBoxReadyForShipment
+      security: [{sessionCookie: []}]
+      parameters: [{$ref: "#/components/parameters/TraceBoxID"}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/TraceBoxNoteCommand"}}}}
+      responses:
+        "201": {description: Shipment readiness recorded after a passing final check}
+        "400": {$ref: "#/components/responses/Error"}
+        "403": {$ref: "#/components/responses/Error"}
+        "409": {$ref: "#/components/responses/Error"}
 
 components:
   securitySchemes:
@@ -1851,6 +1932,8 @@ components:
     PrintJobID: {name: print_job_id, in: path, required: true, schema: {type: string, format: uuid}}
     ArtifactID: {name: artifact_id, in: path, required: true, schema: {type: string, format: uuid}}
     TraceBoxID: {name: trace_box_id, in: path, required: true, schema: {type: string, format: uuid}}
+    WorkRequirementID: {name: work_requirement_id, in: path, required: true, schema: {type: string, format: uuid}}
+    HandoverID: {name: handover_id, in: path, required: true, schema: {type: string, format: uuid}}
   responses:
     Error:
       description: Request failed
@@ -1884,9 +1967,49 @@ components:
         department_id: {type: [string, "null"], format: uuid}
         notes: {type: [string, "null"], maxLength: 2000}
         idempotency_key: {type: string, minLength: 1, maxLength: 128}
+    TraceBoxNoteCommand:
+      type: object
+      additionalProperties: false
+      required: [idempotency_key]
+      properties:
+        notes: {type: [string, "null"], maxLength: 2000}
+        idempotency_key: {type: string, minLength: 1, maxLength: 128}
+    TraceBoxHandoverCommand:
+      allOf:
+        - {$ref: "#/components/schemas/TraceBoxCustodyCommand"}
+      description: Exactly one target employee_id or department_id is required. Receipt is a separate action.
+    TraceBoxQCCommand:
+      type: object
+      additionalProperties: false
+      required: [lines, idempotency_key]
+      properties:
+        lines:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            additionalProperties: false
+            required: [product_id, checked_quantity, passed_quantity, rejected_quantity]
+            properties:
+              product_id: {type: string, format: uuid}
+              checked_quantity: {type: integer, format: int64, minimum: 1}
+              passed_quantity: {type: integer, format: int64, minimum: 0}
+              rejected_quantity: {type: integer, format: int64, minimum: 0}
+              rejection_reason: {type: [string, "null"], enum: [damaged, wrong_sticker, dirty, missing_component, packaging_damaged, wrong_product, manufacturing_defect, other, null]}
+              required_work: {type: [string, "null"], enum: [sticker_replacement, cleaning, repacking, component_check, repair, other, null]}
+        notes: {type: [string, "null"], maxLength: 2000}
+        idempotency_key: {type: string, minLength: 1, maxLength: 128}
+    TraceBoxFinalCheckCommand:
+      type: object
+      additionalProperties: false
+      required: [passed, idempotency_key]
+      properties:
+        passed: {type: boolean}
+        notes: {type: [string, "null"], maxLength: 2000, description: Required when passed is false.}
+        idempotency_key: {type: string, minLength: 1, maxLength: 128}
     TraceBox:
       type: object
-      required: [id, opaque_identifier, created_by, created_at, contents, events]
+      required: [id, opaque_identifier, created_by, created_at, contents, workflow, events]
       properties:
         id: {type: string, format: uuid}
         opaque_identifier: {type: string, pattern: "^TBX_[A-Z2-7]{26}$"}
@@ -1904,6 +2027,17 @@ components:
               product_name: {type: string}
               quantity: {type: integer, format: int64, minimum: 1}
         current_custody: {type: [object, "null"]}
+        workflow:
+          type: object
+          required: [status, work_requirements]
+          properties:
+            status: {type: string, enum: [empty, awaiting_qc, qc_passed, rework_required, awaiting_recheck, in_transit, handover_received, packed, final_check_passed, final_check_failed, ready_for_shipment]}
+            latest_qc: {type: [object, "null"]}
+            work_requirements: {type: array, items: {type: object}}
+            pending_handover: {type: [object, "null"]}
+            packed_at: {type: [string, "null"], format: date-time}
+            final_check: {type: [object, "null"]}
+            ready_at: {type: [string, "null"], format: date-time}
         events:
           type: array
           items:
@@ -1911,7 +2045,7 @@ components:
             required: [id, event_type, actor_user_id, metadata, idempotency_key, created_at]
             properties:
               id: {type: string, format: uuid}
-              event_type: {type: string, enum: [box_created, content_added, content_removed, custody_transferred]}
+              event_type: {type: string, enum: [box_created, content_added, content_removed, custody_transferred, qc_completed, work_completed, handover_sent, handover_received, packing_completed, final_check_completed, ready_for_shipment]}
               actor_user_id: {type: string, format: uuid}
               notes: {type: [string, "null"]}
               metadata: {type: object, additionalProperties: true}

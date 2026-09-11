@@ -80,7 +80,7 @@ Product is reassigned.
 
 The OpenAPI source is `docs/openapi.yaml`. It must be updated whenever the public API contract changes.
 
-## Traceability foundation
+## Traceability worker workflows
 
 Trace Box identifiers are opaque server-generated values. Resolving an identifier is an
 authenticated company-scoped lookup, not authentication. Current Product quantities and
@@ -91,14 +91,27 @@ custody are derived from immutable events; these endpoints never change Inventor
 | GET, POST | `/api/v1/trace-boxes` | `traceability.view/manage` | List or create Trace Boxes |
 | GET | `/api/v1/trace-box-options` | `traceability.view` | List active Product, employee and department references |
 | GET | `/api/v1/trace-box-resolutions/{opaque_identifier}` | `traceability.view` | Resolve a scanned identifier inside the session company |
-| GET | `/api/v1/trace-boxes/{trace_box_id}` | `traceability.view` | Read derived contents, current custody and immutable history |
+| GET | `/api/v1/trace-boxes/{trace_box_id}` | `traceability.view` | Read derived contents, workflow state, current custody and immutable history |
 | POST | `/api/v1/trace-boxes/{trace_box_id}/contents` | `traceability.manage` | Append an explicit Product quantity addition |
 | POST | `/api/v1/trace-boxes/{trace_box_id}/contents/remove` | `traceability.manage` | Append a bounded Product quantity removal |
 | POST | `/api/v1/trace-boxes/{trace_box_id}/custody` | `traceability.manage` | Transfer custody to one employee or department |
+| POST | `/api/v1/trace-boxes/{trace_box_id}/qc` | `traceability.manage` | Record an atomic full-current-content QC snapshot |
+| POST | `/api/v1/trace-boxes/{trace_box_id}/work-requirements/{work_requirement_id}/complete` | `traceability.manage` | Complete one QC-generated work requirement |
+| POST | `/api/v1/trace-boxes/{trace_box_id}/handovers` | `traceability.manage` | Send a two-step employee/department handover |
+| POST | `/api/v1/trace-boxes/{trace_box_id}/handovers/{handover_id}/receive` | `traceability.manage` | Receive as the target employee or department member |
+| POST | `/api/v1/trace-boxes/{trace_box_id}/packing/complete` | `traceability.manage` | Record packing after a fresh passing QC |
+| POST | `/api/v1/trace-boxes/{trace_box_id}/final-checks` | `traceability.manage` | Record a passed or failed final check |
+| POST | `/api/v1/trace-boxes/{trace_box_id}/shipment-readiness` | `traceability.manage` | Mark ready after a passed final check |
 
 Every mutation requires an idempotency key. Reusing a key with the same request returns the
 existing result; different content returns a conflict. Quantity removals serialize on the box
 and cannot reduce a Product below zero.
+
+QC must cover every current Product and quantity in one request. Rejected quantities create
+typed work requirements; completing them requires another full passing QC before packing.
+A sent handover blocks content and workflow mutations until its target receives it. Receiving
+atomically records employee custody. These transitions append history and audit records only;
+they do not call Inventory, Returns or Consignment.
 
 ## Printing platform
 

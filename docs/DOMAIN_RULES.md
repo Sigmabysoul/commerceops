@@ -132,4 +132,7 @@ RULE TRACE-001: Trace QR/barcodes identify opaque server records, never encoded 
 RULE TRACE-002: Trace Box contents use canonical Product IDs and explicit positive quantities. Every addition or removal is immutable and idempotent; concurrent removal must never make a derived quantity negative.
 RULE TRACE-003: Trace Box custody identifies exactly one same-company employee or department. Current custody is derived from immutable transfer history, and scanning an identifier never bypasses authentication or authorization.
 RULE QC-001: QC PASS is not RESTOCK. Sellable stock changes only through an explicit authorized Inventory transition.
+RULE QC-002: Trace Box QC covers the full current Product/quantity snapshot. Rejected quantities require a reason and work type; completed work requires a fresh passing QC before packing.
+RULE TRACE-004: A handover is in transit after send and changes custody only when its target employee or department member receives it. Other box mutations are blocked in transit.
+RULE PACKING-001: Packing requires clear work and fresh passing QC. Shipment readiness requires a later passing final check; every gate is idempotent and audited.
 RULE LIFECYCLE-001: No automatic archival deletion before verified export and restore; retain audit history.

@@ -1024,6 +1024,11 @@ Trace identifiers in later phases must be opaque server-generated values; mutabl
 stays in PostgreSQL. Traceability never duplicates inventory balances. QC PASS is not
 RESTOCK; only an explicit authorized Inventory transition changes sellable stock.
 
+Trace Box QC covers the complete current content snapshot. Rejected quantity creates explicit
+rework, and completed work requires a fresh passing QC before packing. Handovers remain in transit
+until the target employee or a member of the target department records receipt. Packing, final
+verification and shipment readiness are distinct audited gates owned by Traceability.
+
 This document remains the product-level source of truth, subject to explicit owner
 instructions and approved ADRs.
 

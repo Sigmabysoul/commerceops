@@ -132,6 +132,9 @@ Product content relationships, employee/department custody and unified event his
 current view is derived from immutable event-linked changes. Identifier resolution requires
 the authenticated company, permission and module entitlement. The package has no Inventory,
 Returns, Consignment workflow or Printing dependency; later integrations remain separate phases.
+Phase 21 keeps QC, rework requirements, two-step handovers and packing gates in that same owner.
+PostgreSQL validates typed records while the service locks each box and enforces transition order.
+The React workspace submits commands and renders derived state; it is not a workflow authority.
 
 ## Phase 15 target and compatibility
 

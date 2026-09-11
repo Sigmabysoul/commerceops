@@ -42,8 +42,8 @@ never authorization.
   Inventory boundaries only at approved stock transitions.
 - `internal/domain/reporting`: read models derived from authoritative domain tables.
 - `internal/domain/traceability`: opaque Trace Box identity, Product quantity relationships,
-  employee/department custody, and immutable events. It derives operational state without
-  importing or mutating Inventory.
+  employee/department custody, QC/rework, two-step handovers, packing gates, and immutable events.
+  It derives operational state without importing or mutating Inventory.
 - `internal/platform`: database, HTTP envelope, object storage, PDF extraction,
   and PDF generation infrastructure without business ownership.
 
@@ -68,7 +68,7 @@ PDF is never an Inventory event.
   explicit action that queues an artifact to hardware.
 - `quick-print.tsx`: mobile Print Library browsing and server-side queue request.
 - `traceability-workspace.tsx`: authenticated Trace Box creation, scanning, contents, custody,
-  and history over the typed `api/traceability.ts` boundary.
+  worker workflow actions, and history over the typed `api/traceability.ts` boundary.
 - `pwa-registration.tsx` and `app/manifest.ts`: installability only; authenticated
   API data is not cached and the phone never accesses a printer.
 

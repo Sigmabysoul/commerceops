@@ -204,5 +204,6 @@ Phase 17 introduced Product ownership around the existing Consignment-era Depart
 identity without duplicating it. Phase 20's `internal/domain/traceability` owns Trace Boxes,
 opaque identifiers, Product content relationships, custody and trace history without Inventory
 balances. It reads canonical Product, employee and department references but does not own their
-lifecycles. Seller-account
+lifecycles. Phase 21 adds full-box QC, generated rework requirements, two-step handovers and
+packing/final gates to that owner; the module still does not change Inventory. Seller-account
 business state belongs to Phase 16, not to printer-agent/workstation infrastructure.

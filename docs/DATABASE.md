@@ -154,3 +154,13 @@ Content changes reference canonical Products with signed explicit quantities. Cu
 reference exactly one same-company employee or department. Current contents and custody are
 derived from this history. Database triggers reject event updates and deletes. No Inventory
 table, balance, reservation or ledger behavior changes.
+
+## Phase 21 Traceability worker workflows
+
+Migration `000028_traceability_worker_workflows` extends the Trace Box event vocabulary and adds
+typed immutable records for full-box QC lines, QC-generated work requirements and completions,
+two-step handovers and receipts, and packing/final/readiness gates. Rejected QC quantities must
+name both a rejection reason and required work. A unique work completion and handover receipt
+prevents duplicate mobile retries. Receipt also appends the existing custody history in the same
+transaction. Box row locks serialize transition checks. Current workflow state is derived; no
+Inventory table or balance changes.
