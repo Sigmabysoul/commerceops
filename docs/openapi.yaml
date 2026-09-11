@@ -1774,7 +1774,7 @@ paths:
       responses:
         "200": {description: Active company-scoped Product, employee and department references}
         "403": {$ref: "#/components/responses/Error"}
-  /api/v1/trace-boxes/resolve/{opaque_identifier}:
+  /api/v1/trace-box-resolutions/{opaque_identifier}:
     get:
       operationId: resolveTraceBoxIdentifier
       security: [{sessionCookie: []}]

@@ -188,13 +188,7 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	mux.Handle("/api/v1/consignments/{consignment_id}/lines/{line_id}/progress", authHTTP.RequireSession(http.HandlerFunc(consignmentHTTP.Progress)))
 	mux.Handle("/api/v1/consignments/{consignment_id}/confirm-outbound", authHTTP.RequireSession(http.HandlerFunc(consignmentHTTP.Outbound)))
 	mux.Handle("/api/v1/consignments/{consignment_id}/cancel", authHTTP.RequireSession(http.HandlerFunc(consignmentHTTP.Cancel)))
-	mux.Handle("/api/v1/trace-boxes", authHTTP.RequireSession(http.HandlerFunc(traceabilityHTTP.Boxes)))
-	mux.Handle("/api/v1/trace-box-options", authHTTP.RequireSession(http.HandlerFunc(traceabilityHTTP.Options)))
-	mux.Handle("/api/v1/trace-boxes/resolve/{opaque_identifier}", authHTTP.RequireSession(http.HandlerFunc(traceabilityHTTP.Resolve)))
-	mux.Handle("/api/v1/trace-boxes/{trace_box_id}", authHTTP.RequireSession(http.HandlerFunc(traceabilityHTTP.Box)))
-	mux.Handle("/api/v1/trace-boxes/{trace_box_id}/contents", authHTTP.RequireSession(http.HandlerFunc(traceabilityHTTP.AddContent)))
-	mux.Handle("/api/v1/trace-boxes/{trace_box_id}/contents/remove", authHTTP.RequireSession(http.HandlerFunc(traceabilityHTTP.RemoveContent)))
-	mux.Handle("/api/v1/trace-boxes/{trace_box_id}/custody", authHTTP.RequireSession(http.HandlerFunc(traceabilityHTTP.TransferCustody)))
+	registerTraceabilityRoutes(mux, authHTTP, traceabilityHTTP)
 	server := &http.Server{Addr: cfg.HTTPAddr, Handler: httpserver.Middleware(logger, cfg.AllowedOrigins, mux), ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 60 * time.Second}
 
 	errCh := make(chan error, 1)
@@ -215,6 +209,16 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 		logger.Info("http server shutting down")
 		return server.Shutdown(shutdownCtx)
 	}
+}
+
+func registerTraceabilityRoutes(mux *http.ServeMux, authHTTP *auth.HTTPHandler, traceabilityHTTP *traceability.HTTPHandler) {
+	mux.Handle("/api/v1/trace-boxes", authHTTP.RequireSession(http.HandlerFunc(traceabilityHTTP.Boxes)))
+	mux.Handle("/api/v1/trace-box-options", authHTTP.RequireSession(http.HandlerFunc(traceabilityHTTP.Options)))
+	mux.Handle("/api/v1/trace-box-resolutions/{opaque_identifier}", authHTTP.RequireSession(http.HandlerFunc(traceabilityHTTP.Resolve)))
+	mux.Handle("/api/v1/trace-boxes/{trace_box_id}", authHTTP.RequireSession(http.HandlerFunc(traceabilityHTTP.Box)))
+	mux.Handle("/api/v1/trace-boxes/{trace_box_id}/contents", authHTTP.RequireSession(http.HandlerFunc(traceabilityHTTP.AddContent)))
+	mux.Handle("/api/v1/trace-boxes/{trace_box_id}/contents/remove", authHTTP.RequireSession(http.HandlerFunc(traceabilityHTTP.RemoveContent)))
+	mux.Handle("/api/v1/trace-boxes/{trace_box_id}/custody", authHTTP.RequireSession(http.HandlerFunc(traceabilityHTTP.TransferCustody)))
 }
 
 func newObjectStorage(ctx context.Context, cfg config.Config) (objectstorage.Storage, error) {

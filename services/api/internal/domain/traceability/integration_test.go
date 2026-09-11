@@ -244,7 +244,7 @@ func TestTraceabilityHTTPBoundary(t *testing.T) {
 	if err = json.Unmarshal(response.Body.Bytes(), &result); err != nil {
 		t.Fatal(err)
 	}
-	request = httptest.NewRequest(http.MethodGet, "/api/v1/trace-boxes/resolve/"+result.TraceBox.OpaqueIdentifier, nil)
+	request = httptest.NewRequest(http.MethodGet, "/api/v1/trace-box-resolutions/"+result.TraceBox.OpaqueIdentifier, nil)
 	request.SetPathValue("opaque_identifier", result.TraceBox.OpaqueIdentifier)
 	request = request.WithContext(auth.WithPrincipal(request.Context(), f.manager))
 	response = httptest.NewRecorder()

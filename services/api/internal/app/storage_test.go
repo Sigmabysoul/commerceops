@@ -3,11 +3,33 @@ package app
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptest"
 	"testing"
+	"time"
 
+	"github.com/commerceops/commerceops/services/api/internal/domain/traceability"
+	"github.com/commerceops/commerceops/services/api/internal/platform/auth"
 	"github.com/commerceops/commerceops/services/api/internal/platform/config"
 	"github.com/commerceops/commerceops/services/api/internal/platform/objectstorage"
 )
+
+func TestTraceabilityRoutesRegisterWithoutConflicts(t *testing.T) {
+	mux := http.NewServeMux()
+	registerTraceabilityRoutes(mux, auth.NewHTTPHandler(nil, false, time.Hour), traceability.NewHTTPHandler(nil))
+	for _, path := range []string{
+		"/api/v1/trace-boxes",
+		"/api/v1/trace-box-options",
+		"/api/v1/trace-box-resolutions/TBX_AAAAAAAAAAAAAAAAAAAAAAAAAA",
+		"/api/v1/trace-boxes/00000000-0000-4000-8000-000000000000/contents",
+	} {
+		response := httptest.NewRecorder()
+		mux.ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))
+		if response.Code != http.StatusUnauthorized {
+			t.Fatalf("path %s status=%d", path, response.Code)
+		}
+	}
+}
 
 func TestNewObjectStorageSelectsConfiguredDriver(t *testing.T) {
 	tests := []struct {

@@ -90,7 +90,7 @@ custody are derived from immutable events; these endpoints never change Inventor
 | --- | --- | --- | --- |
 | GET, POST | `/api/v1/trace-boxes` | `traceability.view/manage` | List or create Trace Boxes |
 | GET | `/api/v1/trace-box-options` | `traceability.view` | List active Product, employee and department references |
-| GET | `/api/v1/trace-boxes/resolve/{opaque_identifier}` | `traceability.view` | Resolve a scanned identifier inside the session company |
+| GET | `/api/v1/trace-box-resolutions/{opaque_identifier}` | `traceability.view` | Resolve a scanned identifier inside the session company |
 | GET | `/api/v1/trace-boxes/{trace_box_id}` | `traceability.view` | Read derived contents, current custody and immutable history |
 | POST | `/api/v1/trace-boxes/{trace_box_id}/contents` | `traceability.manage` | Append an explicit Product quantity addition |
 | POST | `/api/v1/trace-boxes/{trace_box_id}/contents/remove` | `traceability.manage` | Append a bounded Product quantity removal |
