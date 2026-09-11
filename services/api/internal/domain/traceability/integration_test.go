@@ -332,6 +332,13 @@ func TestConcurrentHandoverAllowsOnePendingTransfer(t *testing.T) {
 
 func TestTraceabilityMigrationRoundTrip(t *testing.T) {
 	f := setupTraceability(t)
+	phase22Down, err := os.ReadFile("../../../migrations/000029_consignment_traceability_integration.down.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = f.db.Exec(context.Background(), string(phase22Down)); err != nil {
+		t.Fatal(err)
+	}
 	phase21Down, err := os.ReadFile("../../../migrations/000028_traceability_worker_workflows.down.sql")
 	if err != nil {
 		t.Fatal(err)
@@ -358,6 +365,13 @@ func TestTraceabilityMigrationRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err = f.db.Exec(context.Background(), string(phase21Up)); err != nil {
+		t.Fatal(err)
+	}
+	phase22Up, err := os.ReadFile("../../../migrations/000029_consignment_traceability_integration.up.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = f.db.Exec(context.Background(), string(phase22Up)); err != nil {
 		t.Fatal(err)
 	}
 	var table string

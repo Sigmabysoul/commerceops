@@ -603,3 +603,30 @@ func (s *Service) loadWorkflow(ctx context.Context, companyID, boxID string, has
 	}
 	return result, nil
 }
+
+// VerifiedProductQuantity is the narrow transaction boundary used by Consignment. It locks the
+// box so a verified quantity cannot change while the caller records or validates an allocation.
+func (s *Service) VerifiedProductQuantity(ctx context.Context, tx pgx.Tx, companyID, boxID, productID string) (int64, error) {
+	if err := lockBox(ctx, tx, companyID, boxID); err != nil {
+		return 0, err
+	}
+	if err := assertNoPendingHandover(ctx, tx, companyID, boxID); err != nil {
+		return 0, err
+	}
+	var latest string
+	err := tx.QueryRow(ctx, `SELECT event_type FROM trace_box_events WHERE company_id=$1 AND trace_box_id=$2 AND event_type IN ('content_added','content_removed','qc_completed','work_completed','packing_completed','final_check_completed','ready_for_shipment') ORDER BY created_at DESC,id DESC LIMIT 1`, companyID, boxID).Scan(&latest)
+	if errors.Is(err, pgx.ErrNoRows) || latest != "ready_for_shipment" {
+		return 0, ErrInvalidTransition
+	}
+	if err != nil {
+		return 0, err
+	}
+	var quantity int64
+	if err = tx.QueryRow(ctx, `SELECT COALESCE(sum(quantity_delta),0) FROM trace_box_content_changes WHERE company_id=$1 AND trace_box_id=$2 AND product_id=$3`, companyID, boxID, productID).Scan(&quantity); err != nil {
+		return 0, err
+	}
+	if quantity <= 0 {
+		return 0, ErrNotFound
+	}
+	return quantity, nil
+}

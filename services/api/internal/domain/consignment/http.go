@@ -136,6 +136,30 @@ func (h *HTTPHandler) Cancel(w http.ResponseWriter, r *http.Request) {
 	item, replayed, err := h.service.Cancel(r.Context(), principal(r), r.PathValue("consignment_id"), input)
 	writeResult(w, item, replayed, err)
 }
+func (h *HTTPHandler) LinkTraceBox(w http.ResponseWriter, r *http.Request) {
+	var input TraceLinkInput
+	if !postJSON(w, r, &input) {
+		return
+	}
+	item, replayed, err := h.service.LinkTraceBox(r.Context(), principal(r), r.PathValue("consignment_id"), input)
+	writeResult(w, item, replayed, err)
+}
+func (h *HTTPHandler) UnlinkTraceBox(w http.ResponseWriter, r *http.Request) {
+	var input TraceUnlinkInput
+	if !postJSON(w, r, &input) {
+		return
+	}
+	item, replayed, err := h.service.UnlinkTraceBox(r.Context(), principal(r), r.PathValue("consignment_id"), r.PathValue("allocation_event_id"), input)
+	writeResult(w, item, replayed, err)
+}
+func (h *HTTPHandler) RecordTraceEvidence(w http.ResponseWriter, r *http.Request) {
+	var input TraceEvidenceInput
+	if !postJSON(w, r, &input) {
+		return
+	}
+	item, replayed, err := h.service.RecordTraceEvidence(r.Context(), principal(r), r.PathValue("consignment_id"), input)
+	writeResult(w, item, replayed, err)
+}
 func postJSON(w http.ResponseWriter, r *http.Request, target any) bool {
 	if r.Method != http.MethodPost {
 		methodNotAllowed(w)

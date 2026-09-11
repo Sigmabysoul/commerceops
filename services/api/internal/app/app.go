@@ -188,6 +188,7 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	mux.Handle("/api/v1/consignments/{consignment_id}/lines/{line_id}/progress", authHTTP.RequireSession(http.HandlerFunc(consignmentHTTP.Progress)))
 	mux.Handle("/api/v1/consignments/{consignment_id}/confirm-outbound", authHTTP.RequireSession(http.HandlerFunc(consignmentHTTP.Outbound)))
 	mux.Handle("/api/v1/consignments/{consignment_id}/cancel", authHTTP.RequireSession(http.HandlerFunc(consignmentHTTP.Cancel)))
+	registerConsignmentTraceRoutes(mux, authHTTP, consignmentHTTP)
 	registerTraceabilityRoutes(mux, authHTTP, traceabilityHTTP)
 	server := &http.Server{Addr: cfg.HTTPAddr, Handler: httpserver.Middleware(logger, cfg.AllowedOrigins, mux), ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 60 * time.Second}
 
@@ -226,6 +227,12 @@ func registerTraceabilityRoutes(mux *http.ServeMux, authHTTP *auth.HTTPHandler, 
 	mux.Handle("/api/v1/trace-boxes/{trace_box_id}/packing/complete", authHTTP.RequireSession(http.HandlerFunc(traceabilityHTTP.CompletePacking)))
 	mux.Handle("/api/v1/trace-boxes/{trace_box_id}/final-checks", authHTTP.RequireSession(http.HandlerFunc(traceabilityHTTP.CompleteFinalCheck)))
 	mux.Handle("/api/v1/trace-boxes/{trace_box_id}/shipment-readiness", authHTTP.RequireSession(http.HandlerFunc(traceabilityHTTP.MarkReady)))
+}
+
+func registerConsignmentTraceRoutes(mux *http.ServeMux, authHTTP *auth.HTTPHandler, handler *consignment.HTTPHandler) {
+	mux.Handle("/api/v1/consignments/{consignment_id}/trace-box-links", authHTTP.RequireSession(http.HandlerFunc(handler.LinkTraceBox)))
+	mux.Handle("/api/v1/consignments/{consignment_id}/trace-box-links/{allocation_event_id}/remove", authHTTP.RequireSession(http.HandlerFunc(handler.UnlinkTraceBox)))
+	mux.Handle("/api/v1/consignments/{consignment_id}/trace-evidence", authHTTP.RequireSession(http.HandlerFunc(handler.RecordTraceEvidence)))
 }
 
 func newObjectStorage(ctx context.Context, cfg config.Config) (objectstorage.Storage, error) {

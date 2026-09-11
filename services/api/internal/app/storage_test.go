@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/commerceops/commerceops/services/api/internal/domain/consignment"
 	"github.com/commerceops/commerceops/services/api/internal/domain/traceability"
 	"github.com/commerceops/commerceops/services/api/internal/platform/auth"
 	"github.com/commerceops/commerceops/services/api/internal/platform/config"
@@ -17,6 +18,7 @@ import (
 func TestTraceabilityRoutesRegisterWithoutConflicts(t *testing.T) {
 	mux := http.NewServeMux()
 	registerTraceabilityRoutes(mux, auth.NewHTTPHandler(nil, false, time.Hour), traceability.NewHTTPHandler(nil))
+	registerConsignmentTraceRoutes(mux, auth.NewHTTPHandler(nil, false, time.Hour), consignment.NewHTTPHandler(nil))
 	for _, path := range []string{
 		"/api/v1/trace-boxes",
 		"/api/v1/trace-box-options",
@@ -29,6 +31,9 @@ func TestTraceabilityRoutesRegisterWithoutConflicts(t *testing.T) {
 		"/api/v1/trace-boxes/00000000-0000-4000-8000-000000000000/packing/complete",
 		"/api/v1/trace-boxes/00000000-0000-4000-8000-000000000000/final-checks",
 		"/api/v1/trace-boxes/00000000-0000-4000-8000-000000000000/shipment-readiness",
+		"/api/v1/consignments/00000000-0000-4000-8000-000000000000/trace-box-links",
+		"/api/v1/consignments/00000000-0000-4000-8000-000000000000/trace-box-links/00000000-0000-4000-8000-000000000001/remove",
+		"/api/v1/consignments/00000000-0000-4000-8000-000000000000/trace-evidence",
 	} {
 		response := httptest.NewRecorder()
 		mux.ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))

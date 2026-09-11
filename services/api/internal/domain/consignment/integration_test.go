@@ -14,6 +14,7 @@ import (
 
 	"github.com/commerceops/commerceops/services/api/internal/domain/inventory"
 	"github.com/commerceops/commerceops/services/api/internal/domain/reporting"
+	"github.com/commerceops/commerceops/services/api/internal/domain/traceability"
 	"github.com/commerceops/commerceops/services/api/internal/platform/auth"
 	"github.com/commerceops/commerceops/services/api/internal/platform/authorization"
 	"github.com/jackc/pgx/v5"
@@ -52,9 +53,9 @@ func setup(t *testing.T) *fixture {
 	mustScan(t, db, `INSERT INTO employees(company_id,user_id,display_name) VALUES($1,$2,'Worker') RETURNING id`, []any{f.company, workerUser}, &f.workerEmployee)
 	mustScan(t, db, `INSERT INTO roles(company_id,name) VALUES($1,'Consignment Manager') RETURNING id`, []any{f.company}, &f.role)
 	mustScan(t, db, `INSERT INTO roles(company_id,name) VALUES($1,'Department Worker') RETURNING id`, []any{f.company}, &f.workerRole)
-	mustExec(t, db, `INSERT INTO role_permissions(company_id,role_id,permission_key) VALUES ($1,$2,'consignments.view'),($1,$2,'consignments.work'),($1,$2,'consignments.manage'),($1,$2,'consignments.outbound'),($1,$2,'inventory.view'),($1,$2,'inventory.stock_in'),($1,$2,'reports.view'),($1,$3,'consignments.work'),($1,$3,'reports.view')`, f.company, f.role, f.workerRole)
+	mustExec(t, db, `INSERT INTO role_permissions(company_id,role_id,permission_key) VALUES ($1,$2,'consignments.view'),($1,$2,'consignments.work'),($1,$2,'consignments.manage'),($1,$2,'consignments.outbound'),($1,$2,'inventory.view'),($1,$2,'inventory.stock_in'),($1,$2,'reports.view'),($1,$2,'traceability.view'),($1,$2,'traceability.manage'),($1,$3,'consignments.work'),($1,$3,'reports.view')`, f.company, f.role, f.workerRole)
 	mustExec(t, db, `INSERT INTO company_user_roles(company_id,user_id,role_id) VALUES($1,$2,$3),($1,$4,$5)`, f.company, user, f.role, workerUser, f.workerRole)
-	mustExec(t, db, `INSERT INTO module_entitlements(company_id,module_key,enabled) VALUES($1,'inventory',true),($1,'consignments',true)`, f.company)
+	mustExec(t, db, `INSERT INTO module_entitlements(company_id,module_key,enabled) VALUES($1,'inventory',true),($1,'consignments',true),($1,'traceability',true)`, f.company)
 	mustScan(t, db, `INSERT INTO products(company_id,internal_code,name) VALUES($1,'CON-A','Consignment A') RETURNING id`, []any{f.company}, &f.product)
 	mustScan(t, db, `INSERT INTO products(company_id,internal_code,name) VALUES($1,'CON-B','Consignment B') RETURNING id`, []any{f.company}, &f.secondProduct)
 	mustScan(t, db, `INSERT INTO products(company_id,internal_code,name) VALUES($1,'OTHER','Other tenant') RETURNING id`, []any{f.otherCompany}, &f.otherProduct)
@@ -437,4 +438,190 @@ func TestPackingAutomationEventsFollowVersionedTransitions(t *testing.T) {
 		t.Fatalf("events=%d", count)
 	}
 	assertBalance(t, f, 4, 2, 2)
+}
+
+func TestPhase22MixedTraceabilityPackingAndOutbound(t *testing.T) {
+	f := setup(t)
+	ctx := context.Background()
+	for index, productID := range []string{f.product, f.secondProduct} {
+		if _, _, err := f.inventory.StockIn(ctx, f.principal, inventory.CommandInput{ProductID: productID, Quantity: 5, Reason: "Phase 22 stock", IdempotencyKey: fmt.Sprintf("p22-stock-%d", index)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	box := readyTraceBox(t, f, []traceability.ContentInput{{ProductID: f.product, Quantity: 2}, {ProductID: f.secondProduct, Quantity: 3}}, "p22-mixed-box")
+	item, _, err := f.service.Create(ctx, f.principal, CreateInput{OrderReference: "P22-MIXED", SourceType: "manual", TraceabilityRequired: true, Lines: []LineInput{{ProductID: f.product, DepartmentID: f.department, RequiredQuantity: 2}, {ProductID: f.secondProduct, DepartmentID: f.secondDepartment, RequiredQuantity: 3}}, IdempotencyKey: "p22-create"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	item, _, err = f.service.Allocate(ctx, f.principal, item.ID, ActionInput{ExpectedVersion: item.Version, IdempotencyKey: "p22-allocate"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	item, _, err = f.service.Transition(ctx, f.principal, item.ID, TransitionInput{TargetStatus: "picking", ExpectedVersion: item.Version, IdempotencyKey: "p22-picking"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, second := item.Lines[0], item.Lines[1]
+	if _, _, err = f.service.LinkTraceBox(ctx, f.principal, item.ID, TraceLinkInput{LineID: first.ID, TraceBoxIdentifier: box.OpaqueIdentifier, Quantity: first.RequiredQuantity + 1, ExpectedVersion: item.Version, IdempotencyKey: "p22-overallocate"}); !errors.Is(err, ErrIncomplete) {
+		t.Fatalf("overallocate=%v", err)
+	}
+	linkInput := TraceLinkInput{LineID: first.ID, TraceBoxIdentifier: box.OpaqueIdentifier, Quantity: first.RequiredQuantity, ExpectedVersion: item.Version, IdempotencyKey: "p22-link-first"}
+	item, replay, err := f.service.LinkTraceBox(ctx, f.principal, item.ID, linkInput)
+	if err != nil || replay || currentLine(item, first.ID).TracedQuantity != first.RequiredQuantity {
+		t.Fatalf("first link=%#v replay=%v err=%v", item.Lines, replay, err)
+	}
+	item, replay, err = f.service.LinkTraceBox(ctx, f.principal, item.ID, linkInput)
+	if err != nil || !replay {
+		t.Fatalf("link replay=%v err=%v", replay, err)
+	}
+	second = currentLine(item, second.ID)
+	item, _, err = f.service.LinkTraceBox(ctx, f.principal, item.ID, TraceLinkInput{LineID: second.ID, TraceBoxIdentifier: box.OpaqueIdentifier, Quantity: second.RequiredQuantity, ExpectedVersion: item.Version, IdempotencyKey: "p22-link-second"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(item.DepartmentProgress) != 2 {
+		t.Fatalf("department progress=%#v", item.DepartmentProgress)
+	}
+	first = currentLine(item, first.ID)
+	item, _, err = f.service.UpdateProgress(ctx, f.principal, item.ID, first.ID, ProgressInput{ReadyQuantity: first.RequiredQuantity, ExpectedVersion: first.Version, IdempotencyKey: "p22-progress-first"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err = f.service.Transition(ctx, f.principal, item.ID, TransitionInput{TargetStatus: "ready", ExpectedVersion: item.Version, IdempotencyKey: "p22-ready-early"}); !errors.Is(err, ErrIncomplete) {
+		t.Fatalf("early ready=%v", err)
+	}
+	second = currentLine(item, second.ID)
+	item, _, err = f.service.UpdateProgress(ctx, f.principal, item.ID, second.ID, ProgressInput{ReadyQuantity: second.RequiredQuantity, ExpectedVersion: second.Version, IdempotencyKey: "p22-progress-second"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	item, _, err = f.service.RecordTraceEvidence(ctx, f.principal, item.ID, TraceEvidenceInput{EvidenceType: "pouch_reference", ReferenceValue: "REUSED-P22", TraceBoxIdentifier: &box.OpaqueIdentifier, ExpectedVersion: item.Version, IdempotencyKey: "p22-evidence"})
+	if err != nil || len(item.TraceEvidence) != 1 {
+		t.Fatalf("evidence=%#v err=%v", item.TraceEvidence, err)
+	}
+	item, _, err = f.service.Transition(ctx, f.principal, item.ID, TransitionInput{TargetStatus: "ready", ExpectedVersion: item.Version, IdempotencyKey: "p22-ready"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	item, _, err = f.service.Transition(ctx, f.principal, item.ID, TransitionInput{TargetStatus: "packing", ExpectedVersion: item.Version, IdempotencyKey: "p22-packing"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, line := range item.Lines {
+		item, _, err = f.service.UpdateProgress(ctx, f.principal, item.ID, line.ID, ProgressInput{ReadyQuantity: line.RequiredQuantity, PackedQuantity: line.RequiredQuantity, ExpectedVersion: line.Version, IdempotencyKey: "p22-packed-" + line.ID})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	item, _, err = f.service.Transition(ctx, f.principal, item.ID, TransitionInput{TargetStatus: "packed", ExpectedVersion: item.Version, IdempotencyKey: "p22-packed"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := ActionInput{ExpectedVersion: item.Version, IdempotencyKey: "p22-outbound"}
+	item, replay, err = f.service.ConfirmOutbound(ctx, f.principal, item.ID, out)
+	if err != nil || replay {
+		t.Fatalf("outbound replay=%v err=%v", replay, err)
+	}
+	_, replay, err = f.service.ConfirmOutbound(ctx, f.principal, item.ID, out)
+	if err != nil || !replay {
+		t.Fatalf("outbound replay=%v err=%v", replay, err)
+	}
+	assertProductBalance(t, f, f.product, 3, 0, 3)
+	assertProductBalance(t, f, f.secondProduct, 2, 0, 2)
+	other, _, err := f.service.Create(ctx, f.principal, CreateInput{OrderReference: "P22-EVIDENCE", SourceType: "manual", Lines: []LineInput{{ProductID: f.product, DepartmentID: f.department, RequiredQuantity: 1}}, IdempotencyKey: "p22-other"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _, err = f.service.RecordTraceEvidence(ctx, f.principal, other.ID, TraceEvidenceInput{EvidenceType: "pouch_reference", ReferenceValue: "REUSED-P22", ExpectedVersion: other.Version, IdempotencyKey: "p22-other-evidence"})
+	if err != nil {
+		t.Fatalf("nonunique evidence=%v", err)
+	}
+}
+
+func TestPhase22StaleBoxAndUnlinkGuards(t *testing.T) {
+	f := setup(t)
+	ctx := context.Background()
+	box := readyTraceBox(t, f, []traceability.ContentInput{{ProductID: f.product, Quantity: 2}}, "p22-stale-box")
+	item, _, err := f.service.Create(ctx, f.principal, CreateInput{OrderReference: "P22-STALE", SourceType: "manual", TraceabilityRequired: true, Lines: []LineInput{{ProductID: f.product, DepartmentID: f.department, RequiredQuantity: 2}}, IdempotencyKey: "p22-stale-create"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	item, _, err = f.service.LinkTraceBox(ctx, f.principal, item.ID, TraceLinkInput{LineID: item.Lines[0].ID, TraceBoxIdentifier: box.OpaqueIdentifier, Quantity: 2, ExpectedVersion: item.Version, IdempotencyKey: "p22-stale-link"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	allocationID := item.Lines[0].TraceLinks[0].AllocationEventID
+	item, _, err = f.service.UnlinkTraceBox(ctx, f.principal, item.ID, allocationID, TraceUnlinkInput{ExpectedVersion: item.Version, IdempotencyKey: "p22-unlink"})
+	if err != nil || item.Lines[0].TracedQuantity != 0 {
+		t.Fatalf("unlink=%#v err=%v", item.Lines[0], err)
+	}
+	item, _, err = f.service.LinkTraceBox(ctx, f.principal, item.ID, TraceLinkInput{LineID: item.Lines[0].ID, TraceBoxIdentifier: box.OpaqueIdentifier, Quantity: 2, ExpectedVersion: item.Version, IdempotencyKey: "p22-relink"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err = f.inventory.StockIn(ctx, f.principal, inventory.CommandInput{ProductID: f.product, Quantity: 2, Reason: "Stale trace test", IdempotencyKey: "p22-stale-stock"}); err != nil {
+		t.Fatal(err)
+	}
+	item, _, err = f.service.Allocate(ctx, f.principal, item.ID, ActionInput{ExpectedVersion: item.Version, IdempotencyKey: "p22-stale-allocate"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	item, _, err = f.service.Transition(ctx, f.principal, item.ID, TransitionInput{TargetStatus: "picking", ExpectedVersion: item.Version, IdempotencyKey: "p22-stale-picking"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	traceService := traceability.NewService(f.db, authorization.NewService(f.db))
+	if _, _, err = traceService.AddContent(ctx, f.principal, box.ID, traceability.ContentInput{ProductID: f.product, Quantity: 1, IdempotencyKey: "p22-invalidate"}); err != nil {
+		t.Fatal(err)
+	}
+	line := item.Lines[0]
+	if _, _, err = f.service.UpdateProgress(ctx, f.principal, item.ID, line.ID, ProgressInput{ReadyQuantity: 2, ExpectedVersion: line.Version, IdempotencyKey: "p22-stale-progress"}); !errors.Is(err, ErrIncomplete) {
+		t.Fatalf("stale progress=%v", err)
+	}
+}
+
+func readyTraceBox(t *testing.T, f *fixture, contents []traceability.ContentInput, key string) traceability.TraceBox {
+	t.Helper()
+	ctx := context.Background()
+	service := traceability.NewService(f.db, authorization.NewService(f.db))
+	box, _, err := service.Create(ctx, f.principal, traceability.CreateInput{IdempotencyKey: key + "-create"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := []traceability.QCLine{}
+	for index, input := range contents {
+		input.IdempotencyKey = fmt.Sprintf("%s-content-%d", key, index)
+		box, _, err = service.AddContent(ctx, f.principal, box.ID, input)
+		if err != nil {
+			t.Fatal(err)
+		}
+		lines = append(lines, traceability.QCLine{ProductID: input.ProductID, CheckedQuantity: input.Quantity, PassedQuantity: input.Quantity})
+	}
+	box, _, err = service.RecordQC(ctx, f.principal, box.ID, traceability.QCInput{Lines: lines, IdempotencyKey: key + "-qc"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	box, _, err = service.CompletePacking(ctx, f.principal, box.ID, traceability.GateInput{IdempotencyKey: key + "-packing"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	passed := true
+	box, _, err = service.CompleteFinalCheck(ctx, f.principal, box.ID, traceability.GateInput{Passed: &passed, IdempotencyKey: key + "-final"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	box, _, err = service.MarkReady(ctx, f.principal, box.ID, traceability.GateInput{IdempotencyKey: key + "-ready"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return box
+}
+
+func currentLine(item Consignment, id string) Line {
+	for _, line := range item.Lines {
+		if line.ID == id {
+			return line
+		}
+	}
+	return Line{}
 }

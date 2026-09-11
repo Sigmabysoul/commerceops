@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/commerceops/commerceops/services/api/internal/domain/inventory"
+	"github.com/commerceops/commerceops/services/api/internal/domain/traceability"
 	"github.com/commerceops/commerceops/services/api/internal/platform/audit"
 	"github.com/commerceops/commerceops/services/api/internal/platform/auth"
 	"github.com/commerceops/commerceops/services/api/internal/platform/authorization"
@@ -40,6 +41,7 @@ type Service struct {
 	authorizer *authorization.Service
 	inventory  *inventory.Service
 	audit      audit.Recorder
+	trace      *traceability.Service
 }
 
 type Department struct {
@@ -68,14 +70,15 @@ type LineInput struct {
 	RequiredQuantity int64  `json:"required_quantity"`
 }
 type CreateInput struct {
-	OrderReference  string      `json:"order_reference"`
-	DealerReference *string     `json:"dealer_reference"`
-	PouchReference  *string     `json:"pouch_reference"`
-	SourceType      string      `json:"source_type"`
-	SourceReference *string     `json:"source_reference"`
-	Notes           *string     `json:"notes"`
-	Lines           []LineInput `json:"lines"`
-	IdempotencyKey  string      `json:"idempotency_key"`
+	OrderReference       string      `json:"order_reference"`
+	DealerReference      *string     `json:"dealer_reference"`
+	PouchReference       *string     `json:"pouch_reference"`
+	SourceType           string      `json:"source_type"`
+	SourceReference      *string     `json:"source_reference"`
+	Notes                *string     `json:"notes"`
+	Lines                []LineInput `json:"lines"`
+	IdempotencyKey       string      `json:"idempotency_key"`
+	TraceabilityRequired bool        `json:"traceability_required"`
 }
 type ActionInput struct {
 	Notes           *string `json:"notes"`
@@ -96,42 +99,47 @@ type ProgressInput struct {
 	ExpectedVersion int     `json:"expected_version"`
 }
 type Consignment struct {
-	ID              string     `json:"id"`
-	OrderReference  string     `json:"order_reference"`
-	DealerReference *string    `json:"dealer_reference"`
-	PouchReference  *string    `json:"pouch_reference"`
-	SourceType      string     `json:"source_type"`
-	SourceReference *string    `json:"source_reference"`
-	Status          string     `json:"status"`
-	Notes           *string    `json:"notes"`
-	CreatedBy       string     `json:"created_by"`
-	AllocatedBy     *string    `json:"allocated_by"`
-	OutboundBy      *string    `json:"outbound_by"`
-	CompletedBy     *string    `json:"completed_by"`
-	CancelledBy     *string    `json:"cancelled_by"`
-	AllocatedAt     *time.Time `json:"allocated_at"`
-	OutboundAt      *time.Time `json:"outbound_at"`
-	CompletedAt     *time.Time `json:"completed_at"`
-	CancelledAt     *time.Time `json:"cancelled_at"`
-	Version         int        `json:"version"`
-	CreatedAt       time.Time  `json:"created_at"`
-	UpdatedAt       time.Time  `json:"updated_at"`
-	Lines           []Line     `json:"lines"`
-	Events          []Event    `json:"events"`
+	ID                   string               `json:"id"`
+	OrderReference       string               `json:"order_reference"`
+	DealerReference      *string              `json:"dealer_reference"`
+	PouchReference       *string              `json:"pouch_reference"`
+	SourceType           string               `json:"source_type"`
+	SourceReference      *string              `json:"source_reference"`
+	Status               string               `json:"status"`
+	Notes                *string              `json:"notes"`
+	CreatedBy            string               `json:"created_by"`
+	AllocatedBy          *string              `json:"allocated_by"`
+	OutboundBy           *string              `json:"outbound_by"`
+	CompletedBy          *string              `json:"completed_by"`
+	CancelledBy          *string              `json:"cancelled_by"`
+	AllocatedAt          *time.Time           `json:"allocated_at"`
+	OutboundAt           *time.Time           `json:"outbound_at"`
+	CompletedAt          *time.Time           `json:"completed_at"`
+	CancelledAt          *time.Time           `json:"cancelled_at"`
+	Version              int                  `json:"version"`
+	CreatedAt            time.Time            `json:"created_at"`
+	UpdatedAt            time.Time            `json:"updated_at"`
+	TraceabilityRequired bool                 `json:"traceability_required"`
+	Lines                []Line               `json:"lines"`
+	DepartmentProgress   []DepartmentProgress `json:"department_progress"`
+	TraceEvidence        []TraceEvidence      `json:"trace_evidence"`
+	Events               []Event              `json:"events"`
 }
 type Line struct {
-	ID               string    `json:"id"`
-	ProductID        string    `json:"product_id"`
-	InternalCode     string    `json:"internal_code"`
-	ProductName      string    `json:"product_name"`
-	DepartmentID     string    `json:"department_id"`
-	DepartmentName   string    `json:"department_name"`
-	RequiredQuantity int64     `json:"required_quantity"`
-	ReadyQuantity    int64     `json:"ready_quantity"`
-	PackedQuantity   int64     `json:"packed_quantity"`
-	Progress         string    `json:"progress"`
-	Version          int       `json:"version"`
-	UpdatedAt        time.Time `json:"updated_at"`
+	ID               string      `json:"id"`
+	ProductID        string      `json:"product_id"`
+	InternalCode     string      `json:"internal_code"`
+	ProductName      string      `json:"product_name"`
+	DepartmentID     string      `json:"department_id"`
+	DepartmentName   string      `json:"department_name"`
+	RequiredQuantity int64       `json:"required_quantity"`
+	ReadyQuantity    int64       `json:"ready_quantity"`
+	PackedQuantity   int64       `json:"packed_quantity"`
+	Progress         string      `json:"progress"`
+	Version          int         `json:"version"`
+	UpdatedAt        time.Time   `json:"updated_at"`
+	TracedQuantity   int64       `json:"traced_quantity"`
+	TraceLinks       []TraceLink `json:"trace_links"`
 }
 type Event struct {
 	ID          string          `json:"id"`
@@ -146,7 +154,7 @@ type Filter struct {
 }
 
 func NewService(db *pgxpool.Pool, authorizer *authorization.Service, inventoryService *inventory.Service) *Service {
-	return &Service{db: db, authorizer: authorizer, inventory: inventoryService}
+	return &Service{db: db, authorizer: authorizer, inventory: inventoryService, trace: traceability.NewService(db, authorizer)}
 }
 
 func (s *Service) ListDepartments(ctx context.Context, p auth.Principal) ([]Department, error) {
@@ -315,7 +323,7 @@ func (s *Service) Create(ctx context.Context, p auth.Principal, input CreateInpu
 	if !errors.Is(err, pgx.ErrNoRows) {
 		return Consignment{}, false, err
 	}
-	err = tx.QueryRow(ctx, `INSERT INTO consignments(company_id,order_reference,dealer_reference,pouch_reference,source_type,source_reference,notes,created_by,idempotency_key,request_hash) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id`, p.CompanyID, input.OrderReference, input.DealerReference, input.PouchReference, input.SourceType, input.SourceReference, input.Notes, p.UserID, input.IdempotencyKey, hash).Scan(&id)
+	err = tx.QueryRow(ctx, `INSERT INTO consignments(company_id,order_reference,dealer_reference,pouch_reference,source_type,source_reference,notes,created_by,idempotency_key,request_hash,traceability_required) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id`, p.CompanyID, input.OrderReference, input.DealerReference, input.PouchReference, input.SourceType, input.SourceReference, input.Notes, p.UserID, input.IdempotencyKey, hash, input.TraceabilityRequired).Scan(&id)
 	if err != nil {
 		return Consignment{}, false, mapDBError(err)
 	}
@@ -378,6 +386,7 @@ func (s *Service) List(ctx context.Context, p auth.Principal, f Filter) ([]Consi
 		if !broad {
 			item.Lines = filterLines(item.Lines, p.UserID, s.db, ctx, p.CompanyID)
 			item.Events = []Event{}
+			filterTraceReadModel(&item)
 		}
 		items = append(items, item)
 	}
@@ -407,6 +416,7 @@ func (s *Service) Get(ctx context.Context, p auth.Principal, id string) (Consign
 	if err == nil && !broad {
 		item.Lines = filterLines(item.Lines, p.UserID, s.db, ctx, p.CompanyID)
 		item.Events = []Event{}
+		filterTraceReadModel(&item)
 	}
 	return item, err
 }
@@ -448,6 +458,11 @@ func (s *Service) Transition(ctx context.Context, p auth.Principal, id string, i
 				if line.ReadyQuantity != line.RequiredQuantity {
 					return ErrIncomplete
 				}
+			}
+		}
+		if item.TraceabilityRequired && (input.TargetStatus == "ready" || input.TargetStatus == "packed") {
+			if err := s.requireTraceCoverage(ctx, tx, p.CompanyID, *item); err != nil {
+				return err
 			}
 		}
 		if input.TargetStatus == "packed" {
@@ -497,6 +512,15 @@ func (s *Service) UpdateProgress(ctx context.Context, p auth.Principal, id, line
 		if input.ExpectedVersion != currentVersion || input.PackedQuantity > input.ReadyQuantity || input.ReadyQuantity > required {
 			return ErrConflict
 		}
+		if item.TraceabilityRequired {
+			traced, traceErr := s.eligibleLineQuantity(ctx, tx, p.CompanyID, lineID)
+			if traceErr != nil {
+				return traceErr
+			}
+			if input.ReadyQuantity > traced || input.PackedQuantity > traced {
+				return ErrIncomplete
+			}
+		}
 		if err := s.requireDepartmentWork(ctx, p, departmentID); err != nil {
 			return err
 		}
@@ -525,6 +549,11 @@ func (s *Service) ConfirmOutbound(ctx context.Context, p auth.Principal, id stri
 		for _, line := range item.Lines {
 			if line.PackedQuantity != line.RequiredQuantity {
 				return ErrIncomplete
+			}
+		}
+		if item.TraceabilityRequired {
+			if err := s.requireTraceCoverage(ctx, tx, p.CompanyID, *item); err != nil {
+				return err
 			}
 		}
 		if _, err := s.inventory.ConfirmConsignmentOutbound(ctx, tx, p, id, eventID); err != nil {
@@ -610,6 +639,15 @@ func (s *Service) action(ctx context.Context, p auth.Principal, id, eventType, k
 	if strings.HasPrefix(eventType, "progress:") {
 		dbEventType = "line_progress"
 	}
+	if strings.HasPrefix(eventType, "trace_link:") {
+		dbEventType = "trace_box_linked"
+	}
+	if strings.HasPrefix(eventType, "trace_unlink:") {
+		dbEventType = "trace_box_unlinked"
+	}
+	if strings.HasPrefix(eventType, "trace_evidence:") {
+		dbEventType = "trace_evidence_recorded"
+	}
 	metadata, _ := json.Marshal(map[string]any{"operation": eventType, "from_status": item.Status})
 	var eventID string
 	if err = tx.QueryRow(ctx, `INSERT INTO consignment_events(company_id,consignment_id,event_type,actor_user_id,notes,metadata,idempotency_key,request_hash) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`, p.CompanyID, id, dbEventType, p.UserID, notes, metadata, key, hash).Scan(&eventID); err != nil {
@@ -618,7 +656,17 @@ func (s *Service) action(ctx context.Context, p auth.Principal, id, eventType, k
 	if err = fn(ctx, tx, &item, eventID); err != nil {
 		return Consignment{}, false, err
 	}
-	if err = s.audit.Record(ctx, tx, p.CompanyID, p.UserID, "consignment."+strings.ReplaceAll(eventType, ":", "_"), "consignment", id, map[string]any{"event_id": eventID, "from_status": item.Status}); err != nil {
+	auditAction := eventType
+	if strings.HasPrefix(eventType, "trace_link:") {
+		auditAction = "trace_box_linked"
+	}
+	if strings.HasPrefix(eventType, "trace_unlink:") {
+		auditAction = "trace_box_unlinked"
+	}
+	if strings.HasPrefix(eventType, "trace_evidence:") {
+		auditAction = "trace_evidence_recorded"
+	}
+	if err = s.audit.Record(ctx, tx, p.CompanyID, p.UserID, "consignment."+strings.ReplaceAll(auditAction, ":", "_"), "consignment", id, map[string]any{"event_id": eventID, "from_status": item.Status}); err != nil {
 		return Consignment{}, false, err
 	}
 	if err = tx.Commit(ctx); err != nil {
@@ -630,7 +678,7 @@ func (s *Service) action(ctx context.Context, p auth.Principal, id, eventType, k
 
 func (s *Service) load(ctx context.Context, q querier, companyID, id string) (Consignment, error) {
 	var item Consignment
-	err := q.QueryRow(ctx, `SELECT id,order_reference,dealer_reference,pouch_reference,source_type,source_reference,status,notes,created_by,allocated_by,outbound_by,completed_by,cancelled_by,allocated_at,outbound_at,completed_at,cancelled_at,version,created_at,updated_at FROM consignments WHERE company_id=$1 AND id=$2`, companyID, id).Scan(&item.ID, &item.OrderReference, &item.DealerReference, &item.PouchReference, &item.SourceType, &item.SourceReference, &item.Status, &item.Notes, &item.CreatedBy, &item.AllocatedBy, &item.OutboundBy, &item.CompletedBy, &item.CancelledBy, &item.AllocatedAt, &item.OutboundAt, &item.CompletedAt, &item.CancelledAt, &item.Version, &item.CreatedAt, &item.UpdatedAt)
+	err := q.QueryRow(ctx, `SELECT id,order_reference,dealer_reference,pouch_reference,source_type,source_reference,status,notes,created_by,allocated_by,outbound_by,completed_by,cancelled_by,allocated_at,outbound_at,completed_at,cancelled_at,version,created_at,updated_at,traceability_required FROM consignments WHERE company_id=$1 AND id=$2`, companyID, id).Scan(&item.ID, &item.OrderReference, &item.DealerReference, &item.PouchReference, &item.SourceType, &item.SourceReference, &item.Status, &item.Notes, &item.CreatedBy, &item.AllocatedBy, &item.OutboundBy, &item.CompletedBy, &item.CancelledBy, &item.AllocatedAt, &item.OutboundAt, &item.CompletedAt, &item.CancelledAt, &item.Version, &item.CreatedAt, &item.UpdatedAt, &item.TraceabilityRequired)
 	if err != nil {
 		return Consignment{}, mapDBError(err)
 	}
@@ -639,6 +687,10 @@ func (s *Service) load(ctx context.Context, q querier, companyID, id string) (Co
 		return Consignment{}, err
 	}
 	item.Events, err = loadEvents(ctx, q, companyID, id)
+	if err != nil {
+		return Consignment{}, err
+	}
+	item.DepartmentProgress, item.TraceEvidence, err = loadTraceability(ctx, q, companyID, id, &item.Lines)
 	return item, err
 }
 func (s *Service) loadForUpdate(ctx context.Context, tx pgx.Tx, companyID, id string) (Consignment, error) {
