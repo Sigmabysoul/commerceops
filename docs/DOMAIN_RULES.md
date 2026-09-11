@@ -135,4 +135,6 @@ RULE QC-001: QC PASS is not RESTOCK. Sellable stock changes only through an expl
 RULE QC-002: Trace Box QC covers the full current Product/quantity snapshot. Rejected quantities require a reason and work type; completed work requires a fresh passing QC before packing.
 RULE TRACE-004: A handover is in transit after send and changes custody only when its target employee or department member receives it. Other box mutations are blocked in transit.
 RULE PACKING-001: Packing requires clear work and fresh passing QC. Shipment readiness requires a later passing final check; every gate is idempotent and audited.
+RULE CONSIGNMENT-006: Traceability-required Consignment progress and outbound require current verified Trace Box quantity for every line. Allocations are immutable, bounded across consignments, and use each line's stored Product and department snapshot.
+RULE CONSIGNMENT-007: Pouch and file evidence values are company-scoped trace references and are never assumed unique identifiers.
 RULE LIFECYCLE-001: No automatic archival deletion before verified export and restore; retain audit history.

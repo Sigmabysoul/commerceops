@@ -121,7 +121,8 @@ inside one application; it does not imply microservices.
   mechanics, role names, marketplace parsing, or reporting counters.
 - **Allowed dependencies:** Product Master IDs, company employees, centralized
   authorization, audit, PostgreSQL, and Inventory's transaction-scoped
-  reservation/release/outbound boundary.
+  reservation/release/outbound boundary. Phase 22 also permits Traceability's narrow
+  transaction-scoped verified-quantity boundary.
 - **Forbidden leakage:** consignment code must not update stock tables directly,
   infer departments from employee names, treat pouch references as globally
   unique, or complete partially prepared work.
