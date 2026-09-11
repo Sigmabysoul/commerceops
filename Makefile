@@ -2,7 +2,8 @@ SHELL := /bin/sh
 
 .PHONY: dev dev-infra dev-backend dev-frontend local-launcher migrate test verify verify-full down \
 	backend-format backend-vet backend-test backend-build \
-	frontend-typecheck frontend-lint frontend-build repository-check
+	frontend-typecheck frontend-lint frontend-build repository-check lifecycle-test \
+	lifecycle-backup lifecycle-validate lifecycle-restore lifecycle-archive-plan
 
 dev: dev-infra
 
@@ -31,7 +32,7 @@ migrate:
 
 test: backend-test frontend-typecheck
 
-verify: backend-format backend-vet backend-test backend-build frontend-typecheck frontend-lint frontend-build repository-check
+verify: backend-format backend-vet backend-test backend-build frontend-typecheck frontend-lint frontend-build lifecycle-test repository-check
 
 verify-full:
 	@if [ -z "$${TEST_DATABASE_URL:-}" ]; then \
@@ -69,6 +70,33 @@ frontend-build:
 
 repository-check:
 	git diff --check
+
+lifecycle-test:
+	PYTHONDONTWRITEBYTECODE=1 python3 -m unittest scripts/lifecycle/test_lifecycle.py -v
+
+lifecycle-backup:
+	@test -n "$(BACKUP_DIR)" || { echo "BACKUP_DIR is required"; exit 1; }
+	@test -n "$(OBJECT_ROOT)" || { echo "OBJECT_ROOT is required"; exit 1; }
+	PYTHONDONTWRITEBYTECODE=1 python3 scripts/lifecycle/lifecycle.py backup "$(BACKUP_DIR)" --object-root "$(OBJECT_ROOT)"
+
+lifecycle-validate:
+	@test -n "$(BACKUP_DIR)" || { echo "BACKUP_DIR is required"; exit 1; }
+	PYTHONDONTWRITEBYTECODE=1 python3 scripts/lifecycle/lifecycle.py validate "$(BACKUP_DIR)"
+
+lifecycle-restore:
+	@test -n "$(BACKUP_DIR)" || { echo "BACKUP_DIR is required"; exit 1; }
+	@test -n "$(RESTORE_OBJECT_DIR)" || { echo "RESTORE_OBJECT_DIR is required"; exit 1; }
+	@test -n "$(RESTORE_RECEIPT)" || { echo "RESTORE_RECEIPT is required"; exit 1; }
+	PYTHONDONTWRITEBYTECODE=1 python3 scripts/lifecycle/lifecycle.py restore "$(BACKUP_DIR)" \
+		--object-destination "$(RESTORE_OBJECT_DIR)" --receipt "$(RESTORE_RECEIPT)"
+
+lifecycle-archive-plan:
+	@test -n "$(BACKUP_DIR)" || { echo "BACKUP_DIR is required"; exit 1; }
+	@test -n "$(RESTORE_RECEIPT)" || { echo "RESTORE_RECEIPT is required"; exit 1; }
+	@test -n "$(ARCHIVE_BEFORE)" || { echo "ARCHIVE_BEFORE is required"; exit 1; }
+	@test -n "$(ARCHIVE_PLAN)" || { echo "ARCHIVE_PLAN is required"; exit 1; }
+	PYTHONDONTWRITEBYTECODE=1 python3 scripts/lifecycle/lifecycle.py plan-archive "$(BACKUP_DIR)" \
+		--restore-receipt "$(RESTORE_RECEIPT)" --before "$(ARCHIVE_BEFORE)" --output "$(ARCHIVE_PLAN)"
 
 down:
 	docker compose down
