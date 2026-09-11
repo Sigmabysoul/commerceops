@@ -168,6 +168,7 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	mux.Handle("/api/v1/inventory/reservations", authHTTP.RequireSession(http.HandlerFunc(inventoryHTTP.Reservations)))
 	mux.Handle("/api/v1/inventory/reservations/{reservation_id}/release", authHTTP.RequireSession(http.HandlerFunc(inventoryHTTP.ReleaseReservation)))
 	mux.Handle("/api/v1/reports/dashboard", authHTTP.RequireSession(http.HandlerFunc(reportingHTTP.Dashboard)))
+	mux.Handle("/api/v1/reports/operations-analytics", authHTTP.RequireSession(http.HandlerFunc(reportingHTTP.Analytics)))
 	mux.Handle("/api/v1/cancellations", authHTTP.RequireSession(http.HandlerFunc(returnsHTTP.Cancellations)))
 	mux.Handle("/api/v1/cancellations/{cancellation_id}", authHTTP.RequireSession(http.HandlerFunc(returnsHTTP.Cancellation)))
 	mux.Handle("/api/v1/cancellations/{cancellation_id}/close", authHTTP.RequireSession(http.HandlerFunc(returnsHTTP.CloseCancellation)))

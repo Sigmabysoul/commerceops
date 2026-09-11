@@ -1,0 +1,1 @@
+DROP INDEX trace_box_events_company_time_idx;

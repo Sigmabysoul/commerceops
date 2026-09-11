@@ -332,6 +332,13 @@ func TestConcurrentHandoverAllowsOnePendingTransfer(t *testing.T) {
 
 func TestTraceabilityMigrationRoundTrip(t *testing.T) {
 	f := setupTraceability(t)
+	phase23Down, err := os.ReadFile("../../../migrations/000030_operations_analytics_indexes.down.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = f.db.Exec(context.Background(), string(phase23Down)); err != nil {
+		t.Fatal(err)
+	}
 	phase22Down, err := os.ReadFile("../../../migrations/000029_consignment_traceability_integration.down.sql")
 	if err != nil {
 		t.Fatal(err)
@@ -374,9 +381,20 @@ func TestTraceabilityMigrationRoundTrip(t *testing.T) {
 	if _, err = f.db.Exec(context.Background(), string(phase22Up)); err != nil {
 		t.Fatal(err)
 	}
+	phase23Up, err := os.ReadFile("../../../migrations/000030_operations_analytics_indexes.up.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = f.db.Exec(context.Background(), string(phase23Up)); err != nil {
+		t.Fatal(err)
+	}
 	var table string
 	if err = f.db.QueryRow(context.Background(), `SELECT 'trace_boxes'::regclass::text`).Scan(&table); err != nil || table != "trace_boxes" {
 		t.Fatalf("table=%q err=%v", table, err)
+	}
+	var index string
+	if err = f.db.QueryRow(context.Background(), `SELECT 'trace_box_events_company_time_idx'::regclass::text`).Scan(&index); err != nil || index != "trace_box_events_company_time_idx" {
+		t.Fatalf("index=%q err=%v", index, err)
 	}
 }
 
