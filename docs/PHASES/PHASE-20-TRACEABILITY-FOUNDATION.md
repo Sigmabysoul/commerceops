@@ -1,6 +1,6 @@
 # Phase 20 — Traceability foundation
 
-Status: ACTIVE — owner authorized implementation on 2026-09-11.
+Status: COMPLETE — local PostgreSQL-backed verification passed 2026-09-11.
 Revision: 2026-09-11.
 
 ## Goal and work
@@ -42,3 +42,14 @@ small authenticated operator workspace.
 
 Every implementation plan must specify schema/API changes, owning modules and regression
 coverage before editing. Stop after this phase; update CURRENT_STATE only with real evidence.
+
+## Completion
+
+Implemented in migration `000027`, `internal/domain/traceability`, the authenticated REST
+boundary and the Trace Boxes operator workspace. The local launcher upgrades only its generated
+development administrator with newly introduced permissions and module access.
+
+The final `make verify-full` run passed against a fresh disposable PostgreSQL database migrated
+through `000027`. A focused race run passed. Live launcher verification confirmed the existing
+saved administrator can authenticate and read both Trace Box endpoints after migration. See
+`PHASE-20-VERIFICATION.md` for commands, failures resolved and limits.

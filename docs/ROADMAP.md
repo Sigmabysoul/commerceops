@@ -8,6 +8,10 @@ Phases 0–14 remain the historical baseline at `d90e4f7c0ceab032bc33a0618e1ceab
 Myntra Phase 11 delivered CSV Batch A; print-payload completion remains pending.
 Existing marketplace evidence limitations are preserved.
 
+Phases 15–17 are complete. Phase 18 and the runtime portion of Phase 19 remain deferred on
+their evidence gates. Phase 20 Traceability foundation completed local PostgreSQL-backed
+verification on 2026-09-11; Phase 21 has not started.
+
 ## Revised sequence
 
 | Phase | Work |
@@ -36,8 +40,8 @@ Existing marketplace evidence limitations are preserved.
 
 ## Gates
 
-CURRENT_STATE.md determines the active phase. The owner authorized roadmap adoption and
-structural Phase 15 only. Future documents are planning, not implementation claims.
+CURRENT_STATE.md determines the active phase and records later explicit owner authorizations.
+Documents for unstarted phases are planning, not implementation claims.
 Single-business-first defers commercial SaaS while preserving company safety scope.
 Production readiness is Phase 25; Phase 15 does not change login, accounts or operator UX.
 
