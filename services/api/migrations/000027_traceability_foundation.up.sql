@@ -30,7 +30,7 @@ CREATE TABLE trace_box_events (
     FOREIGN KEY (company_id,trace_box_id) REFERENCES trace_boxes(company_id,id) ON DELETE RESTRICT,
     FOREIGN KEY (company_id,actor_user_id) REFERENCES company_users(company_id,user_id) ON DELETE RESTRICT,
     UNIQUE (company_id,id),
-    UNIQUE (company_id,id,event_type),
+    UNIQUE (company_id,id,event_type,trace_box_id),
     UNIQUE (company_id,idempotency_key)
 );
 CREATE INDEX trace_box_events_company_box_idx ON trace_box_events(company_id,trace_box_id,created_at,id);
@@ -45,7 +45,7 @@ CREATE TABLE trace_box_content_changes (
         (event_type='content_added' AND quantity_delta>0) OR
         (event_type='content_removed' AND quantity_delta<0)
     ),
-    FOREIGN KEY (company_id,event_id,event_type) REFERENCES trace_box_events(company_id,id,event_type) ON DELETE RESTRICT,
+    FOREIGN KEY (company_id,event_id,event_type,trace_box_id) REFERENCES trace_box_events(company_id,id,event_type,trace_box_id) ON DELETE RESTRICT,
     FOREIGN KEY (company_id,trace_box_id) REFERENCES trace_boxes(company_id,id) ON DELETE RESTRICT,
     FOREIGN KEY (company_id,product_id) REFERENCES products(company_id,id) ON DELETE RESTRICT,
     PRIMARY KEY (company_id,event_id)
@@ -59,7 +59,7 @@ CREATE TABLE trace_box_custody_changes (
     trace_box_id uuid NOT NULL,
     employee_id uuid,
     department_id uuid,
-    FOREIGN KEY (company_id,event_id,event_type) REFERENCES trace_box_events(company_id,id,event_type) ON DELETE RESTRICT,
+    FOREIGN KEY (company_id,event_id,event_type,trace_box_id) REFERENCES trace_box_events(company_id,id,event_type,trace_box_id) ON DELETE RESTRICT,
     FOREIGN KEY (company_id,trace_box_id) REFERENCES trace_boxes(company_id,id) ON DELETE RESTRICT,
     FOREIGN KEY (company_id,employee_id) REFERENCES employees(company_id,id) ON DELETE RESTRICT,
     FOREIGN KEY (company_id,department_id) REFERENCES consignment_departments(company_id,id) ON DELETE RESTRICT,

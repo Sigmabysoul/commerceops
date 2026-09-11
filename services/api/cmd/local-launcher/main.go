@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/commerceops/commerceops/services/api/internal/platform/auth"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -133,6 +134,9 @@ func run(args []string) error {
 	credentialsPath := filepath.Join(stateDir, "credentials.txt")
 	_, created, err := bootstrapLocalAdministrator(values["DATABASE_URL"], credentialsPath)
 	if err != nil {
+		return err
+	}
+	if err = refreshLocalAdministratorAccess(values["DATABASE_URL"], credentialsPath); err != nil {
 		return err
 	}
 	if _, statErr := os.Stat(filepath.Join(root, "apps", "web", "node_modules")); errors.Is(statErr, os.ErrNotExist) {
@@ -366,7 +370,7 @@ func bootstrapLocalAdministrator(databaseURL, credentialsPath string) (string, b
 	if _, err = tx.Exec(ctx, `INSERT INTO company_user_roles(company_id,user_id,role_id) VALUES($1,$2,$3)`, companyID, userID, roleID); err != nil {
 		return "", false, fmt.Errorf("assign local administrator role: %w", err)
 	}
-	modules := []string{"amazon", "consignments", "flipkart", "inventory", "meesho", "myntra", "returns", "snapdeal"}
+	modules := []string{"amazon", "consignments", "flipkart", "inventory", "meesho", "myntra", "returns", "snapdeal", "traceability"}
 	if _, err = tx.Exec(ctx, `INSERT INTO module_entitlements(company_id,module_key,enabled) SELECT $1,unnest($2::text[]),true`, companyID, modules); err != nil {
 		return "", false, fmt.Errorf("enable local modules: %w", err)
 	}
@@ -384,6 +388,54 @@ func bootstrapLocalAdministrator(databaseURL, credentialsPath string) (string, b
 		return "", false, fmt.Errorf("commit local bootstrap: %w", err)
 	}
 	return credentials, true, nil
+}
+
+// refreshLocalAdministratorAccess keeps only the launcher-created development administrator
+// aligned with permissions and modules added by later migrations.
+func refreshLocalAdministratorAccess(databaseURL, credentialsPath string) error {
+	if _, err := os.Stat(credentialsPath); errors.Is(err, os.ErrNotExist) {
+		return nil
+	} else if err != nil {
+		return fmt.Errorf("inspect local login details: %w", err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	pool, err := pgxpool.New(ctx, databaseURL)
+	if err != nil {
+		return fmt.Errorf("connect for local access refresh: %w", err)
+	}
+	defer pool.Close()
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin local access refresh: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	var companyID, userID, roleID string
+	err = tx.QueryRow(ctx, `SELECT c.id,u.id,r.id FROM companies c JOIN company_users cu ON cu.company_id=c.id JOIN users u ON u.id=cu.user_id JOIN company_user_roles cur ON cur.company_id=c.id AND cur.user_id=u.id JOIN roles r ON r.company_id=cur.company_id AND r.id=cur.role_id WHERE c.name='CommerceOps Local' AND u.email='admin@commerceops.local' AND r.name='Local Administrator'`).Scan(&companyID, &userID, &roleID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return tx.Commit(ctx)
+	}
+	if err != nil {
+		return fmt.Errorf("locate local administrator: %w", err)
+	}
+	permissionResult, err := tx.Exec(ctx, `INSERT INTO role_permissions(company_id,role_id,permission_key) SELECT $1,$2,key FROM permissions ON CONFLICT DO NOTHING`, companyID, roleID)
+	if err != nil {
+		return fmt.Errorf("refresh local permissions: %w", err)
+	}
+	modules := []string{"amazon", "consignments", "flipkart", "inventory", "meesho", "myntra", "returns", "snapdeal", "traceability"}
+	moduleResult, err := tx.Exec(ctx, `INSERT INTO module_entitlements(company_id,module_key,enabled) SELECT $1,unnest($2::text[]),true ON CONFLICT DO NOTHING`, companyID, modules)
+	if err != nil {
+		return fmt.Errorf("refresh local modules: %w", err)
+	}
+	if permissionResult.RowsAffected()+moduleResult.RowsAffected() > 0 {
+		if _, err = tx.Exec(ctx, `INSERT INTO audit_logs(company_id,actor_user_id,action,target_type,target_id,metadata) VALUES($1,$2,'local.access_refreshed','user',$2::uuid::text,jsonb_build_object('permissions_added',$3::bigint,'modules_added',$4::bigint))`, companyID, userID, permissionResult.RowsAffected(), moduleResult.RowsAffected()); err != nil {
+			return fmt.Errorf("audit local access refresh: %w", err)
+		}
+	}
+	if err = tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit local access refresh: %w", err)
+	}
+	return nil
 }
 
 func mergeEnvironment(values map[string]string) []string {

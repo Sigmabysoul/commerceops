@@ -22,6 +22,7 @@ import (
 	"github.com/commerceops/commerceops/services/api/internal/domain/product"
 	"github.com/commerceops/commerceops/services/api/internal/domain/reporting"
 	returnsdomain "github.com/commerceops/commerceops/services/api/internal/domain/returns"
+	"github.com/commerceops/commerceops/services/api/internal/domain/traceability"
 	"github.com/commerceops/commerceops/services/api/internal/platform/auth"
 	"github.com/commerceops/commerceops/services/api/internal/platform/authorization"
 	"github.com/commerceops/commerceops/services/api/internal/platform/config"
@@ -53,6 +54,7 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	reportingHTTP := reporting.NewHTTPHandler(reporting.NewService(db, authorizer))
 	returnsHTTP := returnsdomain.NewHTTPHandler(returnsdomain.NewService(db, authorizer, inventoryService))
 	consignmentHTTP := consignment.NewHTTPHandler(consignment.NewService(db, authorizer, inventoryService))
+	traceabilityHTTP := traceability.NewHTTPHandler(traceability.NewService(db, authorizer))
 	storage, err := newObjectStorage(ctx, cfg)
 	if err != nil {
 		return err
@@ -186,6 +188,13 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	mux.Handle("/api/v1/consignments/{consignment_id}/lines/{line_id}/progress", authHTTP.RequireSession(http.HandlerFunc(consignmentHTTP.Progress)))
 	mux.Handle("/api/v1/consignments/{consignment_id}/confirm-outbound", authHTTP.RequireSession(http.HandlerFunc(consignmentHTTP.Outbound)))
 	mux.Handle("/api/v1/consignments/{consignment_id}/cancel", authHTTP.RequireSession(http.HandlerFunc(consignmentHTTP.Cancel)))
+	mux.Handle("/api/v1/trace-boxes", authHTTP.RequireSession(http.HandlerFunc(traceabilityHTTP.Boxes)))
+	mux.Handle("/api/v1/trace-box-options", authHTTP.RequireSession(http.HandlerFunc(traceabilityHTTP.Options)))
+	mux.Handle("/api/v1/trace-boxes/resolve/{opaque_identifier}", authHTTP.RequireSession(http.HandlerFunc(traceabilityHTTP.Resolve)))
+	mux.Handle("/api/v1/trace-boxes/{trace_box_id}", authHTTP.RequireSession(http.HandlerFunc(traceabilityHTTP.Box)))
+	mux.Handle("/api/v1/trace-boxes/{trace_box_id}/contents", authHTTP.RequireSession(http.HandlerFunc(traceabilityHTTP.AddContent)))
+	mux.Handle("/api/v1/trace-boxes/{trace_box_id}/contents/remove", authHTTP.RequireSession(http.HandlerFunc(traceabilityHTTP.RemoveContent)))
+	mux.Handle("/api/v1/trace-boxes/{trace_box_id}/custody", authHTTP.RequireSession(http.HandlerFunc(traceabilityHTTP.TransferCustody)))
 	server := &http.Server{Addr: cfg.HTTPAddr, Handler: httpserver.Middleware(logger, cfg.AllowedOrigins, mux), ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 60 * time.Second}
 
 	errCh := make(chan error, 1)

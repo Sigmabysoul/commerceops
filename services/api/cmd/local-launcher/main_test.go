@@ -163,6 +163,16 @@ func TestBootstrapPostgreSQL(t *testing.T) {
 	if err = isolated.QueryRow(ctx, "SELECT count(*) FROM users").Scan(&users); err != nil || users != 1 {
 		t.Fatal(users, err)
 	}
+	if _, err = isolated.Exec(ctx, `INSERT INTO permissions(key,description) VALUES('future.test','Future launcher test'); DELETE FROM role_permissions WHERE permission_key='future.test'; DELETE FROM module_entitlements WHERE module_key='traceability'`); err != nil {
+		t.Fatal(err)
+	}
+	if err = refreshLocalAdministratorAccess(parsed.String(), credentialsPath); err != nil {
+		t.Fatal(err)
+	}
+	var refreshed int
+	if err = isolated.QueryRow(ctx, `SELECT (SELECT count(*) FROM role_permissions rp JOIN roles r ON r.id=rp.role_id WHERE r.name='Local Administrator' AND rp.permission_key='future.test') + (SELECT count(*) FROM module_entitlements WHERE module_key='traceability' AND enabled)`).Scan(&refreshed); err != nil || refreshed != 2 {
+		t.Fatalf("refreshed access=%d err=%v", refreshed, err)
+	}
 }
 func TestProcessStartRecognizesCurrentProcess(t *testing.T) {
 	if processStart(os.Getpid()) == "" {
