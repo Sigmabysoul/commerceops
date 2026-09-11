@@ -1,6 +1,6 @@
 # Phase 23 — Operations and workforce analytics
 
-Status: Implementation active — owner authorized continuation after Phase 22 completion on 2026-09-11.
+Status: Complete — local PostgreSQL-backed verification passed 2026-09-11.
 Revision: 2026-09-11.
 
 ## Goal and work
@@ -41,3 +41,5 @@ coverage before editing. Stop after this phase; update CURRENT_STATE only with r
   writes, framework/dependency changes or Inventory behavior changes are introduced.
 
 Definitions and known data limits are in [the reporting workflow](../workflows/reporting.md).
+
+Completion evidence is in [PHASE-23-VERIFICATION.md](PHASE-23-VERIFICATION.md).
