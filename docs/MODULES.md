@@ -90,6 +90,9 @@ inside one application; it does not imply microservices.
 
 - **Owns:** tenant-scoped operational read queries, range/filter validation,
   dashboard response composition, and reporting pagination.
+- **Phase 23:** immutable Traceability QC trends, defect reasons, elapsed cycles and employee
+  activity read models. Independent activity aggregates prevent double counting; permissions and
+  workload denominators constrain what is displayed. See `workflows/reporting.md`.
 - **Does not own:** marketplace/order state, batch or print state, product
   identity, inventory balances, or movement rules.
 - **Allowed dependencies:** authenticated principals, centralized

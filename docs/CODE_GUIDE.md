@@ -41,6 +41,8 @@ never authorization.
 - `internal/domain/returns`, `internal/domain/consignment`: lifecycle owners that call explicit
   Inventory boundaries only at approved stock transitions.
 - `internal/domain/reporting`: read models derived from authoritative domain tables.
+  `analytics.go` defines Phase 23 contracts and snapshot/permission boundaries;
+  `analytics_queries.go` owns immutable-event projections and workload denominators.
 - `internal/domain/traceability`: opaque Trace Box identity, Product quantity relationships,
   employee/department custody, QC/rework, two-step handovers, packing gates, and immutable events.
   It derives operational state without importing or mutating Inventory.
@@ -71,6 +73,8 @@ PDF is never an Inventory event.
   worker workflow actions, and history over the typed `api/traceability.ts` boundary.
 - `pwa-registration.tsx` and `app/manifest.ts`: installability only; authenticated
   API data is not cached and the phone never accesses a printer.
+- `quality-analytics.tsx`: range/timezone, observation explanations and workforce paging over
+  `api/analytics.ts`; all metric calculations remain on the server.
 
 ## Database and files
 

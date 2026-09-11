@@ -140,6 +140,12 @@ verification boundary. Consignment owns signed line allocations, department prog
 gates; Traceability locks and verifies current shipment-ready Product quantity. Inventory ownership
 and the existing reservation/outbound transaction remain unchanged.
 
+Phase 23 extends the existing Reporting owner with read-only projections over Traceability's
+immutable operational facts. QC, work and final-check totals aggregate independently before
+employee joins. A read-only repeatable-read transaction keeps response sections consistent;
+bounded range/pagination and a company/time index support reporting. The backend defines all
+rates and cohorts. No workflow authority or Inventory writes move into Reporting.
+
 ## Phase 15 target and compatibility
 
 The backend uses internal/app (composition), internal/domain (business ownership), and

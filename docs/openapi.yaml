@@ -1072,6 +1072,30 @@ paths:
         "200": {description: Operational summary, marketplace breakdown, and permission-gated inventory and return/cancellation data}
         "400": {$ref: "#/components/responses/Error"}
         "403": {$ref: "#/components/responses/Error"}
+  /api/v1/reports/operations-analytics:
+    get:
+      operationId: getOperationsAnalytics
+      summary: Read QC trends, elapsed workflow times and measured workforce activity
+      description: Requires reports.view, traceability.view and the traceability entitlement. One read-only database snapshot. QC rates describe detected rejects per inspected unit, not fault attribution. Repeated inspections count again.
+      security: [{sessionCookie: []}]
+      parameters:
+        - {name: from, in: query, required: true, schema: {type: string, format: date-time}, description: Inclusive start; positive range at most 366 days}
+        - {name: to, in: query, required: true, schema: {type: string, format: date-time}, description: Exclusive end}
+        - {name: timezone, in: query, schema: {type: string, maxLength: 100, default: UTC}, description: IANA timezone for daily inspection buckets}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 20}, description: Workforce page size; summaries cover the full range}
+        - {name: offset, in: query, schema: {type: integer, minimum: 0, maximum: 1000000, default: 0}, description: Workforce ordered by immutable employee ID}
+      responses:
+        "200":
+          description: Company-scoped report; missing denominators or completed samples produce null rates or durations
+          headers:
+            Cache-Control: {schema: {type: string, const: no-store}}
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/OperationsAnalytics"}
+        "400": {$ref: "#/components/responses/Error"}
+        "401": {$ref: "#/components/responses/Error"}
+        "403": {$ref: "#/components/responses/Error"}
+        "500": {$ref: "#/components/responses/Error"}
   /api/v1/printer-agents:
     get:
       operationId: listPrinterAgents
@@ -1973,6 +1997,68 @@ components:
         application/json:
           schema: {$ref: "#/components/schemas/ErrorEnvelope"}
   schemas:
+    InspectionQuality:
+      type: object
+      required: [checks, checked_quantity, passed_quantity, rejected_quantity, rejection_rate_percent]
+      properties:
+        checks: {type: integer, format: int64, minimum: 0, description: Distinct full-box QC checks}
+        checked_quantity: {type: integer, format: int64, minimum: 0}
+        passed_quantity: {type: integer, format: int64, minimum: 0}
+        rejected_quantity: {type: integer, format: int64, minimum: 0}
+        rejection_rate_percent: {type: [number, "null"], minimum: 0, maximum: 100, description: Rejected units divided by checked units times 100; null with no inspections}
+    DailyInspectionQuality:
+      allOf:
+        - {$ref: "#/components/schemas/InspectionQuality"}
+        - type: object
+          required: [date]
+          properties:
+            date: {type: string, format: date, description: Selected local date; dates without inspections are omitted}
+    DefectReasonShare:
+      type: object
+      required: [reason, rejected_quantity, share_percent]
+      properties:
+        reason: {type: string, enum: [damaged, wrong_sticker, dirty, missing_component, packaging_damaged, wrong_product, manufacturing_defect, other]}
+        rejected_quantity: {type: integer, format: int64, minimum: 1}
+        share_percent: {type: number, minimum: 0, maximum: 100, description: Share of all rejected inspection units in the range}
+    OperationalCycleTime:
+      type: object
+      required: [kind, samples, average_hours, median_hours, p95_hours]
+      properties:
+        kind: {type: string, enum: [rework, handover, first_shipment_readiness]}
+        samples: {type: integer, format: int64, minimum: 0}
+        average_hours: {type: [number, "null"], description: Elapsed hours including waiting; completed cycles selected by end instant}
+        median_hours: {type: [number, "null"]}
+        p95_hours: {type: [number, "null"]}
+    WorkforceInspectionQuality:
+      allOf:
+        - {$ref: "#/components/schemas/InspectionQuality"}
+        - type: object
+          required: [employee_id, employee_name, completed_work_items, completed_work_quantity, final_checks, failed_final_checks, final_failure_rate_percent]
+          properties:
+            employee_id: {type: string, format: uuid}
+            employee_name: {type: string, description: Current name of recorded employee, including inactive employees}
+            completed_work_items: {type: integer, format: int64, minimum: 0}
+            completed_work_quantity: {type: integer, format: int64, minimum: 0, description: Completed requirement units; completion does not prove a subsequent QC pass}
+            final_checks: {type: integer, format: int64, minimum: 0}
+            failed_final_checks: {type: integer, format: int64, minimum: 0}
+            final_failure_rate_percent: {type: [number, "null"], minimum: 0, maximum: 100}
+    OperationsAnalytics:
+      type: object
+      required: [from, to, timezone, generated_at, metric_version, quality, daily, defects, cycles, workforce, workforce_total, limit, offset]
+      properties:
+        from: {type: string, format: date-time}
+        to: {type: string, format: date-time}
+        timezone: {type: string}
+        generated_at: {type: string, format: date-time}
+        metric_version: {type: string, const: traceability-v1}
+        quality: {$ref: "#/components/schemas/InspectionQuality"}
+        daily: {type: array, items: {$ref: "#/components/schemas/DailyInspectionQuality"}}
+        defects: {type: array, items: {$ref: "#/components/schemas/DefectReasonShare"}}
+        cycles: {type: array, items: {$ref: "#/components/schemas/OperationalCycleTime"}}
+        workforce: {type: array, items: {$ref: "#/components/schemas/WorkforceInspectionQuality"}}
+        workforce_total: {type: integer, format: int64, minimum: 0}
+        limit: {type: integer, minimum: 1, maximum: 100}
+        offset: {type: integer, minimum: 0, maximum: 1000000}
     CreateTraceBox:
       type: object
       additionalProperties: false

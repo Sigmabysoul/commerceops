@@ -768,6 +768,12 @@ Printing failures
 
 Reports must derive from authoritative domain data rather than maintaining unrelated manual counters whenever possible.
 
+Phase 23 adds read-only QC trends, defect reason shares, elapsed rework/handover/first-readiness
+times and employee inspection/work/final-check activity. Rates keep their workload denominators;
+the inspecting employee is not assumed to have caused a defect. Reports use immutable event
+history, company scope, reporting and Traceability permissions, explicit time ranges and local-day
+buckets. Gamification, labor-hour productivity and inferred worker blame remain outside this phase.
+
 ---
 
 # 29. Security

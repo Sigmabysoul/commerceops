@@ -138,3 +138,6 @@ RULE PACKING-001: Packing requires clear work and fresh passing QC. Shipment rea
 RULE CONSIGNMENT-006: Traceability-required Consignment progress and outbound require current verified Trace Box quantity for every line. Allocations are immutable, bounded across consignments, and use each line's stored Product and department snapshot.
 RULE CONSIGNMENT-007: Pouch and file evidence values are company-scoped trace references and are never assumed unique identifiers.
 RULE LIFECYCLE-001: No automatic archival deletion before verified export and restore; retain audit history.
+RULE REPORT-001: Operations analytics derives from immutable recorded events in the authenticated company. Both Reporting and Traceability permissions and the Traceability entitlement are required.
+RULE REPORT-002: QC rejection rates use inspected-unit denominators, count repeat inspections as repeat workload, and attribute observation to the recorded inspector without inferring defect causation. Missing denominators are null, not measured zero.
+RULE REPORT-003: Completed-cycle cohorts use completion instants and their authoritative source starts, including starts before the range. First shipment readiness contributes at most one duration per box. Elapsed time includes waiting and is not labor time.

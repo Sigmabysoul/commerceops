@@ -269,6 +269,21 @@ Return restock and its linked compensating corrections follow the return's
 normalized source-order marketplace. They appear separately as
 `return_restock` movement so displayed categories reconcile with net movement.
 
+## Operations and workforce analytics
+
+`GET /api/v1/reports/operations-analytics` requires `reports.view`, `traceability.view`, and
+the `traceability` entitlement. It returns QC workload/rates, daily trends, defect reason shares,
+elapsed workflow times, and paginated employee inspection/work/final-check activity. It accepts
+required `[from,to)` RFC3339 instants (up to 366 days), optional IANA `timezone` (default `UTC`),
+`limit` (1–100, default 20), and `offset` (0–1,000,000, default 0). Pagination affects workforce
+rows only. No marketplace or client-selected company filter applies.
+
+Responses include range, timezone, snapshot time, `traceability-v1` metric version, workload
+denominators and cycle sample counts. Missing rate denominators and cycle samples return `null`.
+One read-only repeatable-read snapshot backs each response; authenticated report responses use
+`Cache-Control: no-store`. See [the reporting workflow](workflows/reporting.md) for formulas,
+completion cohorts and attribution limits. OpenAPI defines the complete response structure.
+
 ## Inventory ledger
 
 Inventory endpoints require the `inventory` entitlement. Commands accept a

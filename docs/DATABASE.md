@@ -171,3 +171,11 @@ Migration `000029_consignment_traceability_integration` adds an opt-in Consignme
 flag, immutable signed Trace Box allocations tied to canonical line Product snapshots, and
 append-only pouch/file evidence. Active allocations are derived from link and unlink events.
 Reference indexes are non-unique by design. No Inventory schema or ledger rule changes.
+
+## Phase 23 operations analytics
+
+Migration `000030_operations_analytics_indexes` adds
+`trace_box_events_company_time_idx(company_id,created_at,event_type,id)` for company/time
+reporting cohorts. It adds no tables, counters, permissions or data mutations. Reporting reads
+typed immutable QC, work, handover and gate facts in a read-only repeatable-read transaction.
+Earlier migrations remain unchanged; rolling down `000030` removes only this index.
