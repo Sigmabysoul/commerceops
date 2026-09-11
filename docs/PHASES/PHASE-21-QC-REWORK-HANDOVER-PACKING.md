@@ -1,6 +1,6 @@
 # Phase 21 — QC, rework, handover and packing
 
-Status: Implementation active — owner authorized 2026-09-11; completion requires fresh verification.
+Status: Complete — local PostgreSQL-backed verification passed 2026-09-11.
 Revision: 2026-09-11.
 
 ## Goal and work
@@ -18,7 +18,7 @@ Invalid transitions, concurrent updates, idempotent mobile retries, custody and 
 Every implementation plan must specify schema/API changes, owning modules and regression
 coverage before editing. Stop after this phase; update CURRENT_STATE only with real evidence.
 
-## Implemented contract pending completion gate
+## Implemented contract
 
 - QC is one immutable snapshot covering every current Product quantity in the box.
 - Rejected quantity records a controlled reason and creates one typed work requirement. Work
@@ -31,3 +31,5 @@ coverage before editing. Stop after this phase; update CURRENT_STATE only with r
   They append audit/history records and never mutate Inventory.
 - Returns and Consignment associations, pouch/file evidence and mixed-department progress remain
   Phase 22 or later work.
+
+Completion evidence is in [PHASE-21-VERIFICATION.md](PHASE-21-VERIFICATION.md).
