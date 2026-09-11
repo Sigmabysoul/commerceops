@@ -50,6 +50,10 @@ never authorization.
   and PDF generation infrastructure without business ownership.
 - `scripts/lifecycle`: Phase 24 operator-only database/object backup, verification, empty-target
   restore and archive dry-run tooling. It is not linked into the server and cannot delete data.
+- `scripts/operations`: Phase 25 production preflight, concurrent readiness measurement,
+  backup-bound release evidence and same-schema rollback planning. These commands never deploy.
+- `compose.production.yml` and the API/web Dockerfiles: non-root, read-only production packaging
+  behind an environment-owned HTTPS proxy; PostgreSQL and S3-compatible storage remain external.
 
 ## Printing terms that look similar
 

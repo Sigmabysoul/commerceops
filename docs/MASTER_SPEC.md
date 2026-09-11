@@ -1049,6 +1049,13 @@ outbound gates revalidate complete coverage. Allocations preserve the line's Pro
 snapshot, cannot double-count physical quantity across consignments, and retain immutable reversals.
 Pouch and file evidence references are auditable but are not unique identities.
 
+Phase 25 production packaging preserves the modular monolith and existing REST behavior. It runs
+the API and web application as non-root, read-only containers behind HTTPS, with external
+PostgreSQL and private S3-compatible storage. Production configuration, immutable image digests,
+verified recovery evidence, forward migrations, health measurement, graceful shutdown and
+same-schema rollback are release gates. A generated manifest records pending operator acceptance
+and never deploys automatically.
+
 This document remains the product-level source of truth, subject to explicit owner
 instructions and approved ADRs.
 

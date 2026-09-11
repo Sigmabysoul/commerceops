@@ -2,12 +2,12 @@
 
 ## Active phase
 
-Phase 24 — Data lifecycle and archival.
-Status: COMPLETE — LOCAL POSTGRESQL-BACKED VERIFICATION PASSED 2026-09-11.
+Phase 25 — Production hardening and internal rollout.
+Status: ACTIVE — local hardening and rollout-package verification in progress; production rollout pending.
 Phase 17 completed its local PostgreSQL-backed full verification gate on 2026-09-10. Phase 18
 JioMart work is deferred on the evidence backlog at the owner's direction. Phase 19 evidence
 preparation is verified while its print-payload runtime work remains deferred.
-Branch: me/phase-24-data-lifecycle-archival.
+Branch: me/phase-25-production-hardening.
 Checkout: /home/sigma/work/commerceops-next.
 
 The Phase 23 result was verified on 2026-09-11 using a fresh disposable PostgreSQL 17 database
@@ -60,4 +60,6 @@ the separate object fixture restored its referenced bytes and preserved protecte
 
 Phase 18 JioMart and the runtime portion of Phase 19 remain on ROADMAP.md's deferred evidence
 backlog. Phase 24 is complete; its evidence is in `PHASES/PHASE-24-VERIFICATION.md`.
-Phase 25 requires separate owner authorization. Production deployment has not started.
+Phase 25 local hardening must pass its image, load, shutdown, rollback, recovery and full
+PostgreSQL-backed gates. Production deployment and operator acceptance have not started and
+require the real environment plus an explicit rollout decision.

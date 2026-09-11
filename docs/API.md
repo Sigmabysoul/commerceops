@@ -17,6 +17,19 @@ Errors use a stable envelope and never include internal SQL errors, credentials,
 
 Other methods receive HTTP 405 with the standard error envelope. The endpoint is intentionally tenant-independent and exposes no sensitive dependency details.
 
+## Shared production HTTP boundary
+
+Every API response includes an `X-Request-ID`. A caller-supplied ID is retained only when it uses
+1–64 ASCII letters, digits, dots, underscores or hyphens; otherwise the server generates one.
+Structured request logs include that ID, method, path, response status, response bytes and elapsed
+milliseconds without logging bodies, cookies or credentials.
+
+Responses set `Cache-Control: no-store`, content-type sniffing protection, frame denial, a strict
+referrer policy, a restrictive API content security policy and HTTP strict transport security.
+Browser requests with an `Origin` header are processed only when the exact origin is configured;
+an untrusted origin receives HTTP 403 with code `ORIGIN_NOT_ALLOWED` before a business handler is
+called. This HTTP behavior does not change any business endpoint or response schema.
+
 ## Core Platform
 
 Authentication uses an opaque server-side session in an `HttpOnly`, `SameSite=Lax` cookie. Except for login and health, all endpoints require that session. Login accepts email and password only: the server establishes the company from the user's sole active company access. Zero active accesses are rejected; multiple active accesses return a conflict until an explicit operating-company policy is approved. Tenant APIs never accept a company identifier.

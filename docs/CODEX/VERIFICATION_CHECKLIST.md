@@ -21,3 +21,18 @@
   are recorded.
 - Run PostgreSQL-backed `make verify-full`; record unavailable S3, production scheduling and
   remote recovery evidence explicitly.
+
+## Phase 25 production-readiness gate
+
+- Verify production configuration refuses placeholders, insecure endpoints, local object storage
+  and mutable image references.
+- Build both production images from a clean checkout; inspect non-root users and run them with
+  read-only filesystems, no added capabilities and bounded temporary storage.
+- Apply all migrations to disposable PostgreSQL, run concurrent health load and verify zero
+  failures plus required request/security headers and untrusted-origin rejection.
+- Send `SIGTERM`; record shutdown duration, zero exit status, shutdown log and successful restart.
+- Bind a release manifest to Phase 24 backup/restore evidence and rehearse same-schema application
+  rollback. Confirm a migration-version mismatch is refused.
+- Run PostgreSQL-backed `make verify-full`, container builds and source-export integrity tests.
+- Record remote CI, real TLS/proxy, S3, centralized logs/alerts, scheduled backups, production
+  recovery timing and operator acceptance as untested until real evidence exists.

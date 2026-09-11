@@ -153,6 +153,14 @@ Files, Printing or the Print Library. Restore evidence is required before archiv
 the analysis cannot mutate either store. Production scheduling and storage-provider controls
 remain deployment concerns for Phase 25.
 
+Phase 25 packages the same modular monolith as separate non-root API and web containers. The
+production Compose boundary runs migrations before API readiness and binds application ports to
+loopback for an environment-owned HTTPS reverse proxy. PostgreSQL and private S3-compatible
+storage remain external authorities. Production configuration rejects non-HTTPS browser origins
+and local object storage. Shared HTTP middleware rejects untrusted origins before handlers, adds
+security and request-correlation headers, and emits structured status/size/duration logs. Release
+and rollback manifests are offline operator evidence; they never authorize or execute deployment.
+
 ## Phase 15 target and compatibility
 
 The backend uses internal/app (composition), internal/domain (business ownership), and

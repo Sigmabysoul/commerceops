@@ -116,6 +116,16 @@ CommerceOps stores tenant ownership in PostgreSQL and generates tenant-scoped
 object keys server-side. Object storage credentials do not replace application
 authorization, and clients do not provide trusted tenant identifiers.
 
+## Production rollout
+
+Phase 25 provides non-root API and Next.js images, an external-database/S3 production Compose
+definition, strict configuration preflight, concurrent readiness measurement, backup-bound release
+evidence and same-schema rollback planning. Start with
+[`docs/operations/production-rollout.md`](docs/operations/production-rollout.md) and copy
+`deploy/production.env.example` to a protected location outside Git. The repository does not
+deploy automatically, provision TLS or infrastructure, or substitute local checks for operator
+acceptance.
+
 ## Developer commands
 
 ```bash
