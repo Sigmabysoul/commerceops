@@ -201,6 +201,8 @@ Automation retains scheduling; Marketplace retains shared orchestration. Authent
 authorization, audit, configuration, health and printer-agent mechanics move to platform.
 
 Phase 17 introduced Product ownership around the existing Consignment-era Department
-identity without duplicating it. Phase 20 will
-own Trace Boxes, custody and trace history without Inventory balances. Seller-account
+identity without duplicating it. Phase 20's `internal/domain/traceability` owns Trace Boxes,
+opaque identifiers, Product content relationships, custody and trace history without Inventory
+balances. It reads canonical Product, employee and department references but does not own their
+lifecycles. Seller-account
 business state belongs to Phase 16, not to printer-agent/workstation infrastructure.

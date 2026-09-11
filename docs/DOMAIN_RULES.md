@@ -129,5 +129,7 @@ RULE COMPANY-001: Single-business-first never permits removing company safety sc
 RULE SELLER-001: Seller accounts/trading identities are separate from workstations and printer agents.
 RULE DEPARTMENT-001: Reuse canonical departments. One active Product assignment; changes preserve historical and in-flight context.
 RULE TRACE-001: Trace QR/barcodes identify opaque server records, never encoded mutable workflow state or a second stock balance.
+RULE TRACE-002: Trace Box contents use canonical Product IDs and explicit positive quantities. Every addition or removal is immutable and idempotent; concurrent removal must never make a derived quantity negative.
+RULE TRACE-003: Trace Box custody identifies exactly one same-company employee or department. Current custody is derived from immutable transfer history, and scanning an identifier never bypasses authentication or authorization.
 RULE QC-001: QC PASS is not RESTOCK. Sellable stock changes only through an explicit authorized Inventory transition.
 RULE LIFECYCLE-001: No automatic archival deletion before verified export and restore; retain audit history.

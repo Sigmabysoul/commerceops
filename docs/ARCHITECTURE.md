@@ -127,6 +127,12 @@ leases; a transaction-scoped Printing method creates the normal physical job
 and execution result atomically. Automation cannot contact hardware or mutate
 Inventory. See `workflows/automation.md` for timezone, retry, and restart policy.
 
+Phase 20 adds `internal/domain/traceability` as the owner of Trace Boxes, opaque identifiers,
+Product content relationships, employee/department custody and unified event history. The
+current view is derived from immutable event-linked changes. Identifier resolution requires
+the authenticated company, permission and module entitlement. The package has no Inventory,
+Returns, Consignment workflow or Printing dependency; later integrations remain separate phases.
+
 ## Phase 15 target and compatibility
 
 The backend uses internal/app (composition), internal/domain (business ownership), and

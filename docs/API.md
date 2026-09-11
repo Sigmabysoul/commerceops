@@ -80,6 +80,26 @@ Product is reassigned.
 
 The OpenAPI source is `docs/openapi.yaml`. It must be updated whenever the public API contract changes.
 
+## Traceability foundation
+
+Trace Box identifiers are opaque server-generated values. Resolving an identifier is an
+authenticated company-scoped lookup, not authentication. Current Product quantities and
+custody are derived from immutable events; these endpoints never change Inventory.
+
+| Method | Path | Permission | Purpose |
+| --- | --- | --- | --- |
+| GET, POST | `/api/v1/trace-boxes` | `traceability.view/manage` | List or create Trace Boxes |
+| GET | `/api/v1/trace-box-options` | `traceability.view` | List active Product, employee and department references |
+| GET | `/api/v1/trace-boxes/resolve/{opaque_identifier}` | `traceability.view` | Resolve a scanned identifier inside the session company |
+| GET | `/api/v1/trace-boxes/{trace_box_id}` | `traceability.view` | Read derived contents, current custody and immutable history |
+| POST | `/api/v1/trace-boxes/{trace_box_id}/contents` | `traceability.manage` | Append an explicit Product quantity addition |
+| POST | `/api/v1/trace-boxes/{trace_box_id}/contents/remove` | `traceability.manage` | Append a bounded Product quantity removal |
+| POST | `/api/v1/trace-boxes/{trace_box_id}/custody` | `traceability.manage` | Transfer custody to one employee or department |
+
+Every mutation requires an idempotency key. Reusing a key with the same request returns the
+existing result; different content returns a conflict. Quantity removals serialize on the box
+and cannot reduce a Product below zero.
+
 ## Printing platform
 
 Marketplace `print_jobs` continue to generate immutable PDFs. Physical delivery

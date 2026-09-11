@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: CommerceOps API
-  version: 0.14.0
+  version: 0.20.0
 paths:
   /api/v1/health:
     get:
@@ -1751,6 +1751,86 @@ paths:
           $ref: '#/components/responses/Error'
         '500':
           $ref: '#/components/responses/Error'
+  /api/v1/trace-boxes:
+    get:
+      operationId: listTraceBoxes
+      security: [{sessionCookie: []}]
+      responses:
+        "200": {description: Recent company-scoped Trace Boxes}
+        "403": {$ref: "#/components/responses/Error"}
+    post:
+      operationId: createTraceBox
+      security: [{sessionCookie: []}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/CreateTraceBox"}}}}
+      responses:
+        "201": {description: Trace Box and immutable creation event created}
+        "400": {$ref: "#/components/responses/Error"}
+        "403": {$ref: "#/components/responses/Error"}
+        "409": {$ref: "#/components/responses/Error"}
+  /api/v1/trace-box-options:
+    get:
+      operationId: getTraceBoxOptions
+      security: [{sessionCookie: []}]
+      responses:
+        "200": {description: Active company-scoped Product, employee and department references}
+        "403": {$ref: "#/components/responses/Error"}
+  /api/v1/trace-boxes/resolve/{opaque_identifier}:
+    get:
+      operationId: resolveTraceBoxIdentifier
+      security: [{sessionCookie: []}]
+      parameters:
+        - {name: opaque_identifier, in: path, required: true, schema: {type: string, pattern: "^TBX_[A-Z2-7]{26}$"}}
+      responses:
+        "200": {description: Resolved company-scoped Trace Box, contents, custody and history}
+        "400": {$ref: "#/components/responses/Error"}
+        "403": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+  /api/v1/trace-boxes/{trace_box_id}:
+    get:
+      operationId: getTraceBox
+      security: [{sessionCookie: []}]
+      parameters: [{$ref: "#/components/parameters/TraceBoxID"}]
+      responses:
+        "200": {description: Company-scoped Trace Box, derived contents, custody and history}
+        "403": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+  /api/v1/trace-boxes/{trace_box_id}/contents:
+    post:
+      operationId: addTraceBoxContent
+      security: [{sessionCookie: []}]
+      parameters: [{$ref: "#/components/parameters/TraceBoxID"}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/TraceBoxContentCommand"}}}}
+      responses:
+        "201": {description: Immutable content addition recorded}
+        "400": {$ref: "#/components/responses/Error"}
+        "403": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+        "409": {$ref: "#/components/responses/Error"}
+  /api/v1/trace-boxes/{trace_box_id}/contents/remove:
+    post:
+      operationId: removeTraceBoxContent
+      security: [{sessionCookie: []}]
+      parameters: [{$ref: "#/components/parameters/TraceBoxID"}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/TraceBoxContentCommand"}}}}
+      responses:
+        "201": {description: Bounded immutable content removal recorded}
+        "400": {$ref: "#/components/responses/Error"}
+        "403": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+        "409": {$ref: "#/components/responses/Error"}
+  /api/v1/trace-boxes/{trace_box_id}/custody:
+    post:
+      operationId: transferTraceBoxCustody
+      security: [{sessionCookie: []}]
+      parameters: [{$ref: "#/components/parameters/TraceBoxID"}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/TraceBoxCustodyCommand"}}}}
+      responses:
+        "201": {description: Immutable custody transfer recorded}
+        "400": {$ref: "#/components/responses/Error"}
+        "403": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+        "409": {$ref: "#/components/responses/Error"}
+
 components:
   securitySchemes:
     sessionCookie:
@@ -1770,6 +1850,7 @@ components:
     BatchID: {name: batch_id, in: path, required: true, schema: {type: string, format: uuid}}
     PrintJobID: {name: print_job_id, in: path, required: true, schema: {type: string, format: uuid}}
     ArtifactID: {name: artifact_id, in: path, required: true, schema: {type: string, format: uuid}}
+    TraceBoxID: {name: trace_box_id, in: path, required: true, schema: {type: string, format: uuid}}
   responses:
     Error:
       description: Request failed
@@ -1777,6 +1858,65 @@ components:
         application/json:
           schema: {$ref: "#/components/schemas/ErrorEnvelope"}
   schemas:
+    CreateTraceBox:
+      type: object
+      additionalProperties: false
+      required: [idempotency_key]
+      properties:
+        label: {type: [string, "null"], maxLength: 200}
+        idempotency_key: {type: string, minLength: 1, maxLength: 128}
+    TraceBoxContentCommand:
+      type: object
+      additionalProperties: false
+      required: [product_id, quantity, idempotency_key]
+      properties:
+        product_id: {type: string, format: uuid}
+        quantity: {type: integer, format: int64, minimum: 1}
+        notes: {type: [string, "null"], maxLength: 2000}
+        idempotency_key: {type: string, minLength: 1, maxLength: 128}
+    TraceBoxCustodyCommand:
+      type: object
+      additionalProperties: false
+      required: [idempotency_key]
+      description: Exactly one of employee_id or department_id is required.
+      properties:
+        employee_id: {type: [string, "null"], format: uuid}
+        department_id: {type: [string, "null"], format: uuid}
+        notes: {type: [string, "null"], maxLength: 2000}
+        idempotency_key: {type: string, minLength: 1, maxLength: 128}
+    TraceBox:
+      type: object
+      required: [id, opaque_identifier, created_by, created_at, contents, events]
+      properties:
+        id: {type: string, format: uuid}
+        opaque_identifier: {type: string, pattern: "^TBX_[A-Z2-7]{26}$"}
+        label: {type: [string, "null"]}
+        created_by: {type: string, format: uuid}
+        created_at: {type: string, format: date-time}
+        contents:
+          type: array
+          items:
+            type: object
+            required: [product_id, internal_code, product_name, quantity]
+            properties:
+              product_id: {type: string, format: uuid}
+              internal_code: {type: string}
+              product_name: {type: string}
+              quantity: {type: integer, format: int64, minimum: 1}
+        current_custody: {type: [object, "null"]}
+        events:
+          type: array
+          items:
+            type: object
+            required: [id, event_type, actor_user_id, metadata, idempotency_key, created_at]
+            properties:
+              id: {type: string, format: uuid}
+              event_type: {type: string, enum: [box_created, content_added, content_removed, custody_transferred]}
+              actor_user_id: {type: string, format: uuid}
+              notes: {type: [string, "null"]}
+              metadata: {type: object, additionalProperties: true}
+              idempotency_key: {type: string}
+              created_at: {type: string, format: date-time}
     QuickPrint:
       type: object
       additionalProperties: false

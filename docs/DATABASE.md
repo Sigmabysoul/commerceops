@@ -145,3 +145,12 @@ Migration `000026_product_department_ownership` reuses `consignment_departments`
 effective-dated `product_department_assignments`. A partial unique index permits at most one
 active assignment per company and Product. Reassignment closes the previous interval while
 existing `consignment_lines.department_id` values remain immutable snapshots of their routing.
+
+## Phase 20 Traceability foundation
+
+Migration `000027_traceability_foundation` adds company-scoped `trace_boxes` with random opaque
+identifiers, unified immutable `trace_box_events`, and event-linked content and custody changes.
+Content changes reference canonical Products with signed explicit quantities. Custody changes
+reference exactly one same-company employee or department. Current contents and custody are
+derived from this history. Database triggers reject event updates and deletes. No Inventory
+table, balance, reservation or ledger behavior changes.
