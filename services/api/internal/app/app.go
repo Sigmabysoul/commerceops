@@ -219,6 +219,13 @@ func registerTraceabilityRoutes(mux *http.ServeMux, authHTTP *auth.HTTPHandler, 
 	mux.Handle("/api/v1/trace-boxes/{trace_box_id}/contents", authHTTP.RequireSession(http.HandlerFunc(traceabilityHTTP.AddContent)))
 	mux.Handle("/api/v1/trace-boxes/{trace_box_id}/contents/remove", authHTTP.RequireSession(http.HandlerFunc(traceabilityHTTP.RemoveContent)))
 	mux.Handle("/api/v1/trace-boxes/{trace_box_id}/custody", authHTTP.RequireSession(http.HandlerFunc(traceabilityHTTP.TransferCustody)))
+	mux.Handle("/api/v1/trace-boxes/{trace_box_id}/qc", authHTTP.RequireSession(http.HandlerFunc(traceabilityHTTP.RecordQC)))
+	mux.Handle("/api/v1/trace-boxes/{trace_box_id}/work-requirements/{work_requirement_id}/complete", authHTTP.RequireSession(http.HandlerFunc(traceabilityHTTP.CompleteWork)))
+	mux.Handle("/api/v1/trace-boxes/{trace_box_id}/handovers", authHTTP.RequireSession(http.HandlerFunc(traceabilityHTTP.SendHandover)))
+	mux.Handle("/api/v1/trace-boxes/{trace_box_id}/handovers/{handover_id}/receive", authHTTP.RequireSession(http.HandlerFunc(traceabilityHTTP.ReceiveHandover)))
+	mux.Handle("/api/v1/trace-boxes/{trace_box_id}/packing/complete", authHTTP.RequireSession(http.HandlerFunc(traceabilityHTTP.CompletePacking)))
+	mux.Handle("/api/v1/trace-boxes/{trace_box_id}/final-checks", authHTTP.RequireSession(http.HandlerFunc(traceabilityHTTP.CompleteFinalCheck)))
+	mux.Handle("/api/v1/trace-boxes/{trace_box_id}/shipment-readiness", authHTTP.RequireSession(http.HandlerFunc(traceabilityHTTP.MarkReady)))
 }
 
 func newObjectStorage(ctx context.Context, cfg config.Config) (objectstorage.Storage, error) {

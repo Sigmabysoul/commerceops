@@ -202,8 +202,143 @@ func TestTraceabilityFoundation(t *testing.T) {
 	}
 }
 
+func TestTraceabilityWorkerWorkflow(t *testing.T) {
+	f := setupTraceability(t)
+	ctx := context.Background()
+	mustExec(t, f.db, `INSERT INTO consignment_department_members(company_id,department_id,employee_id,assigned_by) VALUES($1,$2,$3,$4)`, f.manager.CompanyID, f.department, f.employee, f.manager.UserID)
+	box, _, err := f.service.Create(ctx, f.manager, CreateInput{Label: textPointer("QC lane"), IdempotencyKey: "workflow-create"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	box, _, err = f.service.AddContent(ctx, f.manager, box.ID, ContentInput{ProductID: f.product, Quantity: 5, IdempotencyKey: "workflow-content"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err = f.service.CompletePacking(ctx, f.manager, box.ID, GateInput{IdempotencyKey: "packing-too-soon"}); !errors.Is(err, ErrInvalidTransition) {
+		t.Fatalf("packing before QC=%v", err)
+	}
+
+	reason, work := "wrong_sticker", "sticker_replacement"
+	qcInput := QCInput{Lines: []QCLine{{ProductID: f.product, CheckedQuantity: 5, PassedQuantity: 3, RejectedQuantity: 2, RejectionReason: &reason, RequiredWork: &work}}, IdempotencyKey: "workflow-qc-reject"}
+	box, replayed, err := f.service.RecordQC(ctx, f.manager, box.ID, qcInput)
+	if err != nil || replayed || box.Workflow.Status != "rework_required" || len(box.Workflow.WorkRequirements) != 1 {
+		t.Fatalf("rejected QC=%#v replay=%v err=%v", box.Workflow, replayed, err)
+	}
+	box, replayed, err = f.service.RecordQC(ctx, f.manager, box.ID, qcInput)
+	if err != nil || !replayed || len(box.Workflow.WorkRequirements) != 1 {
+		t.Fatalf("QC replay=%#v replay=%v err=%v", box.Workflow, replayed, err)
+	}
+	if _, _, err = f.service.RecordQC(ctx, f.manager, box.ID, QCInput{Lines: []QCLine{{ProductID: f.product, CheckedQuantity: 4, PassedQuantity: 4}}, IdempotencyKey: "workflow-qc-partial"}); !errors.Is(err, ErrQuantity) {
+		t.Fatalf("partial QC=%v", err)
+	}
+
+	requirementID := box.Workflow.WorkRequirements[0].ID
+	box, replayed, err = f.service.CompleteWork(ctx, f.manager, box.ID, requirementID, CompleteWorkInput{IdempotencyKey: "workflow-rework"})
+	if err != nil || replayed || box.Workflow.Status != "awaiting_recheck" {
+		t.Fatalf("rework=%#v replay=%v err=%v", box.Workflow, replayed, err)
+	}
+	if _, _, err = f.service.CompletePacking(ctx, f.manager, box.ID, GateInput{IdempotencyKey: "packing-before-recheck"}); !errors.Is(err, ErrInvalidTransition) {
+		t.Fatalf("packing before recheck=%v", err)
+	}
+	box, _, err = f.service.RecordQC(ctx, f.manager, box.ID, QCInput{Lines: []QCLine{{ProductID: f.product, CheckedQuantity: 5, PassedQuantity: 5}}, IdempotencyKey: "workflow-qc-pass"})
+	if err != nil || box.Workflow.Status != "qc_passed" {
+		t.Fatalf("passing QC=%#v err=%v", box.Workflow, err)
+	}
+	box, _, err = f.service.CompletePacking(ctx, f.manager, box.ID, GateInput{IdempotencyKey: "workflow-packing"})
+	if err != nil || box.Workflow.Status != "packed" {
+		t.Fatalf("packing=%#v err=%v", box.Workflow, err)
+	}
+	failed := false
+	box, _, err = f.service.CompleteFinalCheck(ctx, f.manager, box.ID, GateInput{Passed: &failed, Notes: textPointer("seal needs replacement"), IdempotencyKey: "workflow-final-fail"})
+	if err != nil || box.Workflow.Status != "final_check_failed" {
+		t.Fatalf("failed final=%#v err=%v", box.Workflow, err)
+	}
+	if _, _, err = f.service.MarkReady(ctx, f.manager, box.ID, GateInput{IdempotencyKey: "ready-after-fail"}); !errors.Is(err, ErrInvalidTransition) {
+		t.Fatalf("ready after failed final=%v", err)
+	}
+	box, _, err = f.service.CompletePacking(ctx, f.manager, box.ID, GateInput{IdempotencyKey: "workflow-repacking"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	passed := true
+	box, _, err = f.service.CompleteFinalCheck(ctx, f.manager, box.ID, GateInput{Passed: &passed, IdempotencyKey: "workflow-final-pass"})
+	if err != nil || box.Workflow.Status != "final_check_passed" {
+		t.Fatalf("passed final=%#v err=%v", box.Workflow, err)
+	}
+	box, _, err = f.service.MarkReady(ctx, f.manager, box.ID, GateInput{IdempotencyKey: "workflow-ready"})
+	if err != nil || box.Workflow.Status != "ready_for_shipment" || box.Workflow.ReadyAt == nil {
+		t.Fatalf("ready=%#v err=%v", box.Workflow, err)
+	}
+
+	box, _, err = f.service.SendHandover(ctx, f.manager, box.ID, HandoverInput{DepartmentID: &f.department, IdempotencyKey: "workflow-handover"})
+	if err != nil || box.Workflow.Status != "in_transit" || box.Workflow.PendingHandover == nil {
+		t.Fatalf("handover=%#v err=%v", box.Workflow, err)
+	}
+	if _, _, err = f.service.AddContent(ctx, f.manager, box.ID, ContentInput{ProductID: f.product, Quantity: 1, IdempotencyKey: "content-in-transit"}); !errors.Is(err, ErrInvalidTransition) {
+		t.Fatalf("content in transit=%v", err)
+	}
+	handoverID := box.Workflow.PendingHandover.ID
+	box, replayed, err = f.service.ReceiveHandover(ctx, f.manager, box.ID, handoverID, ReceiveHandoverInput{IdempotencyKey: "workflow-receive"})
+	if err != nil || replayed || box.Workflow.PendingHandover != nil || box.CurrentCustody == nil || box.CurrentCustody.EmployeeID == nil || *box.CurrentCustody.EmployeeID != f.employee {
+		t.Fatalf("receive box=%#v custody=%#v replay=%v err=%v", box.Workflow, box.CurrentCustody, replayed, err)
+	}
+	box, replayed, err = f.service.ReceiveHandover(ctx, f.manager, box.ID, handoverID, ReceiveHandoverInput{IdempotencyKey: "workflow-receive"})
+	if err != nil || !replayed {
+		t.Fatalf("receive replay=%v err=%v", replayed, err)
+	}
+
+	var inventoryRows int
+	mustScan(t, f.db, `SELECT count(*) FROM inventory_transactions WHERE company_id=$1`, []any{f.manager.CompanyID}, &inventoryRows)
+	if inventoryRows != 0 {
+		t.Fatalf("workflow changed inventory: %d rows", inventoryRows)
+	}
+	if _, err = f.db.Exec(ctx, `DELETE FROM trace_box_work_requirements WHERE company_id=$1 AND trace_box_id=$2`, f.manager.CompanyID, box.ID); err == nil {
+		t.Fatal("work history was deleted")
+	}
+}
+
+func TestConcurrentHandoverAllowsOnePendingTransfer(t *testing.T) {
+	f := setupTraceability(t)
+	ctx := context.Background()
+	box, _, err := f.service.Create(ctx, f.manager, CreateInput{IdempotencyKey: "handover-race-create"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	start := make(chan struct{})
+	results := make(chan error, 2)
+	for _, key := range []string{"handover-race-a", "handover-race-b"} {
+		go func(idempotencyKey string) {
+			<-start
+			_, _, sendErr := f.service.SendHandover(ctx, f.manager, box.ID, HandoverInput{EmployeeID: &f.employee, IdempotencyKey: idempotencyKey})
+			results <- sendErr
+		}(key)
+	}
+	close(start)
+	var successful, rejected int
+	for range 2 {
+		switch sendErr := <-results; {
+		case sendErr == nil:
+			successful++
+		case errors.Is(sendErr, ErrInvalidTransition):
+			rejected++
+		default:
+			t.Fatalf("concurrent handover=%v", sendErr)
+		}
+	}
+	if successful != 1 || rejected != 1 {
+		t.Fatalf("successful=%d rejected=%d", successful, rejected)
+	}
+}
+
 func TestTraceabilityMigrationRoundTrip(t *testing.T) {
 	f := setupTraceability(t)
+	phase21Down, err := os.ReadFile("../../../migrations/000028_traceability_worker_workflows.down.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = f.db.Exec(context.Background(), string(phase21Down)); err != nil {
+		t.Fatal(err)
+	}
 	down, err := os.ReadFile("../../../migrations/000027_traceability_foundation.down.sql")
 	if err != nil {
 		t.Fatal(err)
@@ -216,6 +351,13 @@ func TestTraceabilityMigrationRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err = f.db.Exec(context.Background(), string(up)); err != nil {
+		t.Fatal(err)
+	}
+	phase21Up, err := os.ReadFile("../../../migrations/000028_traceability_worker_workflows.up.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = f.db.Exec(context.Background(), string(phase21Up)); err != nil {
 		t.Fatal(err)
 	}
 	var table string

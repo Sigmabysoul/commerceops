@@ -22,6 +22,13 @@ func TestTraceabilityRoutesRegisterWithoutConflicts(t *testing.T) {
 		"/api/v1/trace-box-options",
 		"/api/v1/trace-box-resolutions/TBX_AAAAAAAAAAAAAAAAAAAAAAAAAA",
 		"/api/v1/trace-boxes/00000000-0000-4000-8000-000000000000/contents",
+		"/api/v1/trace-boxes/00000000-0000-4000-8000-000000000000/qc",
+		"/api/v1/trace-boxes/00000000-0000-4000-8000-000000000000/work-requirements/00000000-0000-4000-8000-000000000001/complete",
+		"/api/v1/trace-boxes/00000000-0000-4000-8000-000000000000/handovers",
+		"/api/v1/trace-boxes/00000000-0000-4000-8000-000000000000/handovers/00000000-0000-4000-8000-000000000001/receive",
+		"/api/v1/trace-boxes/00000000-0000-4000-8000-000000000000/packing/complete",
+		"/api/v1/trace-boxes/00000000-0000-4000-8000-000000000000/final-checks",
+		"/api/v1/trace-boxes/00000000-0000-4000-8000-000000000000/shipment-readiness",
 	} {
 		response := httptest.NewRecorder()
 		mux.ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))

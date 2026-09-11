@@ -104,6 +104,69 @@ func (h *HTTPHandler) TransferCustody(w http.ResponseWriter, r *http.Request) {
 	writeResult(w, item, replayed, err)
 }
 
+func (h *HTTPHandler) RecordQC(w http.ResponseWriter, r *http.Request) {
+	var input QCInput
+	if !postJSON(w, r, &input) {
+		return
+	}
+	item, replayed, err := h.service.RecordQC(r.Context(), principal(r), r.PathValue("trace_box_id"), input)
+	writeResult(w, item, replayed, err)
+}
+
+func (h *HTTPHandler) CompleteWork(w http.ResponseWriter, r *http.Request) {
+	var input CompleteWorkInput
+	if !postJSON(w, r, &input) {
+		return
+	}
+	item, replayed, err := h.service.CompleteWork(r.Context(), principal(r), r.PathValue("trace_box_id"), r.PathValue("work_requirement_id"), input)
+	writeResult(w, item, replayed, err)
+}
+
+func (h *HTTPHandler) SendHandover(w http.ResponseWriter, r *http.Request) {
+	var input HandoverInput
+	if !postJSON(w, r, &input) {
+		return
+	}
+	item, replayed, err := h.service.SendHandover(r.Context(), principal(r), r.PathValue("trace_box_id"), input)
+	writeResult(w, item, replayed, err)
+}
+
+func (h *HTTPHandler) ReceiveHandover(w http.ResponseWriter, r *http.Request) {
+	var input ReceiveHandoverInput
+	if !postJSON(w, r, &input) {
+		return
+	}
+	item, replayed, err := h.service.ReceiveHandover(r.Context(), principal(r), r.PathValue("trace_box_id"), r.PathValue("handover_id"), input)
+	writeResult(w, item, replayed, err)
+}
+
+func (h *HTTPHandler) CompletePacking(w http.ResponseWriter, r *http.Request) {
+	var input GateInput
+	if !postJSON(w, r, &input) {
+		return
+	}
+	item, replayed, err := h.service.CompletePacking(r.Context(), principal(r), r.PathValue("trace_box_id"), input)
+	writeResult(w, item, replayed, err)
+}
+
+func (h *HTTPHandler) CompleteFinalCheck(w http.ResponseWriter, r *http.Request) {
+	var input GateInput
+	if !postJSON(w, r, &input) {
+		return
+	}
+	item, replayed, err := h.service.CompleteFinalCheck(r.Context(), principal(r), r.PathValue("trace_box_id"), input)
+	writeResult(w, item, replayed, err)
+}
+
+func (h *HTTPHandler) MarkReady(w http.ResponseWriter, r *http.Request) {
+	var input GateInput
+	if !postJSON(w, r, &input) {
+		return
+	}
+	item, replayed, err := h.service.MarkReady(r.Context(), principal(r), r.PathValue("trace_box_id"), input)
+	writeResult(w, item, replayed, err)
+}
+
 func postJSON(w http.ResponseWriter, r *http.Request, target any) bool {
 	if r.Method != http.MethodPost {
 		methodNotAllowed(w)
@@ -138,6 +201,8 @@ func writeError(w http.ResponseWriter, err error) bool {
 		httpserver.WriteError(w, http.StatusConflict, "CONFLICT", "Traceability request conflicts with an existing idempotency key")
 	case errors.Is(err, ErrQuantity):
 		httpserver.WriteError(w, http.StatusConflict, "INSUFFICIENT_QUANTITY", "Trace Box does not contain that quantity")
+	case errors.Is(err, ErrInvalidTransition):
+		httpserver.WriteError(w, http.StatusConflict, "INVALID_TRANSITION", "Trace Box workflow transition is not allowed")
 	default:
 		httpserver.WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Something went wrong")
 	}

@@ -44,6 +44,7 @@ type TraceBox struct {
 	CreatedAt        time.Time `json:"created_at"`
 	Contents         []Content `json:"contents"`
 	CurrentCustody   *Custody  `json:"current_custody"`
+	Workflow         Workflow  `json:"workflow"`
 	Events           []Event   `json:"events"`
 }
 
@@ -314,6 +315,9 @@ func (s *Service) changeContent(ctx context.Context, principal auth.Principal, b
 	if err = lockBox(ctx, tx, principal.CompanyID, boxID); err != nil {
 		return TraceBox{}, false, err
 	}
+	if err = assertNoPendingHandover(ctx, tx, principal.CompanyID, boxID); err != nil {
+		return TraceBox{}, false, err
+	}
 	var productExists bool
 	if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM products WHERE company_id=$1 AND id=$2)`, principal.CompanyID, input.ProductID).Scan(&productExists); err != nil {
 		return TraceBox{}, false, err
@@ -384,6 +388,9 @@ func (s *Service) TransferCustody(ctx context.Context, principal auth.Principal,
 	if err = lockBox(ctx, tx, principal.CompanyID, boxID); err != nil {
 		return TraceBox{}, false, err
 	}
+	if err = assertNoPendingHandover(ctx, tx, principal.CompanyID, boxID); err != nil {
+		return TraceBox{}, false, err
+	}
 	metadata := map[string]any{}
 	if input.EmployeeID != nil {
 		metadata["employee_id"] = *input.EmployeeID
@@ -451,6 +458,10 @@ func (s *Service) load(ctx context.Context, companyID, id string) (TraceBox, err
 	if err == nil {
 		item.CurrentCustody = &custody
 	} else if !errors.Is(err, pgx.ErrNoRows) {
+		return TraceBox{}, err
+	}
+	item.Workflow, err = s.loadWorkflow(ctx, companyID, id, len(item.Contents) > 0)
+	if err != nil {
 		return TraceBox{}, err
 	}
 	rows, err = s.db.Query(ctx, `SELECT id,event_type,actor_user_id,notes,metadata,idempotency_key,created_at FROM trace_box_events WHERE company_id=$1 AND trace_box_id=$2 ORDER BY created_at,id`, companyID, id)
