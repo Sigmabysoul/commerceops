@@ -1,6 +1,6 @@
 # Phase 24 — Data lifecycle and archival
 
-Status: Active implementation — owner authorized 2026-09-11; completion requires recorded final verification.
+Status: Complete — local PostgreSQL-backed verification passed 2026-09-11.
 Revision: 2026-09-11.
 
 ## Goal and work
@@ -28,5 +28,5 @@ Acceptance also requires rejection tests for corrupt/traversing manifests, exist
 unfinished or unsafe object sources, nonempty restore databases and receipts from a different
 backup. The full project verification gate must run with PostgreSQL enabled.
 
-Every implementation plan must specify schema/API changes, owning modules and regression
-coverage before editing. Stop after this phase; update CURRENT_STATE only with real evidence.
+Completion evidence is recorded in `PHASE-24-VERIFICATION.md`. Stop after this phase; Phase 25
+requires separate owner authorization.

@@ -3,7 +3,7 @@
 ## Active phase
 
 Phase 24 — Data lifecycle and archival.
-Status: ACTIVE — implementation and final verification in progress.
+Status: COMPLETE — LOCAL POSTGRESQL-BACKED VERIFICATION PASSED 2026-09-11.
 Phase 17 completed its local PostgreSQL-backed full verification gate on 2026-09-10. Phase 18
 JioMart work is deferred on the evidence backlog at the owner's direction. Phase 19 evidence
 preparation is verified while its print-payload runtime work remains deferred.
@@ -53,11 +53,11 @@ history. Rates retain denominators and do not assign defect blame. No analytics 
 Phase 24 adds an operator-run database and local-object snapshot with manifests and checksums,
 strict validation, empty-target restoration and a backup-bound restore receipt. Archive planning
 is a dry run gated by that receipt. There is no deletion path, retention duration or production
-schedule in Phase 24.
+schedule in Phase 24. The full-schema drill restored 67 public tables at migration version 30;
+the separate object fixture restored its referenced bytes and preserved protected history.
 
 ## Next gate
 
 Phase 18 JioMart and the runtime portion of Phase 19 remain on ROADMAP.md's deferred evidence
-backlog. Phase 23 is complete; its evidence is in `PHASES/PHASE-23-VERIFICATION.md`. Phase 24
-must pass its disposable restore drill and PostgreSQL-backed full gate before completion.
-Production deployment remains Phase 25 and has not started.
+backlog. Phase 24 is complete; its evidence is in `PHASES/PHASE-24-VERIFICATION.md`.
+Phase 25 requires separate owner authorization. Production deployment has not started.
