@@ -1,6 +1,6 @@
 # Phase 22 — Consignment traceability integration
 
-Status: Implementation active — owner authorized 2026-09-11; completion requires fresh verification.
+Status: Complete — local PostgreSQL-backed verification passed 2026-09-11.
 Revision: 2026-09-11.
 
 ## Goal and work
@@ -18,7 +18,7 @@ Mixed consignments, progress snapshots, packing completeness, reservation/outbou
 Every implementation plan must specify schema/API changes, owning modules and regression
 coverage before editing. Stop after this phase; update CURRENT_STATE only with real evidence.
 
-## Implemented contract pending completion gate
+## Implemented contract
 
 - Consignments explicitly opt into Traceability enforcement; existing records retain Phase 9 behavior.
 - Immutable signed allocations link a shipment-ready Trace Box quantity to a canonical Consignment
@@ -27,3 +27,5 @@ coverage before editing. Stop after this phase; update CURRENT_STATE only with r
   complete line coverage. Inventory reservation and outbound remain unchanged.
 - Department progress derives from line department snapshots, including mixed-department work.
 - Pouch and file reference evidence is append-only, company-scoped and deliberately non-unique.
+
+Completion evidence is in [PHASE-22-VERIFICATION.md](PHASE-22-VERIFICATION.md).

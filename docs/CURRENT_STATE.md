@@ -2,16 +2,16 @@
 
 ## Active phase
 
-Phase 21 — QC, rework, handover and packing.
+Phase 22 — Consignment traceability integration.
 Status: COMPLETE — LOCAL POSTGRESQL-BACKED VERIFICATION PASSED 2026-09-11.
 Phase 17 completed its local PostgreSQL-backed full verification gate on 2026-09-10. Phase 18
 JioMart work is deferred on the evidence backlog at the owner's direction. Phase 19 evidence
 preparation is verified while its print-payload runtime work remains deferred.
-Branch: me/phase-21-qc-rework-handover-packing.
+Branch: me/phase-22-consignment-traceability.
 Checkout: /home/sigma/work/commerceops-next.
 
-The Phase 21 result was verified on 2026-09-11 using a fresh disposable PostgreSQL 17 database
-migrated through `000028`; PostgreSQL-backed `make verify-full` passed. Supplied
+The Phase 22 result was verified on 2026-09-11 using a fresh disposable PostgreSQL 17 database
+migrated through `000029`; PostgreSQL-backed `make verify-full` passed. Supplied
 private files were classified as Flipkart, Snapdeal, Amazon and Myntra evidence. None is an
 authoritative JioMart source, so no JioMart parser, API, schema or UI change has been made.
 That work remains listed in ROADMAP.md's deferred evidence backlog.
@@ -43,11 +43,13 @@ cancellations, and order documents. Company scope, entitlements and permissions 
 Departments and the Traceability worker workflow are implemented. Trace Boxes have random opaque
 identifiers, derived Product quantities, employee/department custody, authenticated resolution,
 full-box QC, typed rework, two-step handover, packing/final/readiness gates and immutable idempotent
-history. QC remains Inventory-neutral. Returns association and Consignment traceability remain
-future work.
+history. QC remains Inventory-neutral. Traceability-required Consignments now use verified,
+immutable Trace Box allocations; line and department progress is derived from current eligible
+allocations, and ready, packed and outbound transitions require full current coverage. Pouch/file
+evidence is append-only and company-scoped. Returns association remains future work.
 
 ## Next gate
 
 Phase 18 JioMart and the runtime portion of Phase 19 remain on ROADMAP.md's deferred evidence
-backlog. Phase 21 is complete; its evidence is in `PHASES/PHASE-21-VERIFICATION.md`. Phase 22
+backlog. Phase 22 is complete; its evidence is in `PHASES/PHASE-22-VERIFICATION.md`. Phase 23
 has not started and requires separate authorization. Production deployment remains Phase 25.
