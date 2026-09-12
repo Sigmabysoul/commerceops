@@ -3,7 +3,7 @@
 CommerceOps is a modular monolith. Ownership describes responsibility boundaries
 inside one application; it does not imply microservices.
 
-## Authentication (`internal/auth`)
+## Authentication (`internal/platform/auth`)
 
 - **Owns:** login identity verification, password hashing, session creation,
   authentication cookies, logout, and authenticated principal construction.
@@ -14,7 +14,7 @@ inside one application; it does not imply microservices.
 - **Forbidden leakage:** handlers or other domains must not construct trusted
   tenant principals from request-provided `company_id` values.
 
-## Authorization (`internal/authorization`)
+## Authorization (`internal/platform/authorization`)
 
 - **Owns:** centralized permission and module-entitlement decisions for an
   authenticated principal.
@@ -25,7 +25,7 @@ inside one application; it does not imply microservices.
 - **Forbidden leakage:** domains and frontend components must not replace
   authorization checks with role-name checks or UI visibility.
 
-## Core and company (`internal/core`)
+## Core and company (`internal/domain/core`)
 
 - **Owns:** companies, employees, company user access, roles, permission
   assignments, module-entitlement administration, and audit-log retrieval.
@@ -36,18 +36,18 @@ inside one application; it does not imply microservices.
 - **Forbidden leakage:** company ownership must not be inferred from frontend
   input, and employee assignments must not be hardcoded in other modules.
 
-## Product Master (`internal/product`)
+## Product Master (`internal/domain/product`)
 
-- **Owns:** canonical tenant products, lifecycle state, marketplace SKU
-  mappings, deterministic exact resolution, and Product Master training.
+- **Owns:** canonical tenant products, lifecycle state, effective-dated department
+  ownership, marketplace SKU mappings, deterministic exact resolution, and Product Master training.
 - **Does not own:** marketplace document parsing, order ingestion, inventory
   balances, or worker assignment.
-- **Allowed dependencies:** authenticated principals, authorization, audit, and
-  normalized marketplace keys.
+- **Allowed dependencies:** canonical Consignment department identities, authenticated
+  principals, authorization, audit, and normalized marketplace keys.
 - **Forbidden leakage:** marketplace SKU strings must never become canonical
   product identity, and marketplace processors must not invent products.
 
-## Marketplace (`internal/marketplace`)
+## Marketplace (`internal/domain/marketplace`)
 
 - **Owns:** marketplace upload orchestration, source/job metadata, normalized
   marketplace orders/items, duplicate detection, processing states, review
@@ -62,7 +62,19 @@ inside one application; it does not imply microservices.
   isolated adapters; marketplace processing must not mutate inventory or
   implement future marketplace adapters outside the active phase.
 
-## Inventory (`internal/inventory`)
+## Marketplace seller accounts (`internal/domain/marketplaceaccount`)
+
+- **Owns:** company-scoped business/trading identities and marketplace seller-account
+  configuration.
+- **Does not own:** workstation or printer-agent identity, parsing, Product Master records,
+  inventory, or hardware routing.
+- **Allowed dependencies:** authenticated principals, centralized authorization, audit, and
+  PostgreSQL.
+- **Forbidden leakage:** account ownership must be supplied explicitly by the approved
+  marketplace workflow; it must never be inferred from a workstation, SKU, filename, or
+  marketplace-only fallback.
+
+## Inventory (`internal/domain/inventory`)
 
 - **Owns:** stock ledger transactions, balances, source-linked reservations,
   ready-batch ecommerce outbound confirmation, adjustments, corrections, and
@@ -74,10 +86,13 @@ inside one application; it does not imply microservices.
 - **Forbidden leakage:** no other module may update stock directly. Every
   mutation must create an inventory transaction through this domain.
 
-## Reporting (`internal/reporting`)
+## Reporting (`internal/domain/reporting`)
 
 - **Owns:** tenant-scoped operational read queries, range/filter validation,
   dashboard response composition, and reporting pagination.
+- **Phase 23:** immutable Traceability QC trends, defect reasons, elapsed cycles and employee
+  activity read models. Independent activity aggregates prevent double counting; permissions and
+  workload denominators constrain what is displayed. See `workflows/reporting.md`.
 - **Does not own:** marketplace/order state, batch or print state, product
   identity, inventory balances, or movement rules.
 - **Allowed dependencies:** authenticated principals, centralized
@@ -86,7 +101,7 @@ inside one application; it does not imply microservices.
   mutate source records, infer stock from PDFs, or disclose inventory without
   inventory entitlement and permission.
 
-## Returns (`internal/returns`)
+## Returns (`internal/domain/returns`)
 
 - **Owns:** normalized-order cancellation records, expected/received physical
   returns, inspection disposition, lifecycle closure, idempotency, and
@@ -100,7 +115,7 @@ inside one application; it does not imply microservices.
   never mutate stock; only an authorized restockable disposition may invoke
   Inventory.
 
-## Consignment (`internal/consignment`)
+## Consignment (`internal/domain/consignment`)
 
 - **Owns:** tenant consignment/SO traceability, configurable departments and
   memberships, canonical product requirements, line progress, workflow state,
@@ -109,12 +124,13 @@ inside one application; it does not imply microservices.
   mechanics, role names, marketplace parsing, or reporting counters.
 - **Allowed dependencies:** Product Master IDs, company employees, centralized
   authorization, audit, PostgreSQL, and Inventory's transaction-scoped
-  reservation/release/outbound boundary.
+  reservation/release/outbound boundary. Phase 22 also permits Traceability's narrow
+  transaction-scoped verified-quantity boundary.
 - **Forbidden leakage:** consignment code must not update stock tables directly,
   infer departments from employee names, treat pouch references as globally
   unique, or complete partially prepared work.
 
-## Printing (`internal/printing`, `internal/printeragent`, `internal/batch`, and `internal/platform/pdfgenerator`)
+## Printing (`internal/domain/printing`, `internal/platform/printeragent`, `internal/domain/batch`, and `internal/platform/documents/pdf/generator`)
 
 - **Owns:** print-ready output, artifact traceability, reusable library PDFs,
   registered printers/agents, canonical physical jobs, delivery leases, and
@@ -129,7 +145,7 @@ inside one application; it does not imply microservices.
   Browser and agent input must never become a command, local path, storage key,
   or unrestricted print option.
 
-## Audit (`internal/audit`)
+## Audit (`internal/platform/audit`)
 
 - **Owns:** consistent persistence of important actor/action/target metadata in
   the caller's transaction.
@@ -152,7 +168,7 @@ inside one application; it does not imply microservices.
   tenant-access decisions; business services must use the interface rather
   than direct filesystem calls.
 
-## PDF extraction (`internal/platform/pdfextractor`)
+## PDF extraction (`internal/platform/documents/pdf/extractor`)
 
 - **Owns:** bounded conversion of an untrusted PDF into numbered page text. The
   current implementation invokes Poppler and offers opt-in Tesseract OCR for
@@ -164,7 +180,7 @@ inside one application; it does not imply microservices.
 - **Forbidden leakage:** extraction tools must not become a second business
   backend or persist authoritative business records.
 
-## PDF generation (`internal/platform/pdfgenerator` and marketplace adapters)
+## PDF generation (`internal/platform/documents/pdf/generator` and marketplace adapters)
 
 - **Owns:** bounded normalized PDF generation contracts, shared Flipkart A4
   rendering, and complete-source-page preservation. Marketplace-specific output
@@ -176,8 +192,22 @@ inside one application; it does not imply microservices.
 
 ## Automation (Phase 14)
 
-`internal/automation` owns approved printing rules, schedule calculation,
+`internal/domain/automation` owns approved printing rules, schedule calculation,
 PostgreSQL scheduler/leases, execution history, REST APIs and derived print
 reporting. Batch and Consignment persist facts through
 `platform/domainevent`; Printing owns queue creation and physical delivery.
 Automation has no Inventory dependency. See `workflows/automation.md`.
+
+## Structural consolidation and future ownership
+
+ADR-0006 changes package locations, not responsibility. app retains composition;
+Automation retains scheduling; Marketplace retains shared orchestration. Authentication,
+authorization, audit, configuration, health and printer-agent mechanics move to platform.
+
+Phase 17 introduced Product ownership around the existing Consignment-era Department
+identity without duplicating it. Phase 20's `internal/domain/traceability` owns Trace Boxes,
+opaque identifiers, Product content relationships, custody and trace history without Inventory
+balances. It reads canonical Product, employee and department references but does not own their
+lifecycles. Phase 21 adds full-box QC, generated rework requirements, two-step handovers and
+packing/final gates to that owner; the module still does not change Inventory. Seller-account
+business state belongs to Phase 16, not to printer-agent/workstation infrastructure.

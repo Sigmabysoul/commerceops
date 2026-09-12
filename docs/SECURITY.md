@@ -33,3 +33,14 @@
 - Print Library PDFs are size/signature/structure validated, hash-addressed in
   metadata, and stored under server-generated tenant keys. Agent downloads are
   verified against both persisted size and SHA-256 before local submission.
+- Production startup accepts only `APP_ENV=production`, exact HTTPS browser origins and the S3
+  object-storage driver. The release preflight also refuses database TLS disablement, placeholder
+  credentials and mutable container tags.
+- Browser requests carrying an untrusted `Origin` are rejected before business handlers. API
+  responses include no-store, no-sniff, frame-denial, referrer, content-security, HSTS and
+  request-correlation headers.
+- Production API and web images run as unprivileged users with read-only root filesystems, all
+  Linux capabilities dropped and only bounded temporary writable mounts. Loopback port bindings
+  require an HTTPS reverse proxy for network access.
+- Release and rollback evidence binds immutable image digests to a clean commit, migration version
+  and verified backup/restore receipt. It never contains secrets or authorizes deployment.

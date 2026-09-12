@@ -1,6 +1,6 @@
 # Meesho adapter — Phase 10
 
-The isolated Meesho adapter lives under `internal/marketplace/meesho`. It
+The isolated Meesho adapter lives under `internal/domain/marketplace/meesho`. It
 receives bounded, real page-numbered text from the shared Poppler extractor and
 returns normalized records containing only explicitly detected:
 

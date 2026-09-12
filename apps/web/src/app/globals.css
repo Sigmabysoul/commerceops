@@ -124,3 +124,16 @@ th { color: #68716a; font-size: .8rem; text-transform: uppercase; }
 .automation-workspace li { display: block; }
 .automation-workspace article, .automation-workspace aside { min-width: 0; }
 .automation-workspace button { min-height: 2.75rem; }
+.traceability-workspace { margin-top: 1rem; overflow-wrap: anywhere; }
+.trace-controls, .trace-layout { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 1rem; }
+.trace-controls .inline { align-items: end; }
+.trace-identifier { padding: .75rem; border-radius: .5rem; background: #eef3ef; font-family: ui-monospace, monospace; font-weight: 750; letter-spacing: .04em; }
+.traceability-workspace time { color: #68716a; font-size: .8rem; }
+.trace-status { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: .65rem; margin: .75rem 0; }
+.trace-status span { display: grid; gap: .2rem; padding: .65rem; border: 1px solid #dce4dd; border-radius: .5rem; }
+.trace-status small { text-transform: capitalize; }
+.trace-qc-line { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: .6rem; border: 1px solid #dce4dd; border-radius: .5rem; }
+.trace-work { margin-top: 1rem; }
+.trace-work li { gap: .7rem; }
+@media (max-width: 760px) { .trace-controls, .trace-layout { grid-template-columns: 1fr; } }
+@media (max-width: 760px) { .trace-qc-line { grid-template-columns: 1fr; } }

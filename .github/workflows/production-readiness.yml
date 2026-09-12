@@ -1,0 +1,74 @@
+name: Production Readiness
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "compose.production.yml"
+      - "deploy/**"
+      - "scripts/lifecycle/**"
+      - "scripts/operations/**"
+      - "services/api/Dockerfile"
+      - "services/api/.dockerignore"
+      - "services/api/go.mod"
+      - "services/api/go.sum"
+      - "services/api/cmd/server/**"
+      - "services/api/internal/app/**"
+      - "services/api/internal/platform/config/**"
+      - "services/api/internal/platform/httpserver/**"
+      - "apps/web/Dockerfile"
+      - "apps/web/.dockerignore"
+      - "apps/web/next.config.ts"
+      - "apps/web/package.json"
+      - "apps/web/pnpm-lock.yaml"
+      - "apps/web/pnpm-workspace.yaml"
+      - ".github/workflows/production-readiness.yml"
+      - "Makefile"
+  pull_request:
+    paths:
+      - "compose.production.yml"
+      - "deploy/**"
+      - "scripts/lifecycle/**"
+      - "scripts/operations/**"
+      - "services/api/Dockerfile"
+      - "services/api/.dockerignore"
+      - "services/api/go.mod"
+      - "services/api/go.sum"
+      - "services/api/cmd/server/**"
+      - "services/api/internal/app/**"
+      - "services/api/internal/platform/config/**"
+      - "services/api/internal/platform/httpserver/**"
+      - "apps/web/Dockerfile"
+      - "apps/web/.dockerignore"
+      - "apps/web/next.config.ts"
+      - "apps/web/package.json"
+      - "apps/web/pnpm-lock.yaml"
+      - "apps/web/pnpm-workspace.yaml"
+      - ".github/workflows/production-readiness.yml"
+      - "Makefile"
+
+permissions:
+  contents: read
+
+jobs:
+  readiness:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test release and rollback guards
+        run: PYTHONDONTWRITEBYTECODE=1 python3 -m unittest scripts/operations/test_readiness.py -v
+      - name: Build production API image
+        run: docker build -t commerceops-api:ci services/api
+      - name: Build production web image
+        run: docker build --build-arg NEXT_PUBLIC_API_BASE_URL=https://api.ci.example.test -t commerceops-web:ci apps/web
+      - name: Validate production Compose structure
+        env:
+          DATABASE_URL: postgresql://ci:ci-password@database.ci.example.test/commerceops?sslmode=require
+          CORS_ALLOWED_ORIGINS: https://ops.ci.example.test
+          OBJECT_STORAGE_BUCKET: commerceops-ci
+          OBJECT_STORAGE_REGION: us-east-1
+          OBJECT_STORAGE_ACCESS_KEY: ci-access-key
+          OBJECT_STORAGE_SECRET_KEY: ci-secret-key-for-compose
+          COMMERCEOPS_API_IMAGE: commerceops-api:ci
+          COMMERCEOPS_WEB_IMAGE: commerceops-web:ci
+        run: docker compose -f compose.production.yml config --quiet

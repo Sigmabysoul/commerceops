@@ -17,9 +17,22 @@ Errors use a stable envelope and never include internal SQL errors, credentials,
 
 Other methods receive HTTP 405 with the standard error envelope. The endpoint is intentionally tenant-independent and exposes no sensitive dependency details.
 
+## Shared production HTTP boundary
+
+Every API response includes an `X-Request-ID`. A caller-supplied ID is retained only when it uses
+1–64 ASCII letters, digits, dots, underscores or hyphens; otherwise the server generates one.
+Structured request logs include that ID, method, path, response status, response bytes and elapsed
+milliseconds without logging bodies, cookies or credentials.
+
+Responses set `Cache-Control: no-store`, content-type sniffing protection, frame denial, a strict
+referrer policy, a restrictive API content security policy and HTTP strict transport security.
+Browser requests with an `Origin` header are processed only when the exact origin is configured;
+an untrusted origin receives HTTP 403 with code `ORIGIN_NOT_ALLOWED` before a business handler is
+called. This HTTP behavior does not change any business endpoint or response schema.
+
 ## Core Platform
 
-Authentication uses an opaque server-side session in an `HttpOnly`, `SameSite=Lax` cookie. Except for login and health, all endpoints require that session. Login's `company_id` selects one of the user's company memberships; the server verifies that membership and establishes the tenant stored on the session. Tenant APIs never accept a company identifier.
+Authentication uses an opaque server-side session in an `HttpOnly`, `SameSite=Lax` cookie. Except for login and health, all endpoints require that session. Login accepts email and password only: the server establishes the company from the user's sole active company access. Zero active accesses are rejected; multiple active accesses return a conflict until an explicit operating-company policy is approved. Tenant APIs never accept a company identifier.
 
 | Method | Path | Required permission | Purpose |
 | --- | --- | --- | --- |
@@ -41,6 +54,21 @@ Authentication uses an opaque server-side session in an `HttpOnly`, `SameSite=La
 
 The `core` entitlement is always enabled. Entitlements represent technical module access only and contain no billing or pricing behavior.
 
+## Marketplace seller accounts
+
+Business/trading identities and marketplace seller accounts belong to the authenticated
+company. They are separate from printer agents and workstations. `marketplace_accounts.view`
+lists them; `marketplace_accounts.manage` creates or updates them. Seller account provenance
+is required for new marketplace uploads and SKU mappings, and remains visible on batches,
+returns, and cancellations. Batch creation accepts orders from one seller account only.
+
+| Method | Path | Permission | Purpose |
+| --- | --- | --- | --- |
+| GET, POST | `/api/v1/business-identities` | `marketplace_accounts.view/manage` | List or create trading identities |
+| PUT | `/api/v1/business-identities/{identity_id}` | `marketplace_accounts.manage` | Update an identity |
+| GET, POST | `/api/v1/marketplace-accounts` | `marketplace_accounts.view/manage` | List or create seller accounts |
+| PUT | `/api/v1/marketplace-accounts/{account_id}` | `marketplace_accounts.manage` | Update a seller account |
+
 ## Product Master
 
 Product Master endpoints use only the authenticated session company. No request accepts `company_id`.
@@ -50,13 +78,61 @@ Product Master endpoints use only the authenticated session company. No request 
 | GET | `/api/v1/marketplaces` | `products.view` | List normalized marketplace reference keys |
 | GET, POST | `/api/v1/products` | `products.view`, `products.manage` | Search/list or create canonical products |
 | GET, PATCH | `/api/v1/products/{product_id}` | `products.view`, `products.manage` | Read or update a product and its lifecycle status |
+| GET | `/api/v1/product-departments` | `products.view` | List active canonical departments available for ownership |
+| GET | `/api/v1/product-department-assignments` | `products.view` | List current and historical Product department assignments |
+| PUT | `/api/v1/products/{product_id}/department` | `products.manage` | Change the department used for future routing |
 | GET, POST | `/api/v1/sku-mappings` | `products.view`, `products.manage` | List or manually train SKU mappings |
 | PATCH | `/api/v1/sku-mappings/{mapping_id}` | `products.manage` | Edit or deactivate a mapping |
 | POST | `/api/v1/sku-mappings/resolve` | `products.view` | Resolve one exact marketplace/SKU identifier |
 
-SKU resolution trims surrounding whitespace and then performs a case-sensitive exact match within the authenticated company and marketplace. It never performs fuzzy, substring, case-insensitive, or fallback matching. A successful lookup returns `status: "resolved"` with its mapping and product; every unknown, inactive, or differently-cased identifier returns `status: "unresolved"` without guessing.
+SKU training and resolution require an active seller account matching the selected marketplace. Resolution trims surrounding whitespace and then performs a case-sensitive exact match within the authenticated company, seller account, and marketplace. It never performs fuzzy, substring, case-insensitive, or fallback matching. A successful lookup returns `status: "resolved"` with its mapping and product; every unknown, inactive, or differently-cased identifier returns `status: "unresolved"` without guessing.
+
+Product department changes are effective-dated and tenant-scoped. New Consignment lines must
+use the Product's active department; existing lines retain their stored department when the
+Product is reassigned.
 
 The OpenAPI source is `docs/openapi.yaml`. It must be updated whenever the public API contract changes.
+
+## Traceability worker workflows
+
+Trace Box identifiers are opaque server-generated values. Resolving an identifier is an
+authenticated company-scoped lookup, not authentication. Current Product quantities and
+custody are derived from immutable events; these endpoints never change Inventory.
+
+| Method | Path | Permission | Purpose |
+| --- | --- | --- | --- |
+| GET, POST | `/api/v1/trace-boxes` | `traceability.view/manage` | List or create Trace Boxes |
+| GET | `/api/v1/trace-box-options` | `traceability.view` | List active Product, employee and department references |
+| GET | `/api/v1/trace-box-resolutions/{opaque_identifier}` | `traceability.view` | Resolve a scanned identifier inside the session company |
+| GET | `/api/v1/trace-boxes/{trace_box_id}` | `traceability.view` | Read derived contents, workflow state, current custody and immutable history |
+| POST | `/api/v1/trace-boxes/{trace_box_id}/contents` | `traceability.manage` | Append an explicit Product quantity addition |
+| POST | `/api/v1/trace-boxes/{trace_box_id}/contents/remove` | `traceability.manage` | Append a bounded Product quantity removal |
+| POST | `/api/v1/trace-boxes/{trace_box_id}/custody` | `traceability.manage` | Transfer custody to one employee or department |
+| POST | `/api/v1/trace-boxes/{trace_box_id}/qc` | `traceability.manage` | Record an atomic full-current-content QC snapshot |
+| POST | `/api/v1/trace-boxes/{trace_box_id}/work-requirements/{work_requirement_id}/complete` | `traceability.manage` | Complete one QC-generated work requirement |
+| POST | `/api/v1/trace-boxes/{trace_box_id}/handovers` | `traceability.manage` | Send a two-step employee/department handover |
+| POST | `/api/v1/trace-boxes/{trace_box_id}/handovers/{handover_id}/receive` | `traceability.manage` | Receive as the target employee or department member |
+| POST | `/api/v1/trace-boxes/{trace_box_id}/packing/complete` | `traceability.manage` | Record packing after a fresh passing QC |
+| POST | `/api/v1/trace-boxes/{trace_box_id}/final-checks` | `traceability.manage` | Record a passed or failed final check |
+| POST | `/api/v1/trace-boxes/{trace_box_id}/shipment-readiness` | `traceability.manage` | Mark ready after a passed final check |
+
+Every mutation requires an idempotency key. Reusing a key with the same request returns the
+existing result; different content returns a conflict. Quantity removals serialize on the box
+and cannot reduce a Product below zero.
+
+QC must cover every current Product and quantity in one request. Rejected quantities create
+typed work requirements; completing them requires another full passing QC before packing.
+A sent handover blocks content and workflow mutations until its target receives it. Receiving
+atomically records employee custody. These transitions append history and audit records only;
+they do not call Inventory, Returns or Consignment.
+
+Traceability-required Consignments add three idempotent commands:
+
+| Method | Path | Permission | Purpose |
+| --- | --- | --- | --- |
+| POST | `/api/v1/consignments/{consignment_id}/trace-box-links` | `consignments.work/manage` | Link bounded verified box quantity to one authorized line |
+| POST | `/api/v1/consignments/{consignment_id}/trace-box-links/{allocation_event_id}/remove` | `consignments.work/manage` | Append a full allocation reversal before progress depends on it |
+| POST | `/api/v1/consignments/{consignment_id}/trace-evidence` | `consignments.manage` | Record a non-unique pouch or file reference, optionally tied to a box |
 
 ## Printing platform
 
@@ -205,6 +281,21 @@ balances stay company-wide because they have no marketplace ownership.
 Return restock and its linked compensating corrections follow the return's
 normalized source-order marketplace. They appear separately as
 `return_restock` movement so displayed categories reconcile with net movement.
+
+## Operations and workforce analytics
+
+`GET /api/v1/reports/operations-analytics` requires `reports.view`, `traceability.view`, and
+the `traceability` entitlement. It returns QC workload/rates, daily trends, defect reason shares,
+elapsed workflow times, and paginated employee inspection/work/final-check activity. It accepts
+required `[from,to)` RFC3339 instants (up to 366 days), optional IANA `timezone` (default `UTC`),
+`limit` (1–100, default 20), and `offset` (0–1,000,000, default 0). Pagination affects workforce
+rows only. No marketplace or client-selected company filter applies.
+
+Responses include range, timezone, snapshot time, `traceability-v1` metric version, workload
+denominators and cycle sample counts. Missing rate denominators and cycle samples return `null`.
+One read-only repeatable-read snapshot backs each response; authenticated report responses use
+`Cache-Control: no-store`. See [the reporting workflow](workflows/reporting.md) for formulas,
+completion cohorts and attribution limits. OpenAPI defines the complete response structure.
 
 ## Inventory ledger
 

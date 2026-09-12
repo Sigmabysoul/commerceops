@@ -2,8 +2,10 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8
 
 export type Product = { id: string; internal_code: string; name: string; brand: string | null; variant: string | null; size: string | null; pack_type: string | null; unit_count: number | null; status: "active" | "inactive" };
 export type Marketplace = { key: string; display_name: string };
-export type SKUMapping = { id: string; marketplace_key: string; product_id: string; sku: string; quantity_multiplier: number; interpretation_metadata: Record<string, unknown>; status: "active" | "inactive" };
+export type SKUMapping = { id: string; marketplace_account_id: string; marketplace_key: string; product_id: string; sku: string; quantity_multiplier: number; interpretation_metadata: Record<string, unknown>; status: "active" | "inactive" };
 export type Resolution = { status: "resolved" | "unresolved"; product?: Product; mapping?: SKUMapping };
+export type ProductDepartmentAssignment = { product_id: string; department_id: string; department_name: string; assigned_by: string; effective_from: string; effective_to: string | null };
+export type ProductDepartment = { id: string; name: string };
 type ProductInput = Omit<Product, "id">;
 type MappingInput = Omit<SKUMapping, "id">;
 
@@ -17,9 +19,12 @@ export const productAPI = {
   products: (query = "") => request<{ products: Product[] }>(`/products?q=${encodeURIComponent(query)}`),
   createProduct: (input: ProductInput) => request<{ product: Product }>("/products", { method: "POST", body: JSON.stringify(input) }),
   updateProduct: (id: string, input: ProductInput) => request<{ product: Product }>(`/products/${id}`, { method: "PATCH", body: JSON.stringify(input) }),
+  departmentAssignments: () => request<{ product_department_assignments: ProductDepartmentAssignment[] }>("/product-department-assignments"),
+  departments: () => request<{ departments: ProductDepartment[] }>("/product-departments"),
+  assignDepartment: (productID: string, departmentID: string) => request<{ assigned: boolean }>(`/products/${productID}/department`, { method: "PUT", body: JSON.stringify({ department_id: departmentID }) }),
   marketplaces: () => request<{ marketplaces: Marketplace[] }>("/marketplaces"),
   mappings: () => request<{ sku_mappings: SKUMapping[] }>("/sku-mappings"),
   createMapping: (input: MappingInput) => request<{ sku_mapping: SKUMapping }>("/sku-mappings", { method: "POST", body: JSON.stringify(input) }),
   updateMapping: (id: string, input: MappingInput) => request<{ sku_mapping: SKUMapping }>(`/sku-mappings/${id}`, { method: "PATCH", body: JSON.stringify(input) }),
-  resolve: (marketplaceKey: string, sku: string) => request<Resolution>("/sku-mappings/resolve", { method: "POST", body: JSON.stringify({ marketplace_key: marketplaceKey, sku }) }),
+  resolve: (marketplaceAccountID: string, marketplaceKey: string, sku: string) => request<Resolution>("/sku-mappings/resolve", { method: "POST", body: JSON.stringify({ marketplace_account_id: marketplaceAccountID, marketplace_key: marketplaceKey, sku }) }),
 };

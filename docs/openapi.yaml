@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: CommerceOps API
-  version: 0.14.0
+  version: 0.20.0
 paths:
   /api/v1/health:
     get:
@@ -23,7 +23,7 @@ paths:
   /api/v1/auth/login:
     post:
       operationId: login
-      summary: Start a verified company-scoped session
+      summary: Start a server-selected operating-company session
       requestBody:
         required: true
         content:
@@ -31,15 +31,15 @@ paths:
             schema:
               type: object
               additionalProperties: false
-              required: [email, password, company_id]
+              required: [email, password]
               properties:
                 email: {type: string, format: email}
                 password: {type: string, format: password}
-                company_id: {type: string, format: uuid}
       responses:
         "200": {description: Authenticated; the session cookie is set}
         "401": {$ref: "#/components/responses/Error"}
         "403": {$ref: "#/components/responses/Error"}
+        "409": {$ref: "#/components/responses/Error"}
   /api/v1/auth/logout:
     post:
       operationId: logout
@@ -47,6 +47,58 @@ paths:
       responses:
         "204": {description: Session revoked}
         "401": {$ref: "#/components/responses/Error"}
+  /api/v1/business-identities:
+    get:
+      operationId: listBusinessIdentities
+      security: [{sessionCookie: []}]
+      responses:
+        "200": {description: Company-scoped business identities}
+        "403": {$ref: "#/components/responses/Error"}
+    post:
+      operationId: createBusinessIdentity
+      security: [{sessionCookie: []}]
+      responses:
+        "200": {description: Business identity created}
+        "400": {$ref: "#/components/responses/Error"}
+        "403": {$ref: "#/components/responses/Error"}
+        "409": {$ref: "#/components/responses/Error"}
+  /api/v1/business-identities/{identity_id}:
+    put:
+      operationId: updateBusinessIdentity
+      security: [{sessionCookie: []}]
+      parameters: [{name: identity_id, in: path, required: true, schema: {type: string, format: uuid}}]
+      responses:
+        "200": {description: Business identity updated}
+        "400": {$ref: "#/components/responses/Error"}
+        "403": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+        "409": {$ref: "#/components/responses/Error"}
+  /api/v1/marketplace-accounts:
+    get:
+      operationId: listMarketplaceAccounts
+      security: [{sessionCookie: []}]
+      responses:
+        "200": {description: Company-scoped marketplace seller accounts}
+        "403": {$ref: "#/components/responses/Error"}
+    post:
+      operationId: createMarketplaceAccount
+      security: [{sessionCookie: []}]
+      responses:
+        "200": {description: Marketplace seller account created}
+        "400": {$ref: "#/components/responses/Error"}
+        "403": {$ref: "#/components/responses/Error"}
+        "409": {$ref: "#/components/responses/Error"}
+  /api/v1/marketplace-accounts/{account_id}:
+    put:
+      operationId: updateMarketplaceAccount
+      security: [{sessionCookie: []}]
+      parameters: [{name: account_id, in: path, required: true, schema: {type: string, format: uuid}}]
+      responses:
+        "200": {description: Marketplace seller account updated}
+        "400": {$ref: "#/components/responses/Error"}
+        "403": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+        "409": {$ref: "#/components/responses/Error"}
   /api/v1/auth/session:
     get:
       operationId: getSession
@@ -221,6 +273,41 @@ paths:
         "200": {description: Updated product}
         "404": {$ref: "#/components/responses/Error"}
         "409": {$ref: "#/components/responses/Error"}
+  /api/v1/products/{product_id}/department:
+    parameters:
+      - {$ref: "#/components/parameters/ProductID"}
+    put:
+      operationId: assignProductDepartment
+      summary: Change the active department used for future Product routing
+      security: [{sessionCookie: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/DepartmentAssignmentInput"}
+      responses:
+        "200": {description: Department assignment recorded}
+        "400": {$ref: "#/components/responses/Error"}
+        "403": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+  /api/v1/product-departments:
+    get:
+      operationId: listProductDepartments
+      summary: List active canonical departments available for Product ownership
+      security: [{sessionCookie: []}]
+      responses:
+        "200": {description: Tenant-scoped active departments}
+        "403": {$ref: "#/components/responses/Error"}
+  /api/v1/product-department-assignments:
+    get:
+      operationId: listProductDepartmentAssignments
+      summary: List effective-dated Product department history
+      security: [{sessionCookie: []}]
+      parameters:
+        - {name: product_id, in: query, schema: {type: string, format: uuid}}
+      responses:
+        "200": {description: Tenant-scoped assignment history}
+        "403": {$ref: "#/components/responses/Error"}
   /api/v1/sku-mappings:
     get:
       operationId: listSkuMappings
@@ -937,6 +1024,38 @@ paths:
         "201": {description: Pre-outbound consignment cancelled and reservations released}
         "200": {description: Exact replay}
         "409": {$ref: "#/components/responses/Error"}
+  /api/v1/consignments/{consignment_id}/trace-box-links:
+    parameters: [{name: consignment_id, in: path, required: true, schema: {type: string, format: uuid}}]
+    post:
+      operationId: linkConsignmentTraceBox
+      security: [{sessionCookie: []}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/ConsignmentTraceLink"}}}}
+      responses:
+        "201": {description: Verified Trace Box quantity linked to a Consignment line}
+        "200": {description: Exact replay}
+        "409": {$ref: "#/components/responses/Error"}
+  /api/v1/consignments/{consignment_id}/trace-box-links/{allocation_event_id}/remove:
+    parameters:
+      - {name: consignment_id, in: path, required: true, schema: {type: string, format: uuid}}
+      - {name: allocation_event_id, in: path, required: true, schema: {type: string, format: uuid}}
+    post:
+      operationId: unlinkConsignmentTraceBox
+      security: [{sessionCookie: []}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/ConsignmentAction"}}}}
+      responses:
+        "201": {description: Immutable full allocation reversal recorded}
+        "200": {description: Exact replay}
+        "409": {$ref: "#/components/responses/Error"}
+  /api/v1/consignments/{consignment_id}/trace-evidence:
+    parameters: [{name: consignment_id, in: path, required: true, schema: {type: string, format: uuid}}]
+    post:
+      operationId: recordConsignmentTraceEvidence
+      security: [{sessionCookie: []}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/ConsignmentTraceEvidence"}}}}
+      responses:
+        "201": {description: Non-unique pouch or file reference evidence recorded}
+        "200": {description: Exact replay}
+        "409": {$ref: "#/components/responses/Error"}
   /api/v1/reports/dashboard:
     get:
       operationId: getOperationalDashboard
@@ -953,6 +1072,30 @@ paths:
         "200": {description: Operational summary, marketplace breakdown, and permission-gated inventory and return/cancellation data}
         "400": {$ref: "#/components/responses/Error"}
         "403": {$ref: "#/components/responses/Error"}
+  /api/v1/reports/operations-analytics:
+    get:
+      operationId: getOperationsAnalytics
+      summary: Read QC trends, elapsed workflow times and measured workforce activity
+      description: Requires reports.view, traceability.view and the traceability entitlement. One read-only database snapshot. QC rates describe detected rejects per inspected unit, not fault attribution. Repeated inspections count again.
+      security: [{sessionCookie: []}]
+      parameters:
+        - {name: from, in: query, required: true, schema: {type: string, format: date-time}, description: Inclusive start; positive range at most 366 days}
+        - {name: to, in: query, required: true, schema: {type: string, format: date-time}, description: Exclusive end}
+        - {name: timezone, in: query, schema: {type: string, maxLength: 100, default: UTC}, description: IANA timezone for daily inspection buckets}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 20}, description: Workforce page size; summaries cover the full range}
+        - {name: offset, in: query, schema: {type: integer, minimum: 0, maximum: 1000000, default: 0}, description: Workforce ordered by immutable employee ID}
+      responses:
+        "200":
+          description: Company-scoped report; missing denominators or completed samples produce null rates or durations
+          headers:
+            Cache-Control: {schema: {type: string, const: no-store}}
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/OperationsAnalytics"}
+        "400": {$ref: "#/components/responses/Error"}
+        "401": {$ref: "#/components/responses/Error"}
+        "403": {$ref: "#/components/responses/Error"}
+        "500": {$ref: "#/components/responses/Error"}
   /api/v1/printer-agents:
     get:
       operationId: listPrinterAgents
@@ -1664,6 +1807,167 @@ paths:
           $ref: '#/components/responses/Error'
         '500':
           $ref: '#/components/responses/Error'
+  /api/v1/trace-boxes:
+    get:
+      operationId: listTraceBoxes
+      security: [{sessionCookie: []}]
+      responses:
+        "200": {description: Recent company-scoped Trace Boxes}
+        "403": {$ref: "#/components/responses/Error"}
+    post:
+      operationId: createTraceBox
+      security: [{sessionCookie: []}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/CreateTraceBox"}}}}
+      responses:
+        "201": {description: Trace Box and immutable creation event created}
+        "400": {$ref: "#/components/responses/Error"}
+        "403": {$ref: "#/components/responses/Error"}
+        "409": {$ref: "#/components/responses/Error"}
+  /api/v1/trace-box-options:
+    get:
+      operationId: getTraceBoxOptions
+      security: [{sessionCookie: []}]
+      responses:
+        "200": {description: Active company-scoped Product, employee and department references}
+        "403": {$ref: "#/components/responses/Error"}
+  /api/v1/trace-box-resolutions/{opaque_identifier}:
+    get:
+      operationId: resolveTraceBoxIdentifier
+      security: [{sessionCookie: []}]
+      parameters:
+        - {name: opaque_identifier, in: path, required: true, schema: {type: string, pattern: "^TBX_[A-Z2-7]{26}$"}}
+      responses:
+        "200": {description: Resolved company-scoped Trace Box, contents, custody and history}
+        "400": {$ref: "#/components/responses/Error"}
+        "403": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+  /api/v1/trace-boxes/{trace_box_id}:
+    get:
+      operationId: getTraceBox
+      security: [{sessionCookie: []}]
+      parameters: [{$ref: "#/components/parameters/TraceBoxID"}]
+      responses:
+        "200": {description: Company-scoped Trace Box, derived contents, custody and history}
+        "403": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+  /api/v1/trace-boxes/{trace_box_id}/contents:
+    post:
+      operationId: addTraceBoxContent
+      security: [{sessionCookie: []}]
+      parameters: [{$ref: "#/components/parameters/TraceBoxID"}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/TraceBoxContentCommand"}}}}
+      responses:
+        "201": {description: Immutable content addition recorded}
+        "400": {$ref: "#/components/responses/Error"}
+        "403": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+        "409": {$ref: "#/components/responses/Error"}
+  /api/v1/trace-boxes/{trace_box_id}/contents/remove:
+    post:
+      operationId: removeTraceBoxContent
+      security: [{sessionCookie: []}]
+      parameters: [{$ref: "#/components/parameters/TraceBoxID"}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/TraceBoxContentCommand"}}}}
+      responses:
+        "201": {description: Bounded immutable content removal recorded}
+        "400": {$ref: "#/components/responses/Error"}
+        "403": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+        "409": {$ref: "#/components/responses/Error"}
+  /api/v1/trace-boxes/{trace_box_id}/custody:
+    post:
+      operationId: transferTraceBoxCustody
+      security: [{sessionCookie: []}]
+      parameters: [{$ref: "#/components/parameters/TraceBoxID"}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/TraceBoxCustodyCommand"}}}}
+      responses:
+        "201": {description: Immutable custody transfer recorded}
+        "400": {$ref: "#/components/responses/Error"}
+        "403": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+        "409": {$ref: "#/components/responses/Error"}
+  /api/v1/trace-boxes/{trace_box_id}/qc:
+    post:
+      operationId: completeTraceBoxQC
+      security: [{sessionCookie: []}]
+      parameters: [{$ref: "#/components/parameters/TraceBoxID"}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/TraceBoxQCCommand"}}}}
+      responses:
+        "201": {description: Full current-content QC snapshot and any required work recorded}
+        "400": {$ref: "#/components/responses/Error"}
+        "403": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+        "409": {$ref: "#/components/responses/Error"}
+  /api/v1/trace-boxes/{trace_box_id}/work-requirements/{work_requirement_id}/complete:
+    post:
+      operationId: completeTraceBoxWork
+      security: [{sessionCookie: []}]
+      parameters: [{$ref: "#/components/parameters/TraceBoxID"}, {$ref: "#/components/parameters/WorkRequirementID"}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/TraceBoxNoteCommand"}}}}
+      responses:
+        "201": {description: Required work completion recorded; fresh QC remains required}
+        "400": {$ref: "#/components/responses/Error"}
+        "403": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+        "409": {$ref: "#/components/responses/Error"}
+  /api/v1/trace-boxes/{trace_box_id}/handovers:
+    post:
+      operationId: sendTraceBoxHandover
+      security: [{sessionCookie: []}]
+      parameters: [{$ref: "#/components/parameters/TraceBoxID"}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/TraceBoxHandoverCommand"}}}}
+      responses:
+        "201": {description: Box placed in transit to one employee or department}
+        "400": {$ref: "#/components/responses/Error"}
+        "403": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+        "409": {$ref: "#/components/responses/Error"}
+  /api/v1/trace-boxes/{trace_box_id}/handovers/{handover_id}/receive:
+    post:
+      operationId: receiveTraceBoxHandover
+      security: [{sessionCookie: []}]
+      parameters: [{$ref: "#/components/parameters/TraceBoxID"}, {$ref: "#/components/parameters/HandoverID"}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/TraceBoxNoteCommand"}}}}
+      responses:
+        "201": {description: Target worker receipt and employee custody recorded atomically}
+        "400": {$ref: "#/components/responses/Error"}
+        "403": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+        "409": {$ref: "#/components/responses/Error"}
+  /api/v1/trace-boxes/{trace_box_id}/packing/complete:
+    post:
+      operationId: completeTraceBoxPacking
+      security: [{sessionCookie: []}]
+      parameters: [{$ref: "#/components/parameters/TraceBoxID"}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/TraceBoxNoteCommand"}}}}
+      responses:
+        "201": {description: Packing recorded after clear work and passing fresh QC}
+        "400": {$ref: "#/components/responses/Error"}
+        "403": {$ref: "#/components/responses/Error"}
+        "409": {$ref: "#/components/responses/Error"}
+  /api/v1/trace-boxes/{trace_box_id}/final-checks:
+    post:
+      operationId: completeTraceBoxFinalCheck
+      security: [{sessionCookie: []}]
+      parameters: [{$ref: "#/components/parameters/TraceBoxID"}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/TraceBoxFinalCheckCommand"}}}}
+      responses:
+        "201": {description: Passed or failed final packing check recorded}
+        "400": {$ref: "#/components/responses/Error"}
+        "403": {$ref: "#/components/responses/Error"}
+        "409": {$ref: "#/components/responses/Error"}
+  /api/v1/trace-boxes/{trace_box_id}/shipment-readiness:
+    post:
+      operationId: markTraceBoxReadyForShipment
+      security: [{sessionCookie: []}]
+      parameters: [{$ref: "#/components/parameters/TraceBoxID"}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/TraceBoxNoteCommand"}}}}
+      responses:
+        "201": {description: Shipment readiness recorded after a passing final check}
+        "400": {$ref: "#/components/responses/Error"}
+        "403": {$ref: "#/components/responses/Error"}
+        "409": {$ref: "#/components/responses/Error"}
+
 components:
   securitySchemes:
     sessionCookie:
@@ -1683,6 +1987,9 @@ components:
     BatchID: {name: batch_id, in: path, required: true, schema: {type: string, format: uuid}}
     PrintJobID: {name: print_job_id, in: path, required: true, schema: {type: string, format: uuid}}
     ArtifactID: {name: artifact_id, in: path, required: true, schema: {type: string, format: uuid}}
+    TraceBoxID: {name: trace_box_id, in: path, required: true, schema: {type: string, format: uuid}}
+    WorkRequirementID: {name: work_requirement_id, in: path, required: true, schema: {type: string, format: uuid}}
+    HandoverID: {name: handover_id, in: path, required: true, schema: {type: string, format: uuid}}
   responses:
     Error:
       description: Request failed
@@ -1690,6 +1997,178 @@ components:
         application/json:
           schema: {$ref: "#/components/schemas/ErrorEnvelope"}
   schemas:
+    InspectionQuality:
+      type: object
+      required: [checks, checked_quantity, passed_quantity, rejected_quantity, rejection_rate_percent]
+      properties:
+        checks: {type: integer, format: int64, minimum: 0, description: Distinct full-box QC checks}
+        checked_quantity: {type: integer, format: int64, minimum: 0}
+        passed_quantity: {type: integer, format: int64, minimum: 0}
+        rejected_quantity: {type: integer, format: int64, minimum: 0}
+        rejection_rate_percent: {type: [number, "null"], minimum: 0, maximum: 100, description: Rejected units divided by checked units times 100; null with no inspections}
+    DailyInspectionQuality:
+      allOf:
+        - {$ref: "#/components/schemas/InspectionQuality"}
+        - type: object
+          required: [date]
+          properties:
+            date: {type: string, format: date, description: Selected local date; dates without inspections are omitted}
+    DefectReasonShare:
+      type: object
+      required: [reason, rejected_quantity, share_percent]
+      properties:
+        reason: {type: string, enum: [damaged, wrong_sticker, dirty, missing_component, packaging_damaged, wrong_product, manufacturing_defect, other]}
+        rejected_quantity: {type: integer, format: int64, minimum: 1}
+        share_percent: {type: number, minimum: 0, maximum: 100, description: Share of all rejected inspection units in the range}
+    OperationalCycleTime:
+      type: object
+      required: [kind, samples, average_hours, median_hours, p95_hours]
+      properties:
+        kind: {type: string, enum: [rework, handover, first_shipment_readiness]}
+        samples: {type: integer, format: int64, minimum: 0}
+        average_hours: {type: [number, "null"], description: Elapsed hours including waiting; completed cycles selected by end instant}
+        median_hours: {type: [number, "null"]}
+        p95_hours: {type: [number, "null"]}
+    WorkforceInspectionQuality:
+      allOf:
+        - {$ref: "#/components/schemas/InspectionQuality"}
+        - type: object
+          required: [employee_id, employee_name, completed_work_items, completed_work_quantity, final_checks, failed_final_checks, final_failure_rate_percent]
+          properties:
+            employee_id: {type: string, format: uuid}
+            employee_name: {type: string, description: Current name of recorded employee, including inactive employees}
+            completed_work_items: {type: integer, format: int64, minimum: 0}
+            completed_work_quantity: {type: integer, format: int64, minimum: 0, description: Completed requirement units; completion does not prove a subsequent QC pass}
+            final_checks: {type: integer, format: int64, minimum: 0}
+            failed_final_checks: {type: integer, format: int64, minimum: 0}
+            final_failure_rate_percent: {type: [number, "null"], minimum: 0, maximum: 100}
+    OperationsAnalytics:
+      type: object
+      required: [from, to, timezone, generated_at, metric_version, quality, daily, defects, cycles, workforce, workforce_total, limit, offset]
+      properties:
+        from: {type: string, format: date-time}
+        to: {type: string, format: date-time}
+        timezone: {type: string}
+        generated_at: {type: string, format: date-time}
+        metric_version: {type: string, const: traceability-v1}
+        quality: {$ref: "#/components/schemas/InspectionQuality"}
+        daily: {type: array, items: {$ref: "#/components/schemas/DailyInspectionQuality"}}
+        defects: {type: array, items: {$ref: "#/components/schemas/DefectReasonShare"}}
+        cycles: {type: array, items: {$ref: "#/components/schemas/OperationalCycleTime"}}
+        workforce: {type: array, items: {$ref: "#/components/schemas/WorkforceInspectionQuality"}}
+        workforce_total: {type: integer, format: int64, minimum: 0}
+        limit: {type: integer, minimum: 1, maximum: 100}
+        offset: {type: integer, minimum: 0, maximum: 1000000}
+    CreateTraceBox:
+      type: object
+      additionalProperties: false
+      required: [idempotency_key]
+      properties:
+        label: {type: [string, "null"], maxLength: 200}
+        idempotency_key: {type: string, minLength: 1, maxLength: 128}
+    TraceBoxContentCommand:
+      type: object
+      additionalProperties: false
+      required: [product_id, quantity, idempotency_key]
+      properties:
+        product_id: {type: string, format: uuid}
+        quantity: {type: integer, format: int64, minimum: 1}
+        notes: {type: [string, "null"], maxLength: 2000}
+        idempotency_key: {type: string, minLength: 1, maxLength: 128}
+    TraceBoxCustodyCommand:
+      type: object
+      additionalProperties: false
+      required: [idempotency_key]
+      description: Exactly one of employee_id or department_id is required.
+      properties:
+        employee_id: {type: [string, "null"], format: uuid}
+        department_id: {type: [string, "null"], format: uuid}
+        notes: {type: [string, "null"], maxLength: 2000}
+        idempotency_key: {type: string, minLength: 1, maxLength: 128}
+    TraceBoxNoteCommand:
+      type: object
+      additionalProperties: false
+      required: [idempotency_key]
+      properties:
+        notes: {type: [string, "null"], maxLength: 2000}
+        idempotency_key: {type: string, minLength: 1, maxLength: 128}
+    TraceBoxHandoverCommand:
+      allOf:
+        - {$ref: "#/components/schemas/TraceBoxCustodyCommand"}
+      description: Exactly one target employee_id or department_id is required. Receipt is a separate action.
+    TraceBoxQCCommand:
+      type: object
+      additionalProperties: false
+      required: [lines, idempotency_key]
+      properties:
+        lines:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            additionalProperties: false
+            required: [product_id, checked_quantity, passed_quantity, rejected_quantity]
+            properties:
+              product_id: {type: string, format: uuid}
+              checked_quantity: {type: integer, format: int64, minimum: 1}
+              passed_quantity: {type: integer, format: int64, minimum: 0}
+              rejected_quantity: {type: integer, format: int64, minimum: 0}
+              rejection_reason: {type: [string, "null"], enum: [damaged, wrong_sticker, dirty, missing_component, packaging_damaged, wrong_product, manufacturing_defect, other, null]}
+              required_work: {type: [string, "null"], enum: [sticker_replacement, cleaning, repacking, component_check, repair, other, null]}
+        notes: {type: [string, "null"], maxLength: 2000}
+        idempotency_key: {type: string, minLength: 1, maxLength: 128}
+    TraceBoxFinalCheckCommand:
+      type: object
+      additionalProperties: false
+      required: [passed, idempotency_key]
+      properties:
+        passed: {type: boolean}
+        notes: {type: [string, "null"], maxLength: 2000, description: Required when passed is false.}
+        idempotency_key: {type: string, minLength: 1, maxLength: 128}
+    TraceBox:
+      type: object
+      required: [id, opaque_identifier, created_by, created_at, contents, workflow, events]
+      properties:
+        id: {type: string, format: uuid}
+        opaque_identifier: {type: string, pattern: "^TBX_[A-Z2-7]{26}$"}
+        label: {type: [string, "null"]}
+        created_by: {type: string, format: uuid}
+        created_at: {type: string, format: date-time}
+        contents:
+          type: array
+          items:
+            type: object
+            required: [product_id, internal_code, product_name, quantity]
+            properties:
+              product_id: {type: string, format: uuid}
+              internal_code: {type: string}
+              product_name: {type: string}
+              quantity: {type: integer, format: int64, minimum: 1}
+        current_custody: {type: [object, "null"]}
+        workflow:
+          type: object
+          required: [status, work_requirements]
+          properties:
+            status: {type: string, enum: [empty, awaiting_qc, qc_passed, rework_required, awaiting_recheck, in_transit, handover_received, packed, final_check_passed, final_check_failed, ready_for_shipment]}
+            latest_qc: {type: [object, "null"]}
+            work_requirements: {type: array, items: {type: object}}
+            pending_handover: {type: [object, "null"]}
+            packed_at: {type: [string, "null"], format: date-time}
+            final_check: {type: [object, "null"]}
+            ready_at: {type: [string, "null"], format: date-time}
+        events:
+          type: array
+          items:
+            type: object
+            required: [id, event_type, actor_user_id, metadata, idempotency_key, created_at]
+            properties:
+              id: {type: string, format: uuid}
+              event_type: {type: string, enum: [box_created, content_added, content_removed, custody_transferred, qc_completed, work_completed, handover_sent, handover_received, packing_completed, final_check_completed, ready_for_shipment]}
+              actor_user_id: {type: string, format: uuid}
+              notes: {type: [string, "null"]}
+              metadata: {type: object, additionalProperties: true}
+              idempotency_key: {type: string}
+              created_at: {type: string, format: date-time}
     QuickPrint:
       type: object
       additionalProperties: false
@@ -1739,6 +2218,12 @@ components:
         pack_type: {type: [string, "null"]}
         unit_count: {type: [integer, "null"], minimum: 1}
         status: {type: string, enum: [active, inactive], default: active}
+    DepartmentAssignmentInput:
+      type: object
+      additionalProperties: false
+      required: [department_id]
+      properties:
+        department_id: {type: string, format: uuid}
     SkuMappingInput:
       type: object
       additionalProperties: false
@@ -1963,6 +2448,7 @@ components:
         source_type: {type: string, enum: [manual, import]}
         source_reference: {type: [string, "null"], minLength: 1, maxLength: 500}
         notes: {type: [string, "null"], minLength: 1, maxLength: 2000}
+        traceability_required: {type: boolean, default: false}
         lines:
           type: array
           minItems: 1
@@ -2002,6 +2488,28 @@ components:
         packed_quantity: {type: integer, format: int64, minimum: 0}
         expected_version: {type: integer, minimum: 1}
         notes: {type: [string, "null"], minLength: 1, maxLength: 2000}
+        idempotency_key: {type: string, minLength: 1, maxLength: 128}
+    ConsignmentTraceLink:
+      type: object
+      additionalProperties: false
+      required: [line_id, trace_box_identifier, quantity, expected_version, idempotency_key]
+      properties:
+        line_id: {type: string, format: uuid}
+        trace_box_identifier: {type: string, pattern: "^TBX_[A-Z2-7]{26}$"}
+        quantity: {type: integer, format: int64, minimum: 1}
+        expected_version: {type: integer, minimum: 1}
+        notes: {type: [string, "null"], maxLength: 2000}
+        idempotency_key: {type: string, minLength: 1, maxLength: 128}
+    ConsignmentTraceEvidence:
+      type: object
+      additionalProperties: false
+      required: [evidence_type, reference_value, expected_version, idempotency_key]
+      properties:
+        evidence_type: {type: string, enum: [pouch_reference, file_reference]}
+        reference_value: {type: string, minLength: 1, maxLength: 500}
+        trace_box_identifier: {type: [string, "null"], pattern: "^TBX_[A-Z2-7]{26}$"}
+        expected_version: {type: integer, minimum: 1}
+        notes: {type: [string, "null"], maxLength: 2000}
         idempotency_key: {type: string, minLength: 1, maxLength: 128}
     ErrorEnvelope:
       type: object

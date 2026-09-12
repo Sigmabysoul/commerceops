@@ -51,4 +51,4 @@ jobs:
       - run: go vet ./...
       - name: Run unit and PostgreSQL integration tests
         run: go test ./... -count=1
-      - run: go build ./cmd/server
+      - run: go build ./cmd/server ./cmd/printer-agent ./cmd/local-launcher

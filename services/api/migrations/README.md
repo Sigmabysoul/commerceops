@@ -70,3 +70,13 @@ permissions, and the `automation` physical job origin. Apply before running the
 Phase 14 server. No inventory schema or independent reporting counters change.
 Rollback refuses to remove the origin of existing automation print jobs; test
 migration down/up only in a disposable database without such jobs.
+
+`000023` through `000025` add marketplace seller accounts and preserve their provenance through
+marketplace processing, Product mappings, batches, returns, cancellations and order documents.
+
+`000026_product_department_ownership` adds effective-dated canonical Product department
+ownership while preserving existing Consignment line snapshots.
+
+`000027_traceability_foundation` introduces company-scoped Trace Boxes, opaque identifiers,
+immutable content/custody events and traceability permissions. It creates no Inventory balance
+or movement table.

@@ -1,8 +1,10 @@
 SHELL := /bin/sh
 
-.PHONY: dev dev-infra dev-backend dev-frontend migrate test verify verify-full down \
+.PHONY: dev dev-infra dev-backend dev-frontend local-launcher migrate test verify verify-full down \
 	backend-format backend-vet backend-test backend-build \
-	frontend-typecheck frontend-lint frontend-build repository-check
+	frontend-typecheck frontend-lint frontend-build repository-check lifecycle-test \
+	lifecycle-backup lifecycle-validate lifecycle-restore lifecycle-archive-plan \
+	operations-test production-images production-config-check production-smoke
 
 dev: dev-infra
 
@@ -18,6 +20,9 @@ dev-backend:
 dev-frontend:
 	cd apps/web && pnpm dev
 
+local-launcher:
+	cd services/api && go build -o ../../CommerceOps ./cmd/local-launcher
+
 migrate:
 	@test -f .env || { echo ".env is required; copy .env.example and set a local password"; exit 1; }
 	@set -a; . ./.env; set +a; \
@@ -28,7 +33,7 @@ migrate:
 
 test: backend-test frontend-typecheck
 
-verify: backend-format backend-vet backend-test backend-build frontend-typecheck frontend-lint frontend-build repository-check
+verify: backend-format backend-vet backend-test backend-build frontend-typecheck frontend-lint frontend-build lifecycle-test operations-test repository-check
 
 verify-full:
 	@if [ -z "$${TEST_DATABASE_URL:-}" ]; then \
@@ -53,7 +58,7 @@ backend-test:
 	cd services/api && go test ./... -count=1
 
 backend-build:
-	cd services/api && go build ./cmd/server ./cmd/printer-agent
+	cd services/api && go build ./cmd/server ./cmd/printer-agent ./cmd/local-launcher
 
 frontend-typecheck:
 	cd apps/web && pnpm typecheck
@@ -66,6 +71,50 @@ frontend-build:
 
 repository-check:
 	git diff --check
+
+lifecycle-test:
+	PYTHONDONTWRITEBYTECODE=1 python3 -m unittest scripts/lifecycle/test_lifecycle.py -v
+
+lifecycle-backup:
+	@test -n "$(BACKUP_DIR)" || { echo "BACKUP_DIR is required"; exit 1; }
+	@test -n "$(OBJECT_ROOT)" || { echo "OBJECT_ROOT is required"; exit 1; }
+	PYTHONDONTWRITEBYTECODE=1 python3 scripts/lifecycle/lifecycle.py backup "$(BACKUP_DIR)" --object-root "$(OBJECT_ROOT)"
+
+lifecycle-validate:
+	@test -n "$(BACKUP_DIR)" || { echo "BACKUP_DIR is required"; exit 1; }
+	PYTHONDONTWRITEBYTECODE=1 python3 scripts/lifecycle/lifecycle.py validate "$(BACKUP_DIR)"
+
+lifecycle-restore:
+	@test -n "$(BACKUP_DIR)" || { echo "BACKUP_DIR is required"; exit 1; }
+	@test -n "$(RESTORE_OBJECT_DIR)" || { echo "RESTORE_OBJECT_DIR is required"; exit 1; }
+	@test -n "$(RESTORE_RECEIPT)" || { echo "RESTORE_RECEIPT is required"; exit 1; }
+	PYTHONDONTWRITEBYTECODE=1 python3 scripts/lifecycle/lifecycle.py restore "$(BACKUP_DIR)" \
+		--object-destination "$(RESTORE_OBJECT_DIR)" --receipt "$(RESTORE_RECEIPT)"
+
+lifecycle-archive-plan:
+	@test -n "$(BACKUP_DIR)" || { echo "BACKUP_DIR is required"; exit 1; }
+	@test -n "$(RESTORE_RECEIPT)" || { echo "RESTORE_RECEIPT is required"; exit 1; }
+	@test -n "$(ARCHIVE_BEFORE)" || { echo "ARCHIVE_BEFORE is required"; exit 1; }
+	@test -n "$(ARCHIVE_PLAN)" || { echo "ARCHIVE_PLAN is required"; exit 1; }
+	PYTHONDONTWRITEBYTECODE=1 python3 scripts/lifecycle/lifecycle.py plan-archive "$(BACKUP_DIR)" \
+		--restore-receipt "$(RESTORE_RECEIPT)" --before "$(ARCHIVE_BEFORE)" --output "$(ARCHIVE_PLAN)"
+
+operations-test:
+	PYTHONDONTWRITEBYTECODE=1 python3 -m unittest scripts/operations/test_readiness.py -v
+
+production-images:
+	@test -n "$(NEXT_PUBLIC_API_BASE_URL)" || { echo "NEXT_PUBLIC_API_BASE_URL is required"; exit 1; }
+	docker build -t commerceops-api:local services/api
+	docker build --build-arg NEXT_PUBLIC_API_BASE_URL="$(NEXT_PUBLIC_API_BASE_URL)" -t commerceops-web:local apps/web
+
+production-config-check:
+	@test -n "$(PRODUCTION_ENV_FILE)" || { echo "PRODUCTION_ENV_FILE is required"; exit 1; }
+	PYTHONDONTWRITEBYTECODE=1 python3 scripts/operations/readiness.py check-config "$(PRODUCTION_ENV_FILE)"
+
+production-smoke:
+	@test -n "$(API_BASE_URL)" || { echo "API_BASE_URL is required"; exit 1; }
+	PYTHONDONTWRITEBYTECODE=1 python3 scripts/operations/readiness.py smoke "$(API_BASE_URL)" \
+		--requests "$${SMOKE_REQUESTS:-100}" --concurrency "$${SMOKE_CONCURRENCY:-10}" $(if $(CORS_ORIGIN),--origin "$(CORS_ORIGIN)")
 
 down:
 	docker compose down

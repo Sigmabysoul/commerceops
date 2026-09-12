@@ -50,3 +50,47 @@ Every query includes the authenticated company ID. `reports.view` gates the
 dashboard. Inventory fields require both the inventory module entitlement and
 `inventory.view`; lacking either produces a useful non-inventory report rather
 than leaking restricted values.
+
+## Phase 23 operations and workforce analytics
+
+`GET /api/v1/reports/operations-analytics` is a separate company-scoped read model. Access
+requires `reports.view`, `traceability.view` and the `traceability` entitlement together.
+Trace Box records have no authoritative marketplace ownership, so this report has no
+marketplace filter. Reporting does not modify operational records or Inventory.
+
+Clients send `from` and `to` RFC3339 instants with the same `[from,to)` range and 366-day maximum.
+`timezone` is a validated IANA name, default `UTC`, used only to group daily inspections.
+The web client sends browser-local midnight boundaries and the browser's timezone, including
+daylight-saving offsets. Only days with inspections appear; a missing day is not a measured
+zero-defect day. `limit` (1–100, default 20) and `offset` (0–1,000,000) page workforce rows only.
+
+The `traceability-v1` definitions are:
+
+| Measure | Authoritative formula and cohort |
+|---|---|
+| Checks / inspected units | Distinct QC events / sum of their snapshot checked quantities, using QC event time in the range. Multi-Product checks count once. |
+| Rejected units / rejection rate | Sum of rejected inspection quantities / that sum divided by all inspected units times 100. Repeated QC contributes additional inspection workload. |
+| Daily trends | The same inspection measures grouped by event instant converted to the selected local date. |
+| Defect reason share | Rejected snapshot units for each reason divided by all rejected inspection units in the range times 100. |
+| Rework elapsed time | Completion event minus its requirement's originating QC event; the completion is in the range, even if QC preceded it. |
+| Handover elapsed time | Receipt event minus its referenced send event; the receipt is in the range. Pending transfers have no completed duration. |
+| First shipment-readiness time | First-ever readiness event minus box creation. Only boxes whose first readiness is in the range contribute; later re-readiness does not add another sample. |
+| Workforce QC | The same checked/rejected workload grouped by the recorded checking employee. The employee detected the rejection; this does not identify who caused it. |
+| Workforce completed work | Completed requirement count and quantity, grouped by recorded completing employee, using completion event time. Completion is not proof of a later passing QC. |
+| Workforce final checks | Count of typed final checks and failed checks, with failures divided by all final checks times 100, grouped by recorded checking employee and final-check event time. |
+
+Cycle durations report sample count, mean, median and p95 elapsed hours. Durations include
+waiting; they do not measure labor hours. Empty denominators and no completed samples produce
+JSON `null` rates/durations, displayed as “No sample”. Activity counts are zero for empty cohorts.
+
+Each response is computed in one read-only repeatable-read transaction with a 15-second query
+budget, and returns `generated_at`, `metric_version`, range and timezone. Immutable source
+history makes the metrics recomputable. Employee names are current display labels; employee
+IDs retain attribution even after deactivation. Workforce rows use employee-ID order, and total
+counts cover the full filtered population even when the requested page is empty. Separate page
+requests take new snapshots, so new in-range activity may change a page population.
+
+There is no reliable producer attribution, clocked labor time, per-unit identity, or historical
+department context for these QC events. Consequently the report does not infer employee-caused
+defects, units per labor hour, unique defective units, department rankings, or rework success.
+Activity types remain separate. Gamification requires a separately approved later design.

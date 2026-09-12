@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { JobDetails, MarketplaceProcessingAPI } from "@/api/marketplace-processing";
+import { MarketplaceAccount, marketplaceAccountAPI } from "@/api/marketplace-accounts";
 
 type Props = {
   api: MarketplaceProcessingAPI;
@@ -16,6 +17,7 @@ export function MarketplaceProcessing({ api, marketplace, phase, sourceType = "P
   const [jobID, setJobID] = useState("");
   const [error, setError] = useState("");
   const [uploading, setUploading] = useState(false);
+  const [accounts, setAccounts] = useState<MarketplaceAccount[]>([]);
   const [duplicate, setDuplicate] = useState(false);
   const displayName = marketplace.charAt(0).toUpperCase() + marketplace.slice(1);
 
@@ -25,18 +27,23 @@ export function MarketplaceProcessing({ api, marketplace, phase, sourceType = "P
     return () => clearInterval(timer);
   }, [api, jobID, details?.job.status]);
 
+  useEffect(() => {
+    marketplaceAccountAPI.accounts().then((result) => setAccounts(result.marketplace_accounts.filter((account) => account.marketplace_key === marketplace && account.status === "active"))).catch(() => setAccounts([]));
+  }, [marketplace]);
+
   async function upload(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = event.currentTarget;
     const data = new FormData(form);
     const file = data.get("file");
+    const accountID = String(data.get("marketplace_account_id") ?? "");
     const idempotencyKey = String(data.get("idempotency_key") ?? "").trim();
-    if (!(file instanceof File) || !file.size) return;
+    if (!(file instanceof File) || !file.size || !accountID) return;
     setUploading(true);
     setError("");
     setDetails(null);
     try {
-      const result = await api.upload(file, idempotencyKey || undefined);
+      const result = await api.upload(file, accountID, idempotencyKey || undefined);
       setJobID(result.job.id);
       setDuplicate(result.duplicate_source);
       setDetails(await api.job(result.job.id));
@@ -61,7 +68,7 @@ export function MarketplaceProcessing({ api, marketplace, phase, sourceType = "P
 
   const unit = sourceType === "CSV" ? "rows" : "pages";
   return <section className="flipkart"><div className="product-heading"><div><p className="eyebrow">{phase}</p><h2>{displayName} processing</h2><p className="muted">Upload a {displayName} {sourceType}. Processing continues in the shared bounded background queue.</p></div></div>
-    <section className="panel"><form className="upload-row" onSubmit={upload}><label>{displayName} {sourceType}<input name="file" type="file" accept={sourceType === "CSV" ? "text/csv,.csv" : "application/pdf,.pdf"} required /></label>{requireIdempotency && <label>Import key<input name="idempotency_key" maxLength={128} required /></label>}<button disabled={uploading}>{uploading ? "Uploading…" : "Upload and process"}</button></form>{error && <p className="error" role="alert">{error}</p>}{duplicate && <p className="notice">This exact source file was already uploaded. Showing its existing job.</p>}</section>
+    <section className="panel"><form className="upload-row" onSubmit={upload}><label>Seller account<select name="marketplace_account_id" required>{accounts.map((account) => <option key={account.id} value={account.id}>{account.display_name}</option>)}</select></label><label>{displayName} {sourceType}<input name="file" type="file" accept={sourceType === "CSV" ? "text/csv,.csv" : "application/pdf,.pdf"} required /></label>{requireIdempotency && <label>Import key<input name="idempotency_key" maxLength={128} required /></label>}<button disabled={uploading || accounts.length === 0}>{uploading ? "Uploading…" : "Upload and process"}</button></form>{accounts.length === 0 && <p className="muted">Create an active {displayName} seller account before uploading.</p>}{error && <p className="error" role="alert">{error}</p>}{duplicate && <p className="notice">This exact source file was already uploaded. Showing its existing job.</p>}</section>
     {details && <section className="panel results"><div className="status-line"><h2>Processing results</h2><span className={`status status-${details.job.status}`}>{details.job.status.replace("_", " ")}</span></div><p className="muted">{details.job.processed_pages}/{details.job.total_pages} {unit} · parser {details.job.parser_version}</p>{["needs_review", "failed", "processed"].includes(details.job.status) && <button onClick={retry}>Reprocess with current SKU training</button>}
       {marketplace === "myntra" && <p className="notice">Myntra CSV does not provide authoritative quantity evidence. Imported rows remain blocked from print-ready, outbound, and quantity-dependent return flows.</p>}
       {details.orders.map((order) => <article key={order.id}><div><strong>{sourceType === "CSV" ? "Row" : "Page"} {order.source_page}</strong> · {order.awb ?? "AWB missing"}<small>{order.marketplace_order_id ?? "Order ID missing"} · {reviewLabel(order)}</small></div>{order.items.map((item, index) => <div key={index}><span>{item.raw_sku ?? "SKU missing"} → {item.product_id ?? "Product training required"}</span><small>Quantity: {item.quantity ?? "Needs Quantity Evidence"} ({item.quantity_source}) · {item.resolution_status}</small></div>)}</article>)}

@@ -1,0 +1,4 @@
+.git
+coverage.out
+var
+**/*_test.go

@@ -1,6 +1,6 @@
 # Myntra packed-orders adapter — Phase 11 Batch A
 
-The isolated adapter under `internal/marketplace/myntra` accepts only the
+The isolated adapter under `internal/domain/marketplace/myntra` accepts only the
 evidence-backed UTF-8 packed-orders CSV form. It does not parse or generate PDF
 labels.
 
@@ -35,3 +35,9 @@ Shipping-label classification, invoice association, OCR, coordinates, crop
 geometry, label dimensions, barcode-safe overlays, and PDF quantity evidence
 are deferred until representative production Myntra labels are supplied. No
 print generator is registered for Myntra in Batch A.
+
+Set `MYNTRA_PRIVATE_PACKED_ORDERS_CSV` to an original private packed-orders export to
+exercise the parser against production evidence without committing customer or order data.
+The optional regression verifies structural parsing and confirms that a quantity column has
+not silently entered the source contract. A passing CSV regression does not establish any
+PDF or print-payload behavior.

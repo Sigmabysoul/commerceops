@@ -1,15 +1,15 @@
 # CommerceOps — Master Project Specification
 
-**Version:** 0.1
-**Status:** Planning
+**Version:** 0.2
+**Status:** Owner-approved planning direction for Phases 15–25
 **Architecture Status:** Approved foundation
-**Project Type:** Modular ecommerce operations platform / future SaaS
+**Project Type:** Internal ecommerce and warehouse operations platform
 
 ---
 
 # 1. Vision
 
-CommerceOps is a modular business operations ecosystem intended initially for one ecommerce/warehouse company and designed from the beginning so it can later become a multi-company SaaS platform.
+CommerceOps is an internal ecommerce and warehouse operations platform for the current business. Reliability, traceability and safe inventory accounting take priority. Commercial multi-customer SaaS is deferred beyond Phases 15–25 under ADR-0005.
 
 The system will gradually manage:
 
@@ -31,7 +31,7 @@ The system will gradually manage:
 * Roles and permissions
 * Audit logs
 * Reporting
-* Subscription modules
+* Existing module entitlements (compatibility boundary)
 
 Supported ecommerce marketplaces are planned to include:
 
@@ -47,36 +47,21 @@ Additional marketplaces must be addable later without redesigning the core syste
 
 # 2. Product strategy
 
-CommerceOps will first be developed and tested as an internal company application.
+Serve one operating business through Phases 15–25. Retain company ownership and existing
+module entitlements internally; do not build customer-company signup, tenant switching,
+subscription billing, SaaS pricing or cross-customer administration in these phases.
 
-The architecture must nevertheless support a future SaaS model.
+The roadmap adds seller accounts, product department history, JioMart, Myntra print
+completion, Trace Boxes, QC/rework/handovers/packing, Consignment traceability, analytics,
+backup/restore/archive and production hardening. Phase 24 implements an operator-run protected
+database/object snapshot, verification, empty-target restore drill and receipt-gated archive dry
+run. It contains no deletion mechanism. Other capabilities remain future work until implemented
+and verified under their individual phase gates.
 
-Each customer/company must have logically isolated data.
-
-Companies may subscribe to different CommerceOps modules.
-
-Example:
-
-Company A:
-
-* Core
-* Flipkart
-* Inventory
-
-Company B:
-
-* Core
-* Flipkart
-* Amazon
-* Returns
-
-Company C:
-
-* Complete system
-
-Pricing is NOT part of the permanent architecture.
-
-Prices may change without changing software architecture.
+Exactly one active operational department per Product is the Phase 17 target. Reuse
+existing departments; assignment changes affect future routing while preserving historical
+and in-flight context. Seller accounts belong to business/trading identities and must
+remain separate from workstation/printer-agent identity.
 
 ---
 
@@ -157,7 +142,7 @@ Purpose:
 * batch processing
 * reports
 * background jobs
-* subscriptions
+* existing module-entitlement enforcement
 * audit logging
 
 Go is the primary server-side application language.
@@ -214,21 +199,17 @@ The entire CommerceOps application must not depend on desktop installation.
 
 ---
 
-# 5. Multitenancy
+# 5. Company safety boundary
 
-CommerceOps must be designed as multi-company capable from the beginning.
+Existing company_id columns, company-scoped uniqueness, composite foreign keys and
+server-established authenticated company context remain mandatory. No domain may
+trust a frontend company UUID as authorization. Isolation tests remain required.
 
-Primary business entities should normally have ownership through a company/tenant.
-
-Example:
-
-company_id
-
-Data belonging to one company must never accidentally be visible to another company.
-
-Tenant filtering must be handled systematically rather than relying on developers remembering to add filters manually.
-
-Cross-company data access is forbidden unless performed by an explicitly authorized platform-level operation.
+Single-business-first changes product direction, not Phase 15 authentication behavior.
+Phase 16 will implement normal login without requiring raw company UUID entry, using an
+explicit server-side operating-company policy. Do not guess company identity or hardcode
+business identifiers. Preserve current login, permissions and module entitlements during
+Phase 15.
 
 ---
 
@@ -723,44 +704,19 @@ if worker
 
 ---
 
-# 25. SaaS Modules
+# 25. Module entitlements
 
-CommerceOps should support module entitlements.
-
-Potential modules:
-
-core
-flipkart
-amazon
-meesho
-myntra
-snapdeal
-inventory
-returns
-consignment
-advanced_reports
-
-A company's enabled modules determine available functionality.
-
-Module access must be enforced by the backend, not merely hidden in the frontend.
+Existing backend-enforced module entitlements remain part of the compatibility baseline.
+They do not require building commercial subscriptions or new multi-customer administration.
+Frontend visibility is never a replacement for server authorization.
 
 ---
 
-# 26. Subscription Strategy
+# 26. Commercial strategy
 
-Pricing is intentionally separated from technical modules.
-
-Example commercial concepts may later include:
-
-* base platform fee
-* marketplace modules
-* operational modules
-* storage tiers
-* user limits
-* usage limits
-* complete-package pricing
-
-Specific prices are business decisions and must not be hardcoded into architecture.
+SaaS pricing, billing and customer subscription products are outside Phases 15–25.
+Any later commercial expansion requires an approved product decision and ADR; prices
+and business identities must never be hardcoded into the architecture.
 
 ---
 
@@ -813,6 +769,18 @@ Inventory shortages
 Printing failures
 
 Reports must derive from authoritative domain data rather than maintaining unrelated manual counters whenever possible.
+
+Phase 23 adds read-only QC trends, defect reason shares, elapsed rework/handover/first-readiness
+times and employee inspection/work/final-check activity. Rates keep their workload denominators;
+the inspecting employee is not assumed to have caused a defect. Reports use immutable event
+history, company scope, reporting and Traceability permissions, explicit time ranges and local-day
+buckets. Gamification, labor-hour productivity and inferred worker blame remain outside this phase.
+
+Phase 24 protects a PostgreSQL dump and stable object snapshot with manifests and SHA-256
+checksums. Restore accepts only an empty database and absent object destination, then compares
+table counts, migration state, object references and object bytes before issuing a backup-bound
+receipt. Archive planning requires that receipt and remains dry-run only. Audit logs, Inventory
+transactions and Trace Box events remain preserved.
 
 ---
 
@@ -1055,29 +1023,40 @@ Clarity is preferred over cleverness.
 
 ---
 
-# 40. Long-Term Goal
+# 40. Long-term goal and roadmap authority
 
-CommerceOps should be capable of growing from:
+Grow a reliable internal operations platform without rewriting its foundations.
+Commercial expansion can be reconsidered after internal maturity; it is not an active
+Phase 15–25 requirement. Phases 0–14 remain the historical implementation baseline.
+See ROADMAP.md for sequencing and CURRENT_STATE.md for the active implementation gate.
 
-one company
-two workers
-a few marketplace workflows
+Phase 15 moves packages under internal/app, internal/domain and internal/platform only.
+It does not change APIs, schema, migrations, authentication, permissions, company scope,
+marketplace behavior, stock rules or frontend behavior. ADR-0006 defines the layout.
 
-into:
+Trace identifiers in later phases must be opaque server-generated values; mutable state
+stays in PostgreSQL. Traceability never duplicates inventory balances. QC PASS is not
+RESTOCK; only an explicit authorized Inventory transition changes sellable stock.
 
-multiple companies
-many employees
-many marketplaces
-large inventory
-multiple warehouses
-automated printing
-returns
-consignment planning
-subscription modules
-business analytics
+Trace Box QC covers the complete current content snapshot. Rejected quantity creates explicit
+rework, and completed work requires a fresh passing QC before packing. Handovers remain in transit
+until the target employee or a member of the target department records receipt. Packing, final
+verification and shipment readiness are distinct audited gates owned by Traceability.
 
-without requiring the application to be rewritten from scratch.
+Consignments may opt into verified Trace Box evidence. In that mode, each line's ready and packed
+quantity must be covered by currently shipment-ready Trace Box quantity, and ready, packed and
+outbound gates revalidate complete coverage. Allocations preserve the line's Product and department
+snapshot, cannot double-count physical quantity across consignments, and retain immutable reversals.
+Pouch and file evidence references are auditable but are not unique identities.
 
-This document is the product-level source of truth.
+Phase 25 production packaging preserves the modular monolith and existing REST behavior. It runs
+the API and web application as non-root, read-only containers behind HTTPS, with external
+PostgreSQL and private S3-compatible storage. Production configuration, immutable image digests,
+verified recovery evidence, forward migrations, health measurement, graceful shutdown and
+same-schema rollback are release gates. A generated manifest records pending operator acceptance
+and never deploys automatically.
 
-Changes to fundamental architecture must be intentional, documented and approved.
+This document remains the product-level source of truth, subject to explicit owner
+instructions and approved ADRs.
+
+---

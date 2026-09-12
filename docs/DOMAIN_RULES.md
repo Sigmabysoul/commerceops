@@ -120,3 +120,29 @@ A rule occurrence produces at most one initial physical job across restarts and
 concurrent workers. Batch/Consignment facts commit with their source transition;
 queue creation commits with its execution outcome. Rules and every referenced
 asset, printer, event, and job must belong to the same tenant.
+
+## Planning invariants for Phases 16–25
+
+These supplement existing rules; they do not imply new Phase 15 behavior.
+
+RULE COMPANY-001: Single-business-first never permits removing company safety scope.
+RULE SELLER-001: Seller accounts/trading identities are separate from workstations and printer agents.
+RULE DEPARTMENT-001: Reuse canonical departments. One active Product assignment; changes preserve historical and in-flight context.
+RULE TRACE-001: Trace QR/barcodes identify opaque server records, never encoded mutable workflow state or a second stock balance.
+RULE TRACE-002: Trace Box contents use canonical Product IDs and explicit positive quantities. Every addition or removal is immutable and idempotent; concurrent removal must never make a derived quantity negative.
+RULE TRACE-003: Trace Box custody identifies exactly one same-company employee or department. Current custody is derived from immutable transfer history, and scanning an identifier never bypasses authentication or authorization.
+RULE QC-001: QC PASS is not RESTOCK. Sellable stock changes only through an explicit authorized Inventory transition.
+RULE QC-002: Trace Box QC covers the full current Product/quantity snapshot. Rejected quantities require a reason and work type; completed work requires a fresh passing QC before packing.
+RULE TRACE-004: A handover is in transit after send and changes custody only when its target employee or department member receives it. Other box mutations are blocked in transit.
+RULE PACKING-001: Packing requires clear work and fresh passing QC. Shipment readiness requires a later passing final check; every gate is idempotent and audited.
+RULE CONSIGNMENT-006: Traceability-required Consignment progress and outbound require current verified Trace Box quantity for every line. Allocations are immutable, bounded across consignments, and use each line's stored Product and department snapshot.
+RULE CONSIGNMENT-007: Pouch and file evidence values are company-scoped trace references and are never assumed unique identifiers.
+RULE LIFECYCLE-001: No automatic archival deletion before verified export and restore; retain audit history.
+RULE LIFECYCLE-002: A protected snapshot must bind the database dump, migration state, public table counts and every database-referenced object to verified checksums. Restore uses an empty database and absent object destination.
+RULE LIFECYCLE-003: Archive planning requires a matching successful restore receipt and remains dry-run only. Audit logs, Inventory transactions and Trace Box events are preserved; Phase 24 has no deletion path.
+RULE REPORT-001: Operations analytics derives from immutable recorded events in the authenticated company. Both Reporting and Traceability permissions and the Traceability entitlement are required.
+RULE REPORT-002: QC rejection rates use inspected-unit denominators, count repeat inspections as repeat workload, and attribute observation to the recorded inspector without inferring defect causation. Missing denominators are null, not measured zero.
+RULE REPORT-003: Completed-cycle cohorts use completion instants and their authoritative source starts, including starts before the range. First shipment readiness contributes at most one duration per box. Elapsed time includes waiting and is not labor time.
+RULE DEPLOY-001: A production release uses immutable API and web image digests, a clean commit, an exact migration version and a matching verified backup/restore receipt. Release evidence never authorizes deployment by itself.
+RULE DEPLOY-002: Automatic application rollback is allowed only between releases at the same migration version. Production history is never rolled back with an automatic destructive down migration.
+RULE SECURITY-001: Production browser and object-storage endpoints use HTTPS. Requests carrying an untrusted browser Origin are rejected before business handlers, and production object storage is S3-compatible.

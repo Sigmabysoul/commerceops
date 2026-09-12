@@ -9,27 +9,29 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/commerceops/commerceops/services/api/internal/auth"
-	"github.com/commerceops/commerceops/services/api/internal/authorization"
-	"github.com/commerceops/commerceops/services/api/internal/automation"
-	"github.com/commerceops/commerceops/services/api/internal/batch"
-	"github.com/commerceops/commerceops/services/api/internal/config"
-	"github.com/commerceops/commerceops/services/api/internal/consignment"
-	"github.com/commerceops/commerceops/services/api/internal/core"
-	"github.com/commerceops/commerceops/services/api/internal/health"
-	"github.com/commerceops/commerceops/services/api/internal/inventory"
-	"github.com/commerceops/commerceops/services/api/internal/marketplace"
-	"github.com/commerceops/commerceops/services/api/internal/marketplace/amazon"
-	"github.com/commerceops/commerceops/services/api/internal/marketplace/snapdeal"
+	"github.com/commerceops/commerceops/services/api/internal/domain/automation"
+	"github.com/commerceops/commerceops/services/api/internal/domain/batch"
+	"github.com/commerceops/commerceops/services/api/internal/domain/consignment"
+	"github.com/commerceops/commerceops/services/api/internal/domain/core"
+	"github.com/commerceops/commerceops/services/api/internal/domain/inventory"
+	"github.com/commerceops/commerceops/services/api/internal/domain/marketplace"
+	"github.com/commerceops/commerceops/services/api/internal/domain/marketplace/amazon"
+	"github.com/commerceops/commerceops/services/api/internal/domain/marketplace/snapdeal"
+	"github.com/commerceops/commerceops/services/api/internal/domain/marketplaceaccount"
+	"github.com/commerceops/commerceops/services/api/internal/domain/printing"
+	"github.com/commerceops/commerceops/services/api/internal/domain/product"
+	"github.com/commerceops/commerceops/services/api/internal/domain/reporting"
+	returnsdomain "github.com/commerceops/commerceops/services/api/internal/domain/returns"
+	"github.com/commerceops/commerceops/services/api/internal/domain/traceability"
+	"github.com/commerceops/commerceops/services/api/internal/platform/auth"
+	"github.com/commerceops/commerceops/services/api/internal/platform/authorization"
+	"github.com/commerceops/commerceops/services/api/internal/platform/config"
 	"github.com/commerceops/commerceops/services/api/internal/platform/database"
+	"github.com/commerceops/commerceops/services/api/internal/platform/documents/pdf/extractor"
+	"github.com/commerceops/commerceops/services/api/internal/platform/documents/pdf/generator"
+	"github.com/commerceops/commerceops/services/api/internal/platform/health"
 	"github.com/commerceops/commerceops/services/api/internal/platform/httpserver"
 	"github.com/commerceops/commerceops/services/api/internal/platform/objectstorage"
-	"github.com/commerceops/commerceops/services/api/internal/platform/pdfextractor"
-	"github.com/commerceops/commerceops/services/api/internal/platform/pdfgenerator"
-	"github.com/commerceops/commerceops/services/api/internal/printing"
-	"github.com/commerceops/commerceops/services/api/internal/product"
-	"github.com/commerceops/commerceops/services/api/internal/reporting"
-	returnsdomain "github.com/commerceops/commerceops/services/api/internal/returns"
 )
 
 func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
@@ -46,11 +48,13 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	authorizer := authorization.NewService(db)
 	coreHTTP := core.NewHTTPHandler(core.NewService(db, authorizer))
 	productHTTP := product.NewHTTPHandler(product.NewService(db, authorizer))
+	marketplaceAccountHTTP := marketplaceaccount.NewHTTPHandler(marketplaceaccount.NewService(db, authorizer))
 	inventoryService := inventory.NewService(db, authorizer)
 	inventoryHTTP := inventory.NewHTTPHandler(inventoryService)
 	reportingHTTP := reporting.NewHTTPHandler(reporting.NewService(db, authorizer))
 	returnsHTTP := returnsdomain.NewHTTPHandler(returnsdomain.NewService(db, authorizer, inventoryService))
 	consignmentHTTP := consignment.NewHTTPHandler(consignment.NewService(db, authorizer, inventoryService))
+	traceabilityHTTP := traceability.NewHTTPHandler(traceability.NewService(db, authorizer))
 	storage, err := newObjectStorage(ctx, cfg)
 	if err != nil {
 		return err
@@ -109,8 +113,15 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	mux.Handle("/api/v1/module-entitlements/{module_key}", authHTTP.RequireSession(http.HandlerFunc(coreHTTP.Entitlement)))
 	mux.Handle("/api/v1/audit-logs", authHTTP.RequireSession(http.HandlerFunc(coreHTTP.AuditLogs)))
 	mux.Handle("/api/v1/marketplaces", authHTTP.RequireSession(http.HandlerFunc(productHTTP.Marketplaces)))
+	mux.Handle("/api/v1/business-identities", authHTTP.RequireSession(http.HandlerFunc(marketplaceAccountHTTP.Identities)))
+	mux.Handle("/api/v1/business-identities/{identity_id}", authHTTP.RequireSession(http.HandlerFunc(marketplaceAccountHTTP.Identity)))
+	mux.Handle("/api/v1/marketplace-accounts", authHTTP.RequireSession(http.HandlerFunc(marketplaceAccountHTTP.Accounts)))
+	mux.Handle("/api/v1/marketplace-accounts/{account_id}", authHTTP.RequireSession(http.HandlerFunc(marketplaceAccountHTTP.Account)))
 	mux.Handle("/api/v1/products", authHTTP.RequireSession(http.HandlerFunc(productHTTP.Products)))
 	mux.Handle("/api/v1/products/{product_id}", authHTTP.RequireSession(http.HandlerFunc(productHTTP.Product)))
+	mux.Handle("/api/v1/products/{product_id}/department", authHTTP.RequireSession(http.HandlerFunc(productHTTP.ProductDepartment)))
+	mux.Handle("/api/v1/product-department-assignments", authHTTP.RequireSession(http.HandlerFunc(productHTTP.DepartmentAssignments)))
+	mux.Handle("/api/v1/product-departments", authHTTP.RequireSession(http.HandlerFunc(productHTTP.Departments)))
 	mux.Handle("/api/v1/sku-mappings", authHTTP.RequireSession(http.HandlerFunc(productHTTP.Mappings)))
 	mux.Handle("/api/v1/sku-mappings/resolve", authHTTP.RequireSession(http.HandlerFunc(productHTTP.Resolve)))
 	mux.Handle("/api/v1/sku-mappings/{mapping_id}", authHTTP.RequireSession(http.HandlerFunc(productHTTP.Mapping)))
@@ -157,6 +168,7 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	mux.Handle("/api/v1/inventory/reservations", authHTTP.RequireSession(http.HandlerFunc(inventoryHTTP.Reservations)))
 	mux.Handle("/api/v1/inventory/reservations/{reservation_id}/release", authHTTP.RequireSession(http.HandlerFunc(inventoryHTTP.ReleaseReservation)))
 	mux.Handle("/api/v1/reports/dashboard", authHTTP.RequireSession(http.HandlerFunc(reportingHTTP.Dashboard)))
+	mux.Handle("/api/v1/reports/operations-analytics", authHTTP.RequireSession(http.HandlerFunc(reportingHTTP.Analytics)))
 	mux.Handle("/api/v1/cancellations", authHTTP.RequireSession(http.HandlerFunc(returnsHTTP.Cancellations)))
 	mux.Handle("/api/v1/cancellations/{cancellation_id}", authHTTP.RequireSession(http.HandlerFunc(returnsHTTP.Cancellation)))
 	mux.Handle("/api/v1/cancellations/{cancellation_id}/close", authHTTP.RequireSession(http.HandlerFunc(returnsHTTP.CloseCancellation)))
@@ -177,7 +189,17 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	mux.Handle("/api/v1/consignments/{consignment_id}/lines/{line_id}/progress", authHTTP.RequireSession(http.HandlerFunc(consignmentHTTP.Progress)))
 	mux.Handle("/api/v1/consignments/{consignment_id}/confirm-outbound", authHTTP.RequireSession(http.HandlerFunc(consignmentHTTP.Outbound)))
 	mux.Handle("/api/v1/consignments/{consignment_id}/cancel", authHTTP.RequireSession(http.HandlerFunc(consignmentHTTP.Cancel)))
-	server := &http.Server{Addr: cfg.HTTPAddr, Handler: httpserver.Middleware(logger, cfg.AllowedOrigins, mux), ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 60 * time.Second}
+	registerConsignmentTraceRoutes(mux, authHTTP, consignmentHTTP)
+	registerTraceabilityRoutes(mux, authHTTP, traceabilityHTTP)
+	server := &http.Server{
+		Addr:              cfg.HTTPAddr,
+		Handler:           httpserver.Middleware(logger, cfg.AllowedOrigins, mux),
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       cfg.HTTPReadTimeout,
+		WriteTimeout:      cfg.HTTPWriteTimeout,
+		IdleTimeout:       cfg.HTTPIdleTimeout,
+		MaxHeaderBytes:    cfg.HTTPMaxHeaderBytes,
+	}
 
 	errCh := make(chan error, 1)
 	go func() {
@@ -197,6 +219,29 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 		logger.Info("http server shutting down")
 		return server.Shutdown(shutdownCtx)
 	}
+}
+
+func registerTraceabilityRoutes(mux *http.ServeMux, authHTTP *auth.HTTPHandler, traceabilityHTTP *traceability.HTTPHandler) {
+	mux.Handle("/api/v1/trace-boxes", authHTTP.RequireSession(http.HandlerFunc(traceabilityHTTP.Boxes)))
+	mux.Handle("/api/v1/trace-box-options", authHTTP.RequireSession(http.HandlerFunc(traceabilityHTTP.Options)))
+	mux.Handle("/api/v1/trace-box-resolutions/{opaque_identifier}", authHTTP.RequireSession(http.HandlerFunc(traceabilityHTTP.Resolve)))
+	mux.Handle("/api/v1/trace-boxes/{trace_box_id}", authHTTP.RequireSession(http.HandlerFunc(traceabilityHTTP.Box)))
+	mux.Handle("/api/v1/trace-boxes/{trace_box_id}/contents", authHTTP.RequireSession(http.HandlerFunc(traceabilityHTTP.AddContent)))
+	mux.Handle("/api/v1/trace-boxes/{trace_box_id}/contents/remove", authHTTP.RequireSession(http.HandlerFunc(traceabilityHTTP.RemoveContent)))
+	mux.Handle("/api/v1/trace-boxes/{trace_box_id}/custody", authHTTP.RequireSession(http.HandlerFunc(traceabilityHTTP.TransferCustody)))
+	mux.Handle("/api/v1/trace-boxes/{trace_box_id}/qc", authHTTP.RequireSession(http.HandlerFunc(traceabilityHTTP.RecordQC)))
+	mux.Handle("/api/v1/trace-boxes/{trace_box_id}/work-requirements/{work_requirement_id}/complete", authHTTP.RequireSession(http.HandlerFunc(traceabilityHTTP.CompleteWork)))
+	mux.Handle("/api/v1/trace-boxes/{trace_box_id}/handovers", authHTTP.RequireSession(http.HandlerFunc(traceabilityHTTP.SendHandover)))
+	mux.Handle("/api/v1/trace-boxes/{trace_box_id}/handovers/{handover_id}/receive", authHTTP.RequireSession(http.HandlerFunc(traceabilityHTTP.ReceiveHandover)))
+	mux.Handle("/api/v1/trace-boxes/{trace_box_id}/packing/complete", authHTTP.RequireSession(http.HandlerFunc(traceabilityHTTP.CompletePacking)))
+	mux.Handle("/api/v1/trace-boxes/{trace_box_id}/final-checks", authHTTP.RequireSession(http.HandlerFunc(traceabilityHTTP.CompleteFinalCheck)))
+	mux.Handle("/api/v1/trace-boxes/{trace_box_id}/shipment-readiness", authHTTP.RequireSession(http.HandlerFunc(traceabilityHTTP.MarkReady)))
+}
+
+func registerConsignmentTraceRoutes(mux *http.ServeMux, authHTTP *auth.HTTPHandler, handler *consignment.HTTPHandler) {
+	mux.Handle("/api/v1/consignments/{consignment_id}/trace-box-links", authHTTP.RequireSession(http.HandlerFunc(handler.LinkTraceBox)))
+	mux.Handle("/api/v1/consignments/{consignment_id}/trace-box-links/{allocation_event_id}/remove", authHTTP.RequireSession(http.HandlerFunc(handler.UnlinkTraceBox)))
+	mux.Handle("/api/v1/consignments/{consignment_id}/trace-evidence", authHTTP.RequireSession(http.HandlerFunc(handler.RecordTraceEvidence)))
 }
 
 func newObjectStorage(ctx context.Context, cfg config.Config) (objectstorage.Storage, error) {

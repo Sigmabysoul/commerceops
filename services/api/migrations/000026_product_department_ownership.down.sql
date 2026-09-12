@@ -1,0 +1,3 @@
+DROP INDEX product_department_assignments_history;
+DROP INDEX product_department_assignments_one_active;
+DROP TABLE product_department_assignments;

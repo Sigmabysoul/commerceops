@@ -1,6 +1,6 @@
 # Amazon adapter — Phase 7 Batch C
 
-The isolated Amazon adapter lives under `internal/marketplace/amazon`. It
+The isolated Amazon adapter lives under `internal/domain/marketplace/amazon`. It
 receives bounded, real page-numbered text from the shared Poppler/Tesseract
 extractor and returns normalized records containing only explicitly detected:
 
