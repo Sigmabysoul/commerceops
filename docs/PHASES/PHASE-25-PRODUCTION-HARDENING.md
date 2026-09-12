@@ -1,7 +1,7 @@
 # Phase 25 — Production hardening and internal rollout
 
-Status: Active implementation — owner authorized 2026-09-11; production rollout remains pending.
-Revision: 2026-09-11.
+Status: Local implementation verified 2026-09-12; production rollout and operator acceptance remain pending.
+Revision: 2026-09-12.
 
 ## Goal and work
 
@@ -31,3 +31,6 @@ environment and records acceptance.
 
 Every implementation plan must specify schema/API changes, owning modules and regression
 coverage before editing. Stop after this phase; update CURRENT_STATE only with real evidence.
+
+Local completion evidence is recorded in `PHASE-25-VERIFICATION.md`. The phase remains open at its
+environment-owned rollout gate; that status must not be presented as a production-readiness claim.

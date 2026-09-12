@@ -3,7 +3,7 @@
 ## Active phase
 
 Phase 25 — Production hardening and internal rollout.
-Status: ACTIVE — local hardening and rollout-package verification in progress; production rollout pending.
+Status: LOCAL IMPLEMENTATION VERIFIED — production rollout and operator acceptance pending.
 Phase 17 completed its local PostgreSQL-backed full verification gate on 2026-09-10. Phase 18
 JioMart work is deferred on the evidence backlog at the owner's direction. Phase 19 evidence
 preparation is verified while its print-payload runtime work remains deferred.
@@ -60,6 +60,7 @@ the separate object fixture restored its referenced bytes and preserved protecte
 
 Phase 18 JioMart and the runtime portion of Phase 19 remain on ROADMAP.md's deferred evidence
 backlog. Phase 24 is complete; its evidence is in `PHASES/PHASE-24-VERIFICATION.md`.
-Phase 25 local hardening must pass its image, load, shutdown, rollback, recovery and full
-PostgreSQL-backed gates. Production deployment and operator acceptance have not started and
-require the real environment plus an explicit rollout decision.
+Phase 25 passed its local image, load, shutdown, same-schema rollback, recovery-tooling and full
+PostgreSQL-backed gates on 2026-09-12. Evidence is in `PHASES/PHASE-25-VERIFICATION.md`.
+Production deployment and operator acceptance have not started and require the real environment
+plus an explicit rollout decision. Phase 25 remains open at that environment-owned gate.
