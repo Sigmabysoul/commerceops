@@ -17,3 +17,20 @@ domain ownership, and active-phase boundaries even when no finding is present.
 
 Do not approve work outside the current phase or future-phase work before the
 current review gate passes.
+
+## Agent skills
+
+### Issue tracker
+
+Track CommerceOps work in the repository's GitHub Issues. See
+`docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Use the five canonical triage labels without repository-specific aliases. See
+`docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Use a single CommerceOps context with root domain vocabulary and system-wide
+decisions under `docs/ADR/`. See `docs/agents/domain.md`.
